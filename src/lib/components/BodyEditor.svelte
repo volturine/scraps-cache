@@ -327,6 +327,21 @@
 		return index;
 	}
 
+	function addMainTask() {
+		// A blank sub-task is intentionally unsaved. Starting a new root task must
+		// not strand the editor behind that transient row.
+		if (draftTaskId !== null) {
+			const draftIndex = lines.findIndex((line) => line.id === draftTaskId);
+			if (draftIndex >= 0) lines.splice(draftIndex, 1);
+			draftTaskId = null;
+		}
+		const draft = newLine('', true);
+		lines.push(draft);
+		draftTaskId = draft.id;
+		pendingFocus = lines.length - 1;
+		pendingCursor = 0;
+	}
+
 	function addSubtask(rootIndex: number) {
 		const root = lines[rootIndex];
 		// Two levels only: a sub-task cannot have sub-tasks.
@@ -532,4 +547,15 @@
 			></textarea>
 		{/if}
 	{/each}
+	{#if lines.some((line) => line.isCheck && line.indent === 0)}
+		<button
+			type="button"
+			data-add-task
+			class="mt-1 flex items-center gap-1.5 rounded px-1 py-1 text-left text-xs text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] dark:hover:bg-white/10"
+			onclick={addMainTask}
+		>
+			<span class="text-base leading-none" aria-hidden="true">+</span>
+			Add task
+		</button>
+	{/if}
 </div>
