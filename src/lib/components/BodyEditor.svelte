@@ -49,6 +49,7 @@
 	let pendingFocus = $state<number | null>(null);
 	let pendingCursor = $state<number | null>(null);
 	let focusedRootId = $state<number | null>(null);
+	let handledInlineFocusLine: number | null = null;
 	// Empty checklist rows created by Enter or Add sub-task stay UI-only until typed.
 	let draftTaskId = $state<number | null>(null);
 	let handledFocusSignal = 0;
@@ -369,19 +370,27 @@
 			}
 			if (!el) return;
 			const scroller = container?.closest('.scrollable') as HTMLElement | null;
-			const scrollTop = scroller?.scrollTop ?? 0;
 			try {
 				el.focus({ preventScroll: true });
 			} catch {
 				el.focus();
 			}
 			if (caret !== null) el.setSelectionRange(caret, caret);
-			const restoreScroll = () => {
-				if (scroller) scroller.scrollTop = scrollTop;
-			};
-			restoreScroll();
-			requestAnimationFrame(restoreScroll);
-			setTimeout(restoreScroll, 0);
+			// Keep the selected task visible without snapping the whole note back to its
+			// old scroll position. This is especially important when iOS has panned for
+			// the keyboard: restoring the old position fights that native movement.
+			if (scroller) {
+				const fieldRect = el.getBoundingClientRect();
+				const scrollerRect = scroller.getBoundingClientRect();
+				const padding = 12;
+				let nextTop = scroller.scrollTop;
+				if (fieldRect.top < scrollerRect.top + padding) {
+					nextTop += fieldRect.top - scrollerRect.top - padding;
+				} else if (fieldRect.bottom > scrollerRect.bottom - padding) {
+					nextTop += fieldRect.bottom - scrollerRect.bottom + padding;
+				}
+				scroller.scrollTop = Math.max(0, nextTop);
+			}
 		});
 	}
 
@@ -415,15 +424,33 @@
 			return;
 		}
 
-		let targetLine = parentTaskIndex(Math.max(0, Math.min(focusLine, lines.length - 1)));
-		const targetId = lines[targetLine]?.id;
+		let selectedLine = Math.max(0, Math.min(focusLine, lines.length - 1));
+		const selectedId = lines[selectedLine]?.id;
 		if (draftTaskId !== null) {
 			lines = lines.filter((line) => line.id !== draftTaskId);
 			draftTaskId = null;
 		}
-		targetLine = parentTaskIndex(Math.max(0, lines.findIndex((line) => line.id === targetId)));
-		focusedRootId = lines[targetLine]?.isCheck ? lines[targetLine].id : null;
-		void focusLineAfterRender(targetLine, lines[targetLine]?.text.length ?? 0);
+		selectedLine = Math.max(0, lines.findIndex((line) => line.id === selectedId));
+		const rootLine = parentTaskIndex(selectedLine);
+		focusedRootId = lines[rootLine]?.isCheck ? lines[rootLine].id : null;
+		// Preserve the exact task the user tapped; the root only controls which
+		// inline group is expanded, not where text focus is moved.
+		void focusLineAfterRender(selectedLine, lines[selectedLine]?.text.length ?? 0);
+	});
+
+	// A direct task tap keeps the textarea mounted and native-focused. Update
+	// only the inline group chrome; re-focusing here would restart iOS keyboard
+	// scrolling and produce a visible shake.
+	$effect(() => {
+		if (focusLine === null) {
+			handledInlineFocusLine = null;
+			return;
+		}
+		if (focusLine === handledInlineFocusLine) return;
+		handledInlineFocusLine = focusLine;
+		const selectedLine = Math.max(0, Math.min(focusLine, lines.length - 1));
+		const rootLine = parentTaskIndex(selectedLine);
+		focusedRootId = lines[rootLine]?.isCheck ? lines[rootLine].id : null;
 	});
 
 	const focusedRootIndent = $derived(
@@ -445,119 +472,64 @@
 		return rows;
 	});
 
-	const focusedChildIds = $derived(
-		focusedRootId === null ? new Set<number>() : new Set(visibleRows.slice(1).map(({ line }) => line.id))
-	);
 </script>
 
 <div bind:this={container} class="block w-full min-w-0 text-sm leading-relaxed text-[var(--gkc-text)]">
 	{#each lines as line, i (line.id)}
-		{#if line.id === focusedRootId}
-			<div class="relative -mx-6 my-1 bg-black/[0.04] px-6 py-1 dark:bg-white/[0.07]">
-				{#each visibleRows as { line: focusedLine, index: focusedIndex } (focusedLine.id)}
-					<div
-						class="flex w-full min-w-0 items-start gap-2 py-0"
-						style={focusedLine.indent > focusedRootIndent ? `padding-left: ${(focusedLine.indent - focusedRootIndent) * 1.25}rem` : undefined}
-					>
-						{#if focusedLine.isCheck}
-							<button
-								type="button"
-								data-checklist-toggle
-								class="mt-0.5 h-4 w-4 shrink-0 rounded border border-black/40 dark:border-white/40 flex items-center justify-center text-[10px]"
-								class:h-3.5={focusedLine.indent > focusedRootIndent}
-								class:w-3.5={focusedLine.indent > focusedRootIndent}
-								style={focusedLine.checked ? 'background: rgba(0,0,0,0.1)' : ''}
-								onclick={(e) => toggleCheck(focusedIndex, e)}
-								aria-label={focusedLine.indent > focusedRootIndent ? 'Toggle sub-task' : 'Toggle item'}
-							>
-								{#if focusedLine.checked}✓{/if}
-							</button>
-						{/if}
-						<textarea
-							rows="1"
-							data-line={focusedIndex}
-							value={focusedLine.text}
-							oninput={(e) => onLineInput(focusedIndex, e)}
-							onblur={() => discardEmptyDraft(focusedLine.id)}
-							onkeydown={(e) => onLineKeydown(e, focusedIndex)}
-							placeholder={focusedLine.indent > focusedRootIndent ? 'Sub-task' : 'Task'}
-							class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {focusedLine.checked ? 'line-through opacity-50' : ''} {focusedLine.indent > focusedRootIndent ? 'text-[13px]' : 'text-[15px] font-medium'}"
-						></textarea>
-					</div>
-					{#if focusedLine.id === focusedRootId}
-						<div class="py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--gkc-text-muted)]">Sub-tasks</div>
-					{/if}
-				{/each}
-				{#if focusedRootIndent === 0}
-					<button
-						type="button"
-						data-add-subtask
-						class="mt-0 flex w-full items-center gap-2 rounded-lg py-0.5 pl-5 text-left text-[13px] text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] dark:hover:bg-white/10"
-						onclick={() => addSubtask(visibleRows[0]?.index ?? -1)}
-					>
-						<span class="grid h-4 w-4 shrink-0 place-items-center rounded border border-current" aria-hidden="true">
-							<svg viewBox="0 0 24 24" class="h-2.5 w-2.5 fill-none stroke-current" stroke-width="2" stroke-linecap="round">
-								<path d="M12 5v14M5 12h14" />
-							</svg>
-						</span>
-						Add sub-task
-					</button>
-				{/if}
+		{#if line.isCheck}
+			<div
+				class="flex w-full min-w-0 items-start gap-2 {line.id === focusedRootId ? '-mx-2 my-0.5 rounded-lg bg-black/[0.035] px-2 py-0.5 dark:bg-white/[0.06]' : 'py-0.5'}"
+				style={line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
+			>
 				<button
 					type="button"
-					class="absolute bottom-1 right-2 grid h-6 w-6 place-items-center text-[var(--gkc-text-muted)] transition-colors hover:text-[var(--gkc-text)]"
-					title="Collapse task focus"
-					aria-label="Collapse task focus"
-					onclick={() => onExitTaskFocus?.()}
+					data-checklist-toggle
+					class="mt-0.5 h-4 w-4 shrink-0 rounded border border-black/40 dark:border-white/40 flex items-center justify-center text-[10px]"
+					class:h-3.5={line.indent > 0}
+					class:w-3.5={line.indent > 0}
+					style={line.checked ? 'background: rgba(0,0,0,0.1)' : ''}
+					onclick={(e) => toggleCheck(i, e)}
+					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
 				>
-					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M6 15l6-6 6 6" />
-					</svg>
+					{#if line.checked}✓{/if}
 				</button>
-			</div>
-		{:else if !focusedChildIds.has(line.id)}
-			{#if line.isCheck}
-				<div
-					class="flex w-full min-w-0 items-start gap-2 py-0.5"
-					style={line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
-				>
-					<button
-						type="button"
-						data-checklist-toggle
-						class="mt-0.5 h-4 w-4 shrink-0 rounded border border-black/40 dark:border-white/40 flex items-center justify-center text-[10px]"
-						class:h-3.5={line.indent > 0}
-						class:w-3.5={line.indent > 0}
-						style={line.checked ? 'background: rgba(0,0,0,0.1)' : ''}
-						onclick={(e) => toggleCheck(i, e)}
-						aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
-					>
-						{#if line.checked}✓{/if}
-					</button>
-					<textarea
-						rows="1"
-						data-line={i}
-						value={line.text}
-						oninput={(e) => onLineInput(i, e)}
-						onblur={() => discardEmptyDraft(line.id)}
-						onkeydown={(e) => onLineKeydown(e, i)}
-						onclick={() => onFocusTask?.(parentTaskIndex(i))}
-						placeholder={!line.text ? 'Task' : ''}
-						class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked ? 'line-through opacity-50' : ''} {line.indent > 0 ? 'text-[13px]' : ''}"
-					></textarea>
-				</div>
-			{:else if isPlainRunStart(i)}
-				<!-- One textarea for consecutive plain lines: multi-line select without affecting task focus. -->
 				<textarea
-					rows={plainRunEnd(i) - i + 1}
+					rows="1"
 					data-line={i}
-					data-plain-run={i}
-					value={plainRunText(i)}
-					oninput={(e) => onPlainRunInput(i, e)}
-					onkeydown={(e) => onPlainRunKeydown(e, i)}
-					placeholder={i === 0 && plainRunEnd(i) === 0 ? placeholder : ''}
-					class="block w-full min-w-0 resize-none overflow-hidden bg-transparent py-0.5 outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content]"
+					value={line.text}
+					oninput={(e) => onLineInput(i, e)}
+					onblur={() => discardEmptyDraft(line.id)}
+					onkeydown={(e) => onLineKeydown(e, i)}
+					onclick={() => {
+						if (lines[parentTaskIndex(i)]?.id !== focusedRootId) onFocusTask?.(i);
+					}}
+					placeholder={line.indent > 0 ? 'Sub-task' : 'Task'}
+					class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked ? 'line-through opacity-50' : ''} {line.id === focusedRootId ? 'text-[15px] font-medium' : line.indent > 0 ? 'text-[13px]' : ''}"
 				></textarea>
+			</div>
+			{#if focusedRootId !== null && line.id === visibleRows[visibleRows.length - 1]?.line.id && focusedRootIndent === 0}
+				<button
+					type="button"
+					data-add-subtask
+					class="mt-1 flex items-center gap-1.5 rounded px-1 py-1 pl-6 text-left text-xs text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] dark:hover:bg-white/10"
+					onclick={() => addSubtask(visibleRows[0]?.index ?? -1)}
+				>
+					<span class="text-base leading-none" aria-hidden="true">+</span>
+					Add sub-task
+				</button>
 			{/if}
+		{:else if isPlainRunStart(i)}
+			<!-- One textarea for consecutive plain lines: multi-line select without affecting task focus. -->
+			<textarea
+				rows={plainRunEnd(i) - i + 1}
+				data-line={i}
+				data-plain-run={i}
+				value={plainRunText(i)}
+				oninput={(e) => onPlainRunInput(i, e)}
+				onkeydown={(e) => onPlainRunKeydown(e, i)}
+				placeholder={i === 0 && plainRunEnd(i) === 0 ? placeholder : ''}
+				class="block w-full min-w-0 resize-none overflow-hidden bg-transparent py-0.5 outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content]"
+			></textarea>
 		{/if}
 	{/each}
 </div>

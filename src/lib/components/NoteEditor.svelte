@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { noteToPlainText, noteAttachments } from '$lib/checklistBody';
@@ -38,6 +39,18 @@
 	let images = $state<NoteImage[]>([]);
 	let draftDirty = false;
 	let focusBodySignal = $state(0);
+	let editorDialog = $state<HTMLDivElement | null>(null);
+	let editorScroller = $state<HTMLDivElement | null>(null);
+	let visualViewportHeight = $state(0);
+	let visualViewportTop = $state(0);
+	let layoutViewportHeight = $state(0);
+	let layoutViewportWidth = $state(0);
+	let revealFrame: number | null = null;
+
+	const keyboardVisible = $derived(
+		isOpen && visualViewportHeight > 0 && visualViewportHeight < layoutViewportHeight - 120
+	);
+	const editorDialogStyle = $derived(`background-color: ${note ? bgColor(note.color) : 'transparent'};`);
 
 	let syncedId: string | null = null;
 	$effect(() => {
@@ -63,6 +76,66 @@
 		focusBodySignal++;
 	}
 
+	function revealFocusedEditorField() {
+		if (!keyboardVisible || !editorDialog || !editorScroller) return;
+		const focused = document.activeElement;
+		if (!(focused instanceof HTMLElement) || !editorDialog.contains(focused)) return;
+		const field = focused.closest('input, textarea, select, [contenteditable]') as HTMLElement | null;
+		if (!field) return;
+
+		const fieldRect = field.getBoundingClientRect();
+		const scrollerRect = editorScroller.getBoundingClientRect();
+		const visibleBottom = keyboardVisible
+			? Math.min(scrollerRect.bottom, visualViewportTop + visualViewportHeight)
+			: scrollerRect.bottom;
+		const padding = 12;
+		let nextTop = editorScroller.scrollTop;
+		if (fieldRect.top < scrollerRect.top + padding) {
+			nextTop += fieldRect.top - scrollerRect.top - padding;
+		} else if (fieldRect.bottom > visibleBottom - padding) {
+			nextTop += fieldRect.bottom - visibleBottom + padding;
+		}
+		editorScroller.scrollTop = Math.max(0, nextTop);
+	}
+
+	function queueFocusedEditorReveal() {
+		if (revealFrame !== null) cancelAnimationFrame(revealFrame);
+		revealFrame = requestAnimationFrame(() => {
+			revealFrame = null;
+			revealFocusedEditorField();
+		});
+	}
+
+	onMount(() => {
+		const viewport = window.visualViewport;
+		const updateViewport = () => {
+			const nextViewportHeight = viewport?.height ?? window.innerHeight;
+			visualViewportHeight = nextViewportHeight;
+			visualViewportTop = viewport?.offsetTop ?? 0;
+			// Keep an unoccluded baseline for the current orientation. It must never
+			// be overwritten by the keyboard-shrunken height during a focus handoff.
+			if (layoutViewportWidth !== window.innerWidth || layoutViewportHeight === 0) {
+				layoutViewportWidth = window.innerWidth;
+				layoutViewportHeight = Math.max(window.innerHeight, nextViewportHeight);
+			} else {
+				layoutViewportHeight = Math.max(layoutViewportHeight, window.innerHeight, nextViewportHeight);
+			}
+			queueFocusedEditorReveal();
+		};
+		updateViewport();
+		viewport?.addEventListener('resize', updateViewport);
+		window.addEventListener('resize', updateViewport);
+		return () => {
+			viewport?.removeEventListener('resize', updateViewport);
+			window.removeEventListener('resize', updateViewport);
+			if (revealFrame !== null) cancelAnimationFrame(revealFrame);
+		};
+	});
+
+	$effect(() => {
+		if (keyboardVisible) queueFocusedEditorReveal();
+	});
+
 	$effect(() => {
 		if (!isOpen) {
 			syncedId = null;
@@ -84,8 +157,9 @@
 	});
 
 	function focusTask(line: number) {
+		// The task row stays mounted, so the browser already owns the exact caret
+		// and keyboard focus from the tap. Only update the inline focus chrome.
 		taskFocusLine = line;
-		focusBodySignal++;
 	}
 
 	function handleBack() {
@@ -202,7 +276,7 @@
 
 {#if isOpen && note}
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/40 p-4"
+		class="fixed left-0 top-0 z-50 flex h-[100lvh] w-screen items-center justify-center overflow-hidden bg-black/40 p-4"
 		role="presentation"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) close();
@@ -212,9 +286,11 @@
 		}}
 	>
 		<div
-			class="flex h-[72dvh] max-h-[90dvh] min-h-[50dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
-			style="background-color: {bgColor(note.color)};"
+			bind:this={editorDialog}
+			class="flex h-[72lvh] max-h-[90lvh] min-h-[50lvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
+			style={editorDialogStyle}
 			role="dialog"
+			tabindex="-1"
 			aria-modal="true"
 			onclick={focusBodyFromPage}
 		>
@@ -269,7 +345,7 @@
 				</div>
 			</header>
 
-			<div class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pt-4 pb-3">
+			<div bind:this={editorScroller} class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pt-4 pb-3">
 				<input
 					type="text"
 						placeholder="Title"
