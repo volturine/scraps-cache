@@ -10,81 +10,34 @@
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import { provideEditorActions } from '$lib/editorContext';
 	import { fade, fly } from 'svelte/transition';
-	import { untrack } from 'svelte';
 	import { onMount } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 
 	let { children } = $props();
+	const mobile = new MediaQuery('max-width: 767px');
 
 	onMount(() => {
 		attachSyncCloudIndicator(syncStore);
+		if (mobile.current) uiStore.sidebarOpen = false;
+		void notesStore.init().then(() => {
+			if (syncStore.isLoggedIn) setTimeout(() => notesStore.syncWithCloud(), 3000);
+		});
+		if ('serviceWorker' in navigator) {
+			if (import.meta.env.PROD) {
+				void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+			} else {
+				void navigator.serviceWorker.getRegistrations().then((registrations) => {
+					for (const registration of registrations) void registration.unregister();
+				}).catch(() => undefined);
+			}
+		}
 	});
 
 	let editingId = $state<string | null>(null);
 
 	$effect(() => {
-		if (typeof document !== 'undefined') {
-			document.documentElement.classList.toggle('dark', uiStore.effectiveDark);
-		}
-	});
-
-	// Initialize notes store once — untrack so reactive reads inside init()
-	// don't cause this effect to re-run on every notes change.
-	$effect(() => {
-		untrack(() => {
-			notesStore.init().then(() => {
-				// Auto-sync on load if logged in.
-				if (syncStore.isLoggedIn) {
-					setTimeout(() => notesStore.syncWithCloud(), 3000);
-				}
-			});
-		});
-	});
-
-
-	// Service worker: register in production, actively UNREGISTER in dev.
-	// The SW caches assets which conflicts with Vite HMR in dev mode.
-	$effect(() => {
-		if ('serviceWorker' in navigator) {
-			if (import.meta.env.PROD) {
-				navigator.serviceWorker.register('/sw.js').catch(() => {});
-			} else {
-				// Dev mode: kill any stale service workers from previous production builds.
-				navigator.serviceWorker.getRegistrations().then((regs) => {
-					for (const reg of regs) reg.unregister();
-				}).catch(() => {});
-			}
-		}
-	});
-
-	// Detect mobile (under 768px). SSR is disabled so window is always available.
-	let isMobile = $state(window.innerWidth < 768);
-
-	$effect(() => {
-		let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-		const check = () => {
-			// Debounce — iOS fires resize events when keyboard shows/hides.
-			// We don't want to immediately re-render on every resize.
-			if (resizeTimer) clearTimeout(resizeTimer);
-			resizeTimer = setTimeout(() => {
-				isMobile = window.innerWidth < 768;
-			}, 150);
-		};
-		check();
-		window.addEventListener('resize', check);
-		return () => {
-			window.removeEventListener('resize', check);
-			if (resizeTimer) clearTimeout(resizeTimer);
-		};
-	});
-
-	// On mobile, force sidebar closed on initial load so it never flashes.
-	let didInitialClose = $state(false);
-	$effect(() => {
-		if (!didInitialClose) {
-			if (isMobile) uiStore.sidebarOpen = false;
-			didInitialClose = true;
-		}
+		document.documentElement.classList.toggle('dark', uiStore.effectiveDark);
 	});
 
 	function openEditor(id: string) {
@@ -107,33 +60,17 @@
 
 	provideEditorActions({ openNote: openEditor, startNewNote });
 
-	$effect(() => {
-		if (uiStore.composerFocused) {
-			uiStore.composerFocused = false;
-			startNewNote();
-		}
-	});
-
 	// Toggle editor-open class on <html> for compositing isolation.
 	$effect(() => {
-		if (typeof document !== 'undefined') {
-			document.documentElement.classList.toggle('editor-open', editingId !== null);
-		}
+		document.documentElement.classList.toggle('editor-open', editingId !== null);
 	});
 
 	function closeEditor() {
 		editingId = null;
 	}
 
-	function handleSidebarClick(e: MouseEvent) {
-		const target = e.target as HTMLElement;
-		if (target.closest('input, textarea, select')) return;
-		if (target.closest('[data-sidebar-stay-open]')) return;
-		if (target.closest('button')) {
-			if (isMobile) {
-				setTimeout(() => { uiStore.sidebarOpen = false; }, 100);
-			}
-		}
+	function closeMobileSidebar() {
+		uiStore.sidebarOpen = false;
 	}
 </script>
 
@@ -142,7 +79,7 @@
 </svelte:head>
 
 <div class="app-shell flex w-screen overflow-hidden bg-[var(--gkc-bg)] text-[var(--gkc-text)]" style="height: 100dvh;">
-	{#if isMobile}
+	{#if mobile.current}
 		{#if uiStore.sidebarOpen}
 			<button
 				type="button"
@@ -156,9 +93,8 @@
 				transition:fly={{ x: -288, duration: 200 }}
 				role="navigation"
 				aria-label="Sidebar"
-				onclick={handleSidebarClick}
 			>
-				<Sidebar />
+				<Sidebar onNavigate={closeMobileSidebar} />
 			</div>
 		{/if}
 	{:else}

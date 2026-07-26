@@ -30,6 +30,13 @@ export function daysSinceTrashed(trashedAt: number | null): number {
 
 export const TRASH_PURGE_DAYS = 7;
 
+/** Give pointer-activated card surfaces an equivalent keyboard interaction. */
+export function activateOnKeyboard(event: KeyboardEvent, activate: () => void): void {
+	if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+	event.preventDefault();
+	activate();
+}
+
 /** Deep-clone a note for editing without mutating the stored one. Plain objects only. */
 export function cloneNote(note: import('$lib/types').Note): import('$lib/types').Note {
 	return {

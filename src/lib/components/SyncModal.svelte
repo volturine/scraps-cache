@@ -167,9 +167,10 @@
 	function close() { stopWaiting(); onClose(); }
 </script>
 
-<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onclick={close} transition:fade={{ duration: 150 }}>
-	<div class="w-full max-w-md rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-6 shadow-2xl" onclick={(event) => event.stopPropagation()} transition:fly={{ y: 20, duration: 200 }}>
-		<div class="mb-4 flex items-center justify-between"><h2 class="text-lg font-medium text-[var(--gkc-text)]">☁️ Sync</h2><button type="button" onclick={close} class="icon-btn h-8 w-8" aria-label="Close">✕</button></div>
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4" transition:fade={{ duration: 150 }}>
+	<button type="button" class="absolute inset-0 bg-black/40" onclick={close} aria-label="Close sync dialog"></button>
+	<div class="relative w-full max-w-md rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-6 shadow-2xl" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="sync-title" transition:fly={{ y: 20, duration: 200 }}>
+		<div class="mb-4 flex items-center justify-between"><h2 id="sync-title" class="text-lg font-medium text-[var(--gkc-text)]">☁️ Sync</h2><button type="button" onclick={close} class="icon-btn h-8 w-8" aria-label="Close">✕</button></div>
 
 		{#if mode === 'linked' && syncStore.account}
 			<div class="space-y-4">

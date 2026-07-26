@@ -318,15 +318,13 @@ class SyncStore {
 				});
 				const response = await this.sendSyncRequest('/api/sync/delta', payload, new Blob([payload]).size, indicate);
 				if (!response.success || !response.data) return this.fail(response);
-				if (response.data.reset === true) {
+					if (response.data.reset === true) {
 					// The relay was deliberately reset while this device retained a baseline.
 					// Ask the notes store to reload full attachments before its retry.
 					this.bootstrapRequested = true;
 					baseline = {};
-					cursor = 0;
-					localStorage.removeItem(baselineKey);
-					localStorage.removeItem(cursorKey);
-					continue;
+						cursor = 0;
+						continue;
 				}
 
 				const pendingNotes: Note[] = [];
@@ -365,10 +363,9 @@ class SyncStore {
 				}
 				mergedNotes = mergedNotes.map((note) => hydrateNoteImages(note, attachments));
 
-				if (typeof response.data.cursor === 'number') {
-					cursor = response.data.cursor;
-					localStorage.setItem(cursorKey, String(cursor));
-				}
+					if (typeof response.data.cursor === 'number') {
+						cursor = response.data.cursor;
+					}
 
 				// Advance baseline only for records actually uploaded this round, plus merged state for non-attachments.
 				const nextBaseline = { ...baseline };
@@ -399,20 +396,26 @@ class SyncStore {
 						continue;
 					}
 					if (!(key in mergedFingerprints) && !sentRecordKeys.has(key)) delete nextBaseline[key];
-				}
-				baseline = nextBaseline;
-				localStorage.setItem(baselineKey, JSON.stringify(baseline));
+					}
+					baseline = nextBaseline;
 
-				const remainingUploads = changedAttachments.length > ATTACHMENT_UPLOAD_BUDGET;
-				if (migratingLegacy && !remainingUploads && changed.length === 0) {
-					localStorage.setItem(migrationKey, 'done');
-					migrationUploadsComplete = true;
-				}
+					const remainingUploads = changedAttachments.length > ATTACHMENT_UPLOAD_BUDGET;
+					if (migratingLegacy && !remainingUploads && changed.length === 0) {
+						migrationUploadsComplete = true;
+					}
 				// Bootstrap writes every current slotted record once; subsequent syncs remain incremental.
-				hasMore = response.data.hasMore === true || remainingUploads || (migratingLegacy && !migrationUploadsComplete);
-			}
+					hasMore = response.data.hasMore === true || remainingUploads || (migratingLegacy && !migrationUploadsComplete);
+				}
 
-			this.lastSync = Date.now(); this.lastError = null; this.saveStatus();
+				if (hasMore) {
+					return this.fail({ success: false, error: 'Encrypted sync needs another pass' });
+				}
+				// Commit progress only with the fully merged result. A failed later page must
+				// be retried from the last cursor whose data the notes store already applied.
+				localStorage.setItem(cursorKey, String(cursor));
+				localStorage.setItem(baselineKey, JSON.stringify(baseline));
+				if (migratingLegacy && migrationUploadsComplete) localStorage.setItem(migrationKey, 'done');
+				this.lastSync = Date.now(); this.lastError = null; this.saveStatus();
 			return { success: true, notes: mergedNotes, labels: mergedLabels, boards: mergedBoards, tombstones: mergedTombstones, labelTombstones: mergedLabelTombstones, boardTombstones: mergedBoardTombstones };
 		} catch (err) { return this.fail({ success: false, error: err instanceof Error ? `Encrypted sync failed: ${err.message}` : 'Encrypted sync failed' }); }
 		finally { if (indicate) this.progress = null; if (indicate) this.onSyncEnd?.(); }

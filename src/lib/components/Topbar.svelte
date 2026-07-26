@@ -4,6 +4,9 @@
 	import { downloadJSON } from '$lib/utils';
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import SyncModal from './SyncModal.svelte';
+	import { useEditorActions } from '$lib/editorContext';
+
+	const { startNewNote } = useEditorActions();
 
 	let fileInputEl: HTMLInputElement | null = $state(null);
 	let settingsOpen = $state(false);
@@ -63,11 +66,11 @@
 			const target = e.target as HTMLElement;
 			if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
 			e.preventDefault();
-			uiStore.focusComposer();
+			startNewNote();
 		}
 		if ((e.ctrlKey || e.metaKey) && e.key === '/') {
 			e.preventDefault();
-			uiStore.focusComposer();
+			startNewNote();
 		}
 		// Escape closes settings
 		if (e.key === 'Escape') {

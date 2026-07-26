@@ -21,7 +21,7 @@ import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 import { AttachmentHydrationQueue } from '$lib/attachmentHydrationQueue';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { kanbanStore } from '$lib/stores/kanban.svelte';
-import { uiStore, type Layout, type View } from '$lib/stores/ui.svelte';
+import { uiStore } from '$lib/stores/ui.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import { readLabelsMirror, readNotesMirror, writeLabelsMirror, writeNotesMirror } from '$lib/noteStorage';
@@ -31,127 +31,12 @@ import { stripFullImageBytes } from '$lib/noteImages';
 import { makeImageThumbDataUrl } from '$lib/imageThumb';
 import { replacementFitsStorage } from '$lib/storageCapacity';
 import { formatStorageError } from '$lib/imageBlob';
-import type { KanbanBoard } from '$lib/kanban';
 import type { NoteImage } from '$lib/types';
-
-/** Full device backup — complete app/DB snapshot including full-resolution attachments. */
-export type ShardBackup = {
-	version: 3;
-	exportedAt: number;
-	notes: Note[];
-	labels: Label[];
-	boards: KanbanBoard[];
-	activeBoardId: string;
-	tombstones: Record<string, number>;
-	labelTombstones: Record<string, number>;
-	boardTombstones: Record<string, number>;
-	ui: {
-		sidebarOpen: boolean;
-		dark: boolean | null;
-		layout: Layout;
-		view: View;
-	};
-	sync: null | {
-		syncKey: string;
-		lastSync: number;
-	};
-	linkPreviews: LinkPreview[];
-};
-
-export type BackupImportProgress = {
-	phase: 'writing' | 'finishing';
-	completed: number;
-	total: number;
-};
-
-function asTombstoneMap(value: unknown): Record<string, number> {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-	return Object.fromEntries(
-		Object.entries(value).flatMap(([id, ts]) =>
-			typeof id === 'string' && Number(ts) > 0 ? [[id, Number(ts)]] : []
-		)
-	);
-}
-
-function normalizeImage(value: unknown): NoteImage | null {
-	if (!value || typeof value !== 'object') return null;
-	const image = value as Partial<NoteImage>;
-	if (typeof image.id !== 'string') return null;
-	return {
-		id: image.id,
-		mime: String(image.mime || 'application/octet-stream'),
-		dataUrl: typeof image.dataUrl === 'string' ? image.dataUrl : '',
-		createdAt: Number(image.createdAt) || 0,
-		...(typeof image.name === 'string' && image.name ? { name: image.name } : {}),
-		...(typeof image.thumbUrl === 'string' && image.thumbUrl ? { thumbUrl: image.thumbUrl } : {})
-	};
-}
-
-function normalizeBackup(data: unknown): ShardBackup | null {
-	if (!data || typeof data !== 'object') return null;
-	const raw = data as Record<string, unknown>;
-	if (!Array.isArray(raw.notes) || !Array.isArray(raw.labels)) return null;
-	const notes = (raw.notes as unknown[]).flatMap((item): Note[] => {
-		if (!item || typeof item !== 'object') return [];
-		const note = item as Partial<Note>;
-		if (typeof note.id !== 'string') return [];
-		const images = Array.isArray(note.images)
-			? note.images.flatMap((image) => {
-					const normalized = normalizeImage(image);
-					return normalized ? [normalized] : [];
-				})
-			: [];
-		return [cloneNote({
-			id: note.id,
-			title: String(note.title ?? ''),
-			body: String(note.body ?? ''),
-			color: (note.color as Note['color']) || 'default',
-			pinned: Boolean(note.pinned),
-			archived: Boolean(note.archived),
-			trashed: Boolean(note.trashed),
-			trashedAt: note.trashedAt == null ? null : Number(note.trashedAt),
-			createdAt: Number(note.createdAt) || 0,
-			updatedAt: Number(note.updatedAt) || 0,
-			reminder: note.reminder == null ? null : Number(note.reminder),
-			labels: Array.isArray(note.labels) ? note.labels.map(String) : [],
-			images,
-			...(Array.isArray(note.linkPreviews) ? { linkPreviews: note.linkPreviews as Note['linkPreviews'] } : {})
-		})];
-	});
-	const labels = (raw.labels as Label[]).flatMap((label): Label[] => {
-		if (!label || typeof label !== 'object' || typeof label.id !== 'string') return [];
-		return [{
-			id: String(label.id),
-			name: String(label.name ?? ''),
-			createdAt: Number(label.createdAt) || 0,
-			updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
-		}];
-	});
-	const boards = Array.isArray(raw.boards) ? (raw.boards as KanbanBoard[]) : [];
-	const uiRaw = raw.ui && typeof raw.ui === 'object' ? (raw.ui as Record<string, unknown>) : {};
-	const syncRaw = raw.sync && typeof raw.sync === 'object' ? (raw.sync as Record<string, unknown>) : null;
-	return {
-		version: 3,
-		exportedAt: Number(raw.exportedAt) || Date.now(),
-		notes,
-		labels,
-		boards,
-		activeBoardId: typeof raw.activeBoardId === 'string' ? raw.activeBoardId : '',
-		tombstones: asTombstoneMap(raw.tombstones),
-		labelTombstones: asTombstoneMap(raw.labelTombstones),
-		boardTombstones: asTombstoneMap(raw.boardTombstones),
-		ui: {
-			sidebarOpen: typeof uiRaw.sidebarOpen === 'boolean' ? uiRaw.sidebarOpen : true,
-			dark: typeof uiRaw.dark === 'boolean' || uiRaw.dark === null ? (uiRaw.dark as boolean | null) : null,
-			layout: uiRaw.layout === 'list' ? 'list' : 'grid',
-			view: typeof uiRaw.view === 'string' ? (uiRaw.view as View) : 'notes'
-		},
-		sync: syncRaw && typeof syncRaw.syncKey === 'string'
-			? { syncKey: syncRaw.syncKey, lastSync: Number(syncRaw.lastSync) || 0 }
-			: null,
-		linkPreviews: Array.isArray(raw.linkPreviews) ? (raw.linkPreviews as LinkPreview[]) : []
-	};
-}
+import {
+	normalizeBackup,
+	type BackupImportProgress,
+	type ShardBackup
+} from '$lib/backup';
 
 export class NotesStore {
 	notes = $state<Note[]>([]);

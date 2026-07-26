@@ -9,7 +9,6 @@ interface UIState {
 	view: View;
 	activeLabelId: string | null;
 	search: string;
-	composerFocused: boolean;
 	settingsOpen: boolean;
 }
 
@@ -22,14 +21,15 @@ const LS_KEY = 'gkc-ui-state';
 
 export class UIStore {
 	sidebarOpen = $state(true);
+	/** Explicit preference. `null` means follow the operating system. */
 	dark = $state<boolean | null>(null);
+	private systemDark = $state(prefersDark());
 	layout = $state<Layout>('grid');
 	view = $state<View>('notes');
 	activeLabelId = $state<string | null>(null);
 	// Ephemeral route-feedback state; never persisted across a reload.
 	pendingPath = $state<string | null>(null);
 	search = $state('');
-	composerFocused = $state(false);
 	settingsOpen = $state(false);
 
 	constructor() {
@@ -47,10 +47,6 @@ export class UIStore {
 				/* ignore */
 			}
 		}
-		if (this.dark === null && typeof matchMedia !== 'undefined') {
-			this.dark = prefersDark();
-		}
-
 		// Persist on change.
 		$effect.root(() => {
 			$effect(() => {
@@ -70,16 +66,13 @@ export class UIStore {
 		if (typeof matchMedia !== 'undefined') {
 			const mq = matchMedia('(prefers-color-scheme: dark)');
 			mq.addEventListener?.('change', (e) => {
-				// Only auto-switch if user hasn't manually toggled (stored preference is null).
-				const raw = localStorage.getItem(LS_KEY);
-				const parsed = raw ? (JSON.parse(raw) as Partial<UIState>) : {};
-				if (parsed.dark == null) this.dark = e.matches;
+				this.systemDark = e.matches;
 			});
 		}
 	}
 
 	get effectiveDark(): boolean {
-		return this.dark ?? prefersDark();
+		return this.dark ?? this.systemDark;
 	}
 
 	toggleSidebar() {
@@ -98,10 +91,6 @@ export class UIStore {
 		this.view = view;
 		this.activeLabelId = labelId;
 		this.search = '';
-	}
-
-	focusComposer() {
-		this.composerFocused = true;
 	}
 
 	/** Restore persisted UI preferences from a full device backup. */

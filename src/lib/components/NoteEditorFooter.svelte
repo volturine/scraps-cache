@@ -246,10 +246,7 @@
 <PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />
 <AttachmentFullscreen attachment={focusedAttachment} onClose={() => { focusedAttachment = null; }} />
 
-<footer
-	class="flex shrink-0 items-center justify-between gap-2 border-t border-black/5 px-3 py-2 dark:border-white/10"
-	onclick={(e) => e.stopPropagation()}
->
+<footer class="flex shrink-0 items-center justify-between gap-2 border-t border-black/5 px-3 py-2 dark:border-white/10">
 	<div class="flex shrink-0 items-center gap-1">
 		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Attach" onclick={openAttach} aria-label="Attach">
 			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

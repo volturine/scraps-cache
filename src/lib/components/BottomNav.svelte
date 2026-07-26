@@ -1,12 +1,14 @@
 <script lang="ts">
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { useEditorActions } from '$lib/editorContext';
+
+	const { startNewNote } = useEditorActions();
 </script>
 
 <!-- Floating + button — bottom right on every device -->
 <div class="fixed bottom-8 right-6 z-10">
 	<button
 		type="button"
-		onclick={() => uiStore.focusComposer()}
+		onclick={startNewNote}
 		class="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-surface)] shadow-lg"
 		aria-label="New note"
 		title="New note"

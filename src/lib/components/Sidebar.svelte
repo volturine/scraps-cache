@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
 	import { flushSync } from 'svelte';
@@ -7,6 +8,7 @@
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import type { Label } from '$lib/types';
 
+	let { onNavigate }: { onNavigate?: () => void } = $props();
 	let labelsEditMode = $state(false);
 	let newLabelName = $state('');
 	let renamingId = $state<string | null>(null);
@@ -31,7 +33,9 @@
 		new Map(notesStore.labels.map((label) => [label.id, notesStore.notesForLabel(label.id).length]))
 	);
 
-	function destination(view: View, labelId: string | null = null): string | null {
+	type Destination = '/' | '/kanban' | '/reminders' | '/archive' | '/trash' | `/label/${string}`;
+
+	function destination(view: View, labelId: string | null = null): Destination | null {
 		if (view === 'notes') return '/';
 		if (view === 'kanban') return '/kanban';
 		if (view === 'reminders') return '/reminders';
@@ -44,6 +48,7 @@
 		const target = destination(view, labelId);
 		if (!target) return;
 		uiStore.setView(view, labelId);
+		onNavigate?.();
 		if (target === page.url.pathname) return;
 
 		// The iPad trace showed that route work could run for ~300 ms before its
@@ -57,7 +62,7 @@
 			navigationFrame = null;
 			navigationTimer = setTimeout(() => {
 				navigationTimer = null;
-				void goto(target).finally(() => {
+					void goto(resolve(target)).finally(() => {
 					if (uiStore.pendingPath === target) uiStore.pendingPath = null;
 				});
 			}, 0);
@@ -343,8 +348,7 @@
 </aside>
 
 {#if pendingDelete}
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<div
+		<div
 		class="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center"
 		role="presentation"
 		data-sidebar-stay-open
@@ -352,14 +356,14 @@
 			if (event.target === event.currentTarget) cancelDelete();
 		}}
 	>
-		<div
-			class="w-full max-w-sm rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="label-delete-title"
-			data-sidebar-stay-open
-			onclick={(event) => event.stopPropagation()}
-		>
+			<div
+				class="w-full max-w-sm rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
+				role="dialog"
+				tabindex="-1"
+				aria-modal="true"
+				aria-labelledby="label-delete-title"
+				data-sidebar-stay-open
+			>
 			<h2 id="label-delete-title" class="text-base font-semibold text-[var(--gkc-text)]">
 				Delete “{pendingDelete.name}”?
 			</h2>

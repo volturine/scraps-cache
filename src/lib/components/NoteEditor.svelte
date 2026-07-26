@@ -285,6 +285,8 @@
 			if (e.key === 'Escape') close();
 		}}
 	>
+		<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			bind:this={editorDialog}
 			class="flex h-[72lvh] max-h-[90lvh] min-h-[50lvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"

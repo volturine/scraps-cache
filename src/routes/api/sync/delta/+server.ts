@@ -1,10 +1,11 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { applyOpaqueUploads } from '$lib/server/syncRelay';
-import { readSyncData, writeSyncData } from '$lib/server/syncStore';
+import { getSyncStore, SyncQuotaExceededError } from '$lib/server/syncStore';
 import { sameSyncSecret } from '$lib/server/syncAuth';
+import { readJsonBody } from '$lib/server/request';
 
 const MAX_ENVELOPE_BYTES = 100_000_000;
+const MAX_REQUEST_BYTES = MAX_ENVELOPE_BYTES + 1_000_000;
 const MAX_ENVELOPES_PER_REQUEST = 2_000;
 const DEFAULT_DOWNLOAD_LIMIT = 12;
 type OpaqueEnvelope = { id: string; ciphertext: string; slot: string };
@@ -24,28 +25,26 @@ function isOpaqueEnvelope(value: unknown): value is OpaqueEnvelope {
 /** Current-state opaque relay: each keyed slot holds one latest ciphertext only. */
 export const POST: RequestHandler = async ({ request }) => {
 	let body: { accountId?: unknown; authSecret?: unknown; cursor?: unknown; envelopes?: unknown; limit?: unknown };
-	try { body = await request.json(); } catch { return json({ error: 'Invalid JSON body' }, { status: 400 }); }
-	if (typeof body.accountId !== 'string' || typeof body.authSecret !== 'string') return json({ error: 'Sync account credentials are required' }, { status: 400 });
+	try { body = await readJsonBody(request, MAX_REQUEST_BYTES) as typeof body; } catch { return json({ error: 'Invalid JSON body' }, { status: 400 }); }
+	if (typeof body.accountId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(body.accountId)
+		|| typeof body.authSecret !== 'string' || body.authSecret.length < 32 || body.authSecret.length > 256) {
+		return json({ error: 'Sync account credentials are required' }, { status: 400 });
+	}
 	const cursor = typeof body.cursor === 'number' && Number.isInteger(body.cursor) && body.cursor >= 0 ? body.cursor : 0;
 	const envelopes = body.envelopes == null ? [] : body.envelopes;
 	if (!Array.isArray(envelopes) || envelopes.length > MAX_ENVELOPES_PER_REQUEST || !envelopes.every(isOpaqueEnvelope)) return json({ error: 'Invalid encrypted envelope batch' }, { status: 400 });
 	const limit = typeof body.limit === 'number' && Number.isInteger(body.limit) && body.limit > 0 ? Math.min(body.limit, 50) : DEFAULT_DOWNLOAD_LIMIT;
 	try {
-		const data = readSyncData();
-		const user = data[body.accountId];
-		if (!user || !sameSyncSecret(user.credentialHash, body.authSecret)) return json({ error: 'Invalid sync account credentials' }, { status: 404 });
-		const before = JSON.stringify(user.envelopes);
-		const reset = user.envelopes.length === 0 && cursor > 0;
-		const priorMax = Math.max(0, ...(user.envelopes ?? []).map((envelope) => envelope.seq));
-		const applied = applyOpaqueUploads(user.envelopes, Math.max(Number(user.nextSeq) || 0, priorMax), cursor, envelopes, limit);
-		user.envelopes = applied.envelopes;
-		user.nextSeq = applied.nextSeq;
-		if (JSON.stringify(user.envelopes) !== before) {
-			user.updatedAt = Date.now();
-			writeSyncData(data);
+		const store = getSyncStore();
+		const credentialHash = store.getCredentialHash(body.accountId);
+		if (!credentialHash || !sameSyncSecret(credentialHash, body.authSecret)) {
+			return json({ error: 'Invalid sync account credentials' }, { status: 404 });
 		}
-		return json({ cursor: applied.nextCursor, envelopes: applied.remote, hasMore: applied.hasMore, reset });
+		return json(store.sync(body.accountId, cursor, envelopes, limit));
 	} catch (error) {
+		if (error instanceof SyncQuotaExceededError) {
+			return json({ error: 'Sync account storage quota exceeded' }, { status: 507 });
+		}
 		console.error('[sync] current-state relay failed:', error);
 		return json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
 	}

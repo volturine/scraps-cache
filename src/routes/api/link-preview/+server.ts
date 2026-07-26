@@ -4,11 +4,12 @@ import { isIP } from 'node:net';
 import type { RequestHandler } from './$types';
 import type { LinkPreview } from '$lib/linkPreview';
 
-/** Stop reading once we have the document head (OG/Twitter/title/icons live here). No size cap. */
+/** Stop reading once we have the document head (OG/Twitter/title/icons live here). */
 const HEAD_END_RE = /<\/head>/i;
 const BROWSER_UA =
 	'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 const MAX_REDIRECTS = 3;
+const MAX_HEAD_BYTES = 256 * 1024;
 
 function isBlockedIp(address: string): boolean {
 	if (isIP(address) === 4) {
@@ -40,16 +41,22 @@ async function safeHttpUrl(value: string): Promise<URL> {
 	return url;
 }
 
-/** Read HTML until </head>, then cancel the rest. No byte cap — meta is always in the head. */
+/** Read HTML until </head>, with a hard cap against unbounded or malicious responses. */
 async function readHtmlHead(response: Response): Promise<string> {
 	if (!response.body) return '';
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
 	let html = '';
+	let receivedBytes = 0;
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
+			receivedBytes += value.byteLength;
+			if (receivedBytes > MAX_HEAD_BYTES) {
+				await reader.cancel();
+				throw new Error('Page head is too large');
+			}
 			html += decoder.decode(value, { stream: true });
 			if (HEAD_END_RE.test(html)) {
 				try {
@@ -207,7 +214,6 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 			if (contentType && !contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
 				throw new Error('The link is not an HTML page');
 			}
-			// Do not reject on Content-Length: we only read until </head>.
 			return json(parsePreview(await readHtmlHead(response), pageUrl, originalUrl), {
 				headers: { 'cache-control': 'public, max-age=3600' }
 			});
