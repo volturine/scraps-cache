@@ -97,8 +97,8 @@ them when needed.
 ## CI/CD
 
 [`.github/workflows/ci-cd.yaml`](.github/workflows/ci-cd.yaml) runs the complete
-application validation and a multi-platform Docker build for every pull request.
-After changes reach `main`, it publishes:
+application validation and an `amd64` Docker build for every pull request. After
+changes reach `main`, it publishes an `amd64`/`arm64` image:
 
 - `ghcr.io/volturine/shard-notes:latest`
 - `ghcr.io/volturine/shard-notes:main`
