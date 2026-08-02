@@ -25,7 +25,11 @@
 		});
 		if ('serviceWorker' in navigator) {
 			if (import.meta.env.PROD) {
-				void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+				// Version query forces browsers to re-fetch sw.js after deploys.
+				void navigator.serviceWorker
+					.register('/sw.js?v=2')
+					.then((reg) => reg.update())
+					.catch(() => undefined);
 			} else {
 				void navigator.serviceWorker.getRegistrations().then((registrations) => {
 					for (const registration of registrations) void registration.unregister();

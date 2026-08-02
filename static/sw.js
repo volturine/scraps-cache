@@ -1,8 +1,8 @@
 // Service worker — caches the app shell so iOS reloads are instant.
-// When iOS reloads the standalone web app, this serves the cached HTML/CSS/JS
-// immediately instead of fetching from the network.
+// JS/CSS must not be cache-first forever: hashed builds change filenames, but
+// a stale shell HTML or long-lived module cache leaves phones on old UI bugs.
 
-const CACHE_NAME = 'keep-clone-v1';
+const CACHE_NAME = 'shard-notes-v2';
 const APP_SHELL = [
 	'/',
 	'/manifest.json',
@@ -25,17 +25,28 @@ self.addEventListener('activate', (event) => {
 	);
 });
 
+function isImmutableAsset(url) {
+	return url.pathname.startsWith('/_app/immutable/');
+}
+
 self.addEventListener('fetch', (event) => {
 	const req = event.request;
 	// Only handle GET requests.
 	if (req.method !== 'GET') return;
 
 	const url = new URL(req.url);
+	if (url.origin !== self.location.origin) return;
 
 	// Don't intercept API calls (sync) — always go to network.
 	if (url.pathname.startsWith('/api/')) return;
 
-	// For navigation requests (page loads), try network first, fall back to cache.
+	// Never cache the service worker itself.
+	if (url.pathname === '/sw.js') {
+		event.respondWith(fetch(req));
+		return;
+	}
+
+	// Navigation: network first so deploys replace the shell HTML promptly.
 	if (req.mode === 'navigate') {
 		event.respondWith(
 			fetch(req)
@@ -49,17 +60,33 @@ self.addEventListener('fetch', (event) => {
 		return;
 	}
 
-	// For other requests (CSS, JS, images), try cache first, then network.
+	// Hashed build assets are immutable: cache-first is safe once fetched.
+	if (isImmutableAsset(url)) {
+		event.respondWith(
+			caches.match(req).then((cached) => {
+				if (cached) return cached;
+				return fetch(req).then((res) => {
+					if (res.ok) {
+						const copy = res.clone();
+						caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+					}
+					return res;
+				});
+			})
+		);
+		return;
+	}
+
+	// Other same-origin GETs (CSS from shell, icons, etc.): network first, cache fallback.
 	event.respondWith(
-		caches.match(req).then((cached) => {
-			if (cached) return cached;
-			return fetch(req).then((res) => {
-				if (res.ok && url.origin === self.location.origin) {
+		fetch(req)
+			.then((res) => {
+				if (res.ok) {
 					const copy = res.clone();
 					caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
 				}
 				return res;
-			});
-		})
+			})
+			.catch(() => caches.match(req).then((res) => res || fetch(req)))
 	);
 });

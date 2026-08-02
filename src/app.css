@@ -209,6 +209,56 @@ body {
 	scrollbar-width: thin;
 }
 
+/* Checklist toggle — fixed box + SVG so the mark is optically centered on mobile. */
+.checklist-toggle {
+	box-sizing: border-box;
+	display: inline-grid;
+	place-items: center;
+	width: 1.125rem; /* 18px */
+	height: 1.125rem;
+	margin-top: 0.2rem; /* align with first text line (~text-sm) */
+	padding: 0;
+	border: 1.5px solid rgba(0, 0, 0, 0.4);
+	border-radius: 0.25rem;
+	background: transparent;
+	color: inherit;
+	line-height: 0;
+	appearance: none;
+	-webkit-appearance: none;
+	touch-action: manipulation;
+	-webkit-tap-highlight-color: transparent;
+}
+.dark .checklist-toggle {
+	border-color: rgba(255, 255, 255, 0.4);
+}
+.checklist-toggle.checklist-toggle-sub {
+	width: 0.9375rem; /* 15px */
+	height: 0.9375rem;
+	margin-top: 0.22rem;
+}
+.checklist-toggle.checked {
+	background: rgba(0, 0, 0, 0.1);
+}
+.dark .checklist-toggle.checked {
+	background: rgba(255, 255, 255, 0.12);
+}
+.checklist-toggle-mark {
+	width: 0.7rem;
+	height: 0.7rem;
+	display: block;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2.25;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	/* Nudge for optical centering of the check stroke in the box */
+	transform: translateY(0.5px);
+}
+.checklist-toggle-sub .checklist-toggle-mark {
+	width: 0.55rem;
+	height: 0.55rem;
+}
+
 /* Icon buttons — hover only on fine pointers (touch never gets sticky :hover). */
 .icon-btn {
 	display: inline-flex;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { flushSync, tick } from 'svelte';
 	import { CHECK_RE, formatCheckLine, parseCheckLine } from '$lib/checklistBody';
 
 	const MAX_TASK_INDENT = 1;
@@ -46,13 +46,12 @@
 
 	let lines = $state<Line[]>([newLine()]);
 	let container: HTMLDivElement | null = $state(null);
-	let pendingFocus = $state<number | null>(null);
-	let pendingCursor = $state<number | null>(null);
 	let focusedRootId = $state<number | null>(null);
 	let handledInlineFocusLine: number | null = null;
 	// Empty checklist rows created by Enter or Add sub-task stay UI-only until typed.
 	let draftTaskId = $state<number | null>(null);
 	let handledFocusSignal = 0;
+	let focusRequestSeq = 0;
 
 	let lastBody = '';
 	$effect(() => {
@@ -191,8 +190,7 @@
 		prev.text += first.text;
 		lines.splice(start, 1);
 		syncBody();
-		pendingFocus = start - 1;
-		pendingCursor = prevLen;
+		focusLineNow(start - 1, prevLen, prev.id);
 	}
 
 	function toggleCheck(i: number, e: MouseEvent) {
@@ -222,42 +220,47 @@
 			e.preventDefault();
 			if (indentLine(i, e.shiftKey ? -1 : 1)) {
 				syncBody();
-				pendingFocus = i;
 				const input = e.target as HTMLTextAreaElement;
-				pendingCursor = input.selectionStart;
+				focusLineNow(i, input.selectionStart);
 			}
 			return;
 		}
 
-		if (e.key === 'Enter') {
+		if (e.key === 'Enter' || e.key === 'NumpadEnter') {
 			e.preventDefault();
 			const line = lines[i];
 			const input = e.target as HTMLTextAreaElement;
-			const start = input.selectionStart;
-			const end = input.selectionEnd;
+			const start = input.selectionStart ?? 0;
+			const end = input.selectionEnd ?? start;
 
 			if (line.isCheck && line.text.trim() === '') {
 				if (line.id === draftTaskId) {
+					const prevIndex = Math.max(0, i - 1);
+					const prevId = lines[prevIndex]?.id;
+					const caret = lines[prevIndex]?.text.length ?? 0;
+					// Focus the surviving row BEFORE removing this one — mobile drops
+					// the keyboard if the active element is destroyed first.
+					handoffFocusToExisting(prevIndex, caret, prevId);
 					lines.splice(i, 1);
 					draftTaskId = null;
-					pendingFocus = Math.max(0, i - 1);
-					pendingCursor = null;
+					const focusIndex =
+						prevId != null ? lines.findIndex((row) => row.id === prevId) : -1;
+					const idx = focusIndex >= 0 ? focusIndex : Math.max(0, i - 1);
+					handoffFocusToExisting(idx, caret, prevId);
 					return;
 				}
 				if (line.indent > 0) {
 					// Empty sub-task + Enter → outdent one level
 					line.indent -= 1;
 					syncBody();
-					pendingFocus = i;
-					pendingCursor = 0;
+					handoffFocusToExisting(i, 0, line.id);
 				} else {
 					// Empty top-level checklist + Enter → plain text
 					line.isCheck = false;
 					line.checked = false;
 					line.indent = 0;
 					syncBody();
-					pendingFocus = i;
-					pendingCursor = 0;
+					focusLineNow(i, 0, line.id);
 				}
 			} else {
 				// Split at the cursor: text after it moves to the newly-created line.
@@ -271,12 +274,19 @@
 					const next = newLine(after, true, false, splitIntoSubtask ? 1 : line.indent);
 					lines.splice(i + 1, 0, next);
 					if (!after.trim()) draftTaskId = next.id;
+					syncBody();
+					// Keep inline focus chrome on the new row (or its root for sub-tasks).
+					const rootId = next.indent > 0 ? lines[parentTaskIndex(i + 1)]?.id : next.id;
+					if (rootId != null) focusedRootId = rootId;
+					onFocusTask?.(i + 1);
+					// Synchronous focus is required: await/rAF lose the mobile user-gesture.
+					focusLineNow(i + 1, 0, next.id);
 				} else {
-					lines.splice(i + 1, 0, newLine(after));
+					const next = newLine(after);
+					lines.splice(i + 1, 0, next);
+					syncBody();
+					focusLineNow(i + 1, 0, next.id);
 				}
-				syncBody();
-				pendingFocus = i + 1;
-				pendingCursor = 0;
 			}
 			return;
 		}
@@ -291,29 +301,38 @@
 					// parent root when it was the first/only sub-task.
 					const targetIndex = previousTaskIndex(i);
 					const targetId = lines[targetIndex]?.id;
+					const caret = lines[targetIndex]?.text.length ?? 0;
+					// Critical: hand focus to the upper task while this empty row still
+					// exists. Deleting the active textarea first leaves mobile without
+					// a focused field even if the caret position is updated later.
+					handoffFocusToExisting(targetIndex, caret, targetId);
 					lines.splice(i, 1);
 					if (line.id === draftTaskId) draftTaskId = null;
 					syncBody();
-					const nextIndex = lines.findIndex((row) => row.id === targetId);
-					pendingFocus = nextIndex >= 0 ? nextIndex : Math.max(0, i - 1);
-					pendingCursor = lines[pendingFocus]?.text.length ?? 0;
+					const nextIndex = targetId != null ? lines.findIndex((row) => row.id === targetId) : -1;
+					const focusIndex = nextIndex >= 0 ? nextIndex : Math.max(0, i - 1);
+					handoffFocusToExisting(focusIndex, caret, targetId);
 					return;
 				}
 				// At start of a non-empty indented task: outdent before merging.
 				if (line.isCheck && line.indent > 0) {
 					line.indent -= 1;
 					syncBody();
-					pendingFocus = i;
-					pendingCursor = 0;
+					handoffFocusToExisting(i, 0, line.id);
 					return;
 				}
 				const prevLine = lines[i - 1];
 				const prevLen = prevLine.text.length;
+				const prevId = prevLine.id;
+				// Focus the upper row first, then merge text into it.
+				handoffFocusToExisting(i - 1, prevLen, prevId);
 				prevLine.text += lines[i].text;
 				lines.splice(i, 1);
 				syncBody();
-				pendingFocus = i - 1;
-				pendingCursor = prevLen;
+				const focusIndex = lines.findIndex((row) => row.id === prevId);
+				const idx = focusIndex >= 0 ? focusIndex : Math.max(0, i - 1);
+				// Caret at the join point after the original previous text.
+				handoffFocusToExisting(idx, prevLen, prevId);
 			}
 		}
 	}
@@ -338,8 +357,9 @@
 		const draft = newLine('', true);
 		lines.push(draft);
 		draftTaskId = draft.id;
-		pendingFocus = lines.length - 1;
-		pendingCursor = 0;
+		focusedRootId = draft.id;
+		onFocusTask?.(lines.length - 1);
+		focusLineNow(lines.length - 1, 0, draft.id);
 	}
 
 	function addSubtask(rootIndex: number) {
@@ -349,8 +369,7 @@
 		if (draftTaskId !== null) {
 			const existingIndex = lines.findIndex((line) => line.id === draftTaskId);
 			if (existingIndex >= 0) {
-				pendingFocus = existingIndex;
-				pendingCursor = 0;
+				focusLineNow(existingIndex, 0, lines[existingIndex]?.id);
 				return;
 			}
 			// Discard a stale draft marker and make a fresh editable row.
@@ -363,62 +382,133 @@
 		const draft = newLine('', true, false, 1);
 		lines.splice(insertAt, 0, draft);
 		draftTaskId = draft.id;
-		pendingFocus = insertAt;
-		pendingCursor = 0;
+		focusedRootId = root.id;
+		onFocusTask?.(insertAt);
+		focusLineNow(insertAt, 0, draft.id);
 	}
 
-	async function focusLineAfterRender(idx: number, cursor: number | null) {
-		await tick();
+	function resolveFocusElement(
+		idx: number,
+		lineId: number | null,
+		cursor: number | null
+	): { el: HTMLTextAreaElement; caret: number } | null {
+		let resolvedIndex = idx;
+		if (lineId != null) {
+			const byId = lines.findIndex((line) => line.id === lineId);
+			if (byId >= 0) resolvedIndex = byId;
+		}
+		let caret = cursor ?? (lines[resolvedIndex]?.text.length ?? 0);
+		// Prefer stable line id so inserts/deletes cannot point at the wrong row.
+		let el =
+			(lineId != null
+				? (container?.querySelector(`[data-line-id="${lineId}"]`) as HTMLTextAreaElement | null)
+				: null) ??
+			(container?.querySelector(`[data-line="${resolvedIndex}"]`) as HTMLTextAreaElement | null);
+		// Plain multi-line runs use one textarea keyed by the run start.
+		if (!el && lines[resolvedIndex] && !lines[resolvedIndex].isCheck) {
+			let start = resolvedIndex;
+			while (start > 0 && !lines[start - 1].isCheck) start -= 1;
+			el = container?.querySelector(`[data-plain-run="${start}"]`) as HTMLTextAreaElement | null;
+			if (el) {
+				let offset = caret;
+				for (let i = start; i < resolvedIndex; i++) offset += (lines[i]?.text.length ?? 0) + 1;
+				caret = offset;
+			}
+		}
+		if (!el) return null;
+		return { el, caret };
+	}
+
+	function applyFocusToElement(el: HTMLTextAreaElement, caret: number | null) {
+		try {
+			el.focus({ preventScroll: true });
+		} catch {
+			el.focus();
+		}
+		if (caret !== null) {
+			const max = el.value.length;
+			const next = Math.max(0, Math.min(caret, max));
+			el.setSelectionRange(next, next);
+		}
+		// Keep the selected task visible without snapping the whole note back to its
+		// old scroll position. This is especially important when iOS has panned for
+		// the keyboard: restoring the old position fights that native movement.
+		const scroller = container?.closest('.scrollable') as HTMLElement | null;
+		if (!scroller) return;
+		const fieldRect = el.getBoundingClientRect();
+		const scrollerRect = scroller.getBoundingClientRect();
+		const padding = 12;
+		let nextTop = scroller.scrollTop;
+		if (fieldRect.top < scrollerRect.top + padding) {
+			nextTop += fieldRect.top - scrollerRect.top - padding;
+		} else if (fieldRect.bottom > scrollerRect.bottom - padding) {
+			nextTop += fieldRect.bottom - scrollerRect.bottom + padding;
+		}
+		scroller.scrollTop = Math.max(0, nextTop);
+	}
+
+	/** Keep NoteEditor taskFocusLine + root chrome aligned with the active row. */
+	function setTaskFocusChrome(index: number) {
+		const line = lines[index];
+		if (!line) return;
+		if (line.isCheck) {
+			const root = parentTaskIndex(index);
+			focusedRootId = lines[root]?.isCheck ? lines[root].id : line.id;
+		}
+		onFocusTask?.(index);
+	}
+
+	/**
+	 * Move keyboard focus to a row that is already mounted (e.g. parent when deleting
+	 * a sub-task). Must run before removing the currently focused element on mobile.
+	 */
+	function handoffFocusToExisting(idx: number, cursor: number | null = 0, lineId?: number | null) {
+		const requestId = ++focusRequestSeq;
+		const resolvedId = lineId ?? lines[idx]?.id ?? null;
+		setTaskFocusChrome(idx);
+		// Prefer live DOM immediately — no flush needed when the target already exists.
+		const live = resolveFocusElement(idx, resolvedId, cursor);
+		if (live) {
+			applyFocusToElement(live.el, live.caret);
+		}
+		// Then flush any pending state (e.g. after splice) and re-assert focus/caret.
+		flushSync();
+		if (requestId !== focusRequestSeq) return;
+		const resolved = resolveFocusElement(idx, resolvedId, cursor);
+		if (resolved) applyFocusToElement(resolved.el, resolved.caret);
+	}
+
+	/**
+	 * Focus a task/text row after state mutations that create new DOM (Enter / Add task).
+	 * Uses flushSync so the new textarea exists and receives focus inside the same
+	 * user-gesture (keydown/click). Deferred focus (tick/rAF alone) fails on mobile
+	 * and leaves the caret on the previous task.
+	 */
+	function focusLineNow(idx: number, cursor: number | null = 0, lineId?: number | null) {
+		const requestId = ++focusRequestSeq;
+		const resolvedId = lineId ?? lines[idx]?.id ?? null;
+		flushSync();
+		if (requestId !== focusRequestSeq) return;
+		const resolved = resolveFocusElement(idx, resolvedId, cursor);
+		if (resolved) {
+			applyFocusToElement(resolved.el, resolved.caret);
+			return;
+		}
+		// Rare: DOM not ready even after flush — retry once on the next frame.
 		requestAnimationFrame(() => {
-			let el = container?.querySelector(`[data-line="${idx}"]`) as HTMLTextAreaElement | null;
-			let caret = cursor ?? (lines[idx]?.text.length ?? 0);
-			// Plain multi-line runs use one textarea keyed by the run start.
-			if (!el && lines[idx] && !lines[idx].isCheck) {
-				let start = idx;
-				while (start > 0 && !lines[start - 1].isCheck) start -= 1;
-				el = container?.querySelector(`[data-plain-run="${start}"]`) as HTMLTextAreaElement | null;
-				if (el) {
-					let offset = caret;
-					for (let i = start; i < idx; i++) offset += (lines[i]?.text.length ?? 0) + 1;
-					caret = offset;
-				}
-			}
-			if (!el) return;
-			const scroller = container?.closest('.scrollable') as HTMLElement | null;
-			try {
-				el.focus({ preventScroll: true });
-			} catch {
-				el.focus();
-			}
-			if (caret !== null) el.setSelectionRange(caret, caret);
-			// Keep the selected task visible without snapping the whole note back to its
-			// old scroll position. This is especially important when iOS has panned for
-			// the keyboard: restoring the old position fights that native movement.
-			if (scroller) {
-				const fieldRect = el.getBoundingClientRect();
-				const scrollerRect = scroller.getBoundingClientRect();
-				const padding = 12;
-				let nextTop = scroller.scrollTop;
-				if (fieldRect.top < scrollerRect.top + padding) {
-					nextTop += fieldRect.top - scrollerRect.top - padding;
-				} else if (fieldRect.bottom > scrollerRect.bottom - padding) {
-					nextTop += fieldRect.bottom - scrollerRect.bottom + padding;
-				}
-				scroller.scrollTop = Math.max(0, nextTop);
-			}
+			if (requestId !== focusRequestSeq) return;
+			const retry = resolveFocusElement(idx, resolvedId, cursor);
+			if (retry) applyFocusToElement(retry.el, retry.caret);
 		});
 	}
 
-	// Focus pending line after DOM update
-		$effect(() => {
-			if (pendingFocus !== null) {
-				const idx = pendingFocus;
-				const cursor = pendingCursor;
-				pendingFocus = null;
-				pendingCursor = null;
-				void focusLineAfterRender(idx, cursor);
-			}
-		});
+	async function focusLineAfterRender(idx: number, cursor: number | null, lineId: number | null = null) {
+		const requestId = ++focusRequestSeq;
+		await tick();
+		if (requestId !== focusRequestSeq) return;
+		const resolved = resolveFocusElement(idx, lineId, cursor);
+		if (resolved) applyFocusToElement(resolved.el, resolved.caret);
+	}
 
 	// Focus a tapped task, or leave the sub-view and restore the full note.
 	$effect(() => {
@@ -435,7 +525,8 @@
 			const restoreIndex = lines.findIndex((line) => line.id === restoreLineId);
 			const fallbackIndex = lines.findIndex((line) => line.id === fallbackLineId);
 			const index = restoreIndex >= 0 ? restoreIndex : fallbackIndex >= 0 ? fallbackIndex : 0;
-			void focusLineAfterRender(index, lines[index]?.text.length ?? 0);
+			const restoreId = lines[index]?.id ?? restoreLineId;
+			void focusLineAfterRender(index, lines[index]?.text.length ?? 0, restoreId ?? null);
 			return;
 		}
 
@@ -450,7 +541,12 @@
 		focusedRootId = lines[rootLine]?.isCheck ? lines[rootLine].id : null;
 		// Preserve the exact task the user tapped; the root only controls which
 		// inline group is expanded, not where text focus is moved.
-		void focusLineAfterRender(selectedLine, lines[selectedLine]?.text.length ?? 0);
+		// Tap path: browser already focused the textarea — only restore when needed.
+		void focusLineAfterRender(
+			selectedLine,
+			lines[selectedLine]?.text.length ?? 0,
+			lines[selectedLine]?.id ?? selectedId ?? null
+		);
 	});
 
 	// A direct task tap keeps the textarea mounted and native-focused. Update
@@ -499,22 +595,27 @@
 				<button
 					type="button"
 					data-checklist-toggle
-					class="mt-0.5 h-4 w-4 shrink-0 rounded border border-black/40 dark:border-white/40 flex items-center justify-center text-[10px]"
-					class:h-3.5={line.indent > 0}
-					class:w-3.5={line.indent > 0}
-					style={line.checked ? 'background: rgba(0,0,0,0.1)' : ''}
+					class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
+					class:checked={line.checked}
 					onclick={(e) => toggleCheck(i, e)}
 					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
+					aria-pressed={line.checked}
 				>
-					{#if line.checked}✓{/if}
+					{#if line.checked}
+						<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
+							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+						</svg>
+					{/if}
 				</button>
 				<textarea
 					rows="1"
 					data-line={i}
+					data-line-id={line.id}
 					value={line.text}
 					oninput={(e) => onLineInput(i, e)}
 					onblur={() => discardEmptyDraft(line.id)}
 					onkeydown={(e) => onLineKeydown(e, i)}
+					enterkeyhint="enter"
 					onclick={() => {
 						if (lines[parentTaskIndex(i)]?.id !== focusedRootId) onFocusTask?.(i);
 					}}
@@ -538,6 +639,7 @@
 			<textarea
 				rows={plainRunEnd(i) - i + 1}
 				data-line={i}
+				data-line-id={line.id}
 				data-plain-run={i}
 				value={plainRunText(i)}
 				oninput={(e) => onPlainRunInput(i, e)}

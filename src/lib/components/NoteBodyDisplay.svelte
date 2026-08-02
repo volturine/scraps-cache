@@ -73,15 +73,20 @@
 				<button
 					type="button"
 					data-checklist-toggle
-					class="mt-0.5 shrink-0 rounded border border-black/40 dark:border-white/40 flex items-center justify-center text-[10px] {seg.indent > 0 ? 'h-3.5 w-3.5' : 'h-4 w-4'}"
-					style={seg.checked ? 'background: rgba(0,0,0,0.1)' : ''}
+					class="checklist-toggle shrink-0 {seg.indent > 0 ? 'checklist-toggle-sub' : ''}"
+					class:checked={seg.checked}
 					onclick={(e) => {
 						e.stopPropagation();
 						toggle(seg.lineIndex);
 					}}
 					aria-label={seg.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
+					aria-pressed={seg.checked}
 				>
-					{#if seg.checked}✓{/if}
+					{#if seg.checked}
+						<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
+							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+						</svg>
+					{/if}
 				</button>
 				<span class="flex-1 break-words {seg.checked ? 'line-through opacity-50' : ''} {seg.indent > 0 ? 'text-[13px]' : ''}">
 					{seg.text || '\u00a0'}
