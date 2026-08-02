@@ -134,7 +134,7 @@ export class KanbanStore {
 		const board = createKanbanBoard(name);
 		this.boards = [...this.boards, board];
 		this.activeBoardId = board.id;
-		this.requestSync();
+		this.requestSync([`board:${board.id}`]);
 		return board;
 	}
 
@@ -167,11 +167,11 @@ export class KanbanStore {
 			changed = true;
 			return { ...change(board), updatedAt };
 		});
-		if (changed) this.requestSync();
+		if (changed) this.requestSync([`board:${boardId}`]);
 	}
 
-	private requestSync(): void {
-		syncStore.requestAutoSync();
+	private requestSync(keys: Iterable<string> = []): void {
+		syncStore.requestAutoSync(keys);
 	}
 }
 

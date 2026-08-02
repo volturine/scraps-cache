@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractHttpUrls, isUsableLinkPreview, normalizePreviewUrl } from './linkPreview';
+import { extractHttpUrls, localLinkCard, normalizePreviewUrl } from './linkPreview';
 
 describe('extractHttpUrls', () => {
 	it('returns distinct HTTP(S) links in their note order', () => {
@@ -28,34 +28,13 @@ describe('normalizePreviewUrl', () => {
 	});
 });
 
-describe('isUsableLinkPreview', () => {
-	it('rejects hostname-as-title cards with no assets', () => {
-		expect(
-			isUsableLinkPreview({
-				url: 'https://github.com/org/repo',
-				hostname: 'github.com',
-				title: 'github.com'
-			})
-		).toBe(false);
-	});
-
-	it('accepts real titles and hostname titles that still have an icon/image', () => {
-		expect(
-			isUsableLinkPreview({
-				url: 'https://github.com/org/repo',
-				hostname: 'github.com',
-				title: 'GitHub - org/repo: cool stuff',
-				image: 'https://opengraph.githubassets.com/abc/org/repo',
-				icon: 'https://github.com/favicon.ico'
-			})
-		).toBe(true);
-		expect(
-			isUsableLinkPreview({
-				url: 'https://github.com/org/repo',
-				hostname: 'github.com',
-				title: 'github.com',
-				icon: 'https://github.com/favicon.ico'
-			})
-		).toBe(true);
+describe('localLinkCard', () => {
+	it('derives a useful card without fetching remote metadata', () => {
+		expect(localLinkCard('https://www.github.com/org/repo?tab=readme#top')).toEqual({
+			url: 'https://www.github.com/org/repo?tab=readme',
+			hostname: 'github.com',
+			path: '/org/repo?tab=readme',
+			badge: 'G'
+		});
 	});
 });

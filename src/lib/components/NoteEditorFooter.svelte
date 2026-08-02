@@ -130,10 +130,12 @@
 		attachError = '';
 		try {
 			const added = await Promise.all(picked.map(fileToNoteImage));
-			const knownHashes = new Set(await Promise.all(images.map((image) => sha256(image.dataUrl))));
+			const knownHashes = new Set(await Promise.all(
+				images.map((image) => image.contentHash || sha256(image.dataUrl))
+			));
 			const unique: NoteImage[] = [];
 			for (const att of added) {
-				const hash = await sha256(att.dataUrl);
+				const hash = att.contentHash || await sha256(att.dataUrl);
 				if (knownHashes.has(hash)) continue;
 				knownHashes.add(hash);
 				unique.push(att);
@@ -210,6 +212,9 @@
 			<div class="aspect-square animate-pulse rounded-lg bg-black/10 dark:bg-white/10" role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
 		{/each}
 	</div>
+	<p class="px-3 pb-2 text-[10px] text-[var(--gkc-text-muted)]">
+		Photos are privacy-optimized before saving; originals are not retained.
+	</p>
 {/if}
 
 {#if files.length > 0}

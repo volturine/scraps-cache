@@ -4,7 +4,14 @@
 	import { downloadJSON } from '$lib/utils';
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import SyncModal from './SyncModal.svelte';
+	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import { useEditorActions } from '$lib/editorContext';
+	import {
+		decryptBackup,
+		encryptBackup,
+		isEncryptedShardBackup,
+		type EncryptedShardBackup
+	} from '$lib/backupCrypto';
 
 	const { startNewNote } = useEditorActions();
 
@@ -14,6 +21,13 @@
 	let quickSyncBusy = $state(false);
 	let importingBackup = $state(false);
 	let backupImportError = $state('');
+	let backupDialogMode = $state<'export' | 'import' | null>(null);
+	let backupBusy = $state(false);
+	let pendingEncryptedBackup = $state<EncryptedShardBackup | null>(null);
+	let lastBackupAt = $state(
+		typeof localStorage === 'undefined' ? 0 : Number(localStorage.getItem('shard-last-backup-at')) || 0
+	);
+	const backupDue = $derived(!lastBackupAt || Date.now() - lastBackupAt > 30 * 24 * 60 * 60 * 1000);
 
 	async function doQuickSync() {
 		if (quickSyncBusy) return;
@@ -25,10 +39,40 @@
 		}
 	}
 
-	async function exportBackup() {
-		const data = await notesStore.exportBackup();
-		downloadJSON(data, `shard-backup-${new Date().toISOString().slice(0, 10)}.json`);
+	function startBackupExport() {
 		settingsOpen = false;
+		backupImportError = '';
+		backupDialogMode = 'export';
+	}
+
+	async function submitBackupPassphrase(passphrase: string) {
+		backupBusy = true;
+		backupImportError = '';
+		try {
+			if (backupDialogMode === 'export') {
+				const data = await notesStore.exportBackup();
+				const encrypted = await encryptBackup(data, passphrase);
+				downloadJSON(encrypted, `shard-backup-${new Date().toISOString().slice(0, 10)}.shard-backup`);
+				localStorage.setItem('shard-last-backup-at', String(Date.now()));
+				lastBackupAt = Date.now();
+				backupDialogMode = null;
+				return;
+			}
+			if (backupDialogMode === 'import' && pendingEncryptedBackup) {
+				importingBackup = true;
+				const decrypted = await decryptBackup(pendingEncryptedBackup, passphrase);
+				const result = await notesStore.importBackup(decrypted);
+				if (!result.success) throw new Error(result.error || 'Could not restore that backup.');
+				pendingEncryptedBackup = null;
+				backupDialogMode = null;
+				settingsOpen = false;
+			}
+		} catch (error) {
+			backupImportError = error instanceof Error ? error.message : 'Backup operation failed.';
+		} finally {
+			backupBusy = false;
+			importingBackup = false;
+		}
 	}
 
 	function importBackup(e: Event) {
@@ -42,9 +86,15 @@
 		reader.onload = async () => {
 			try {
 				const data = JSON.parse(String(reader.result));
-				const result = await notesStore.importBackup(data);
-				if (result.success) settingsOpen = false;
-				else backupImportError = result.error || 'Could not import that backup.';
+				if (isEncryptedShardBackup(data)) {
+					pendingEncryptedBackup = data;
+					backupDialogMode = 'import';
+					settingsOpen = false;
+				} else if (window.confirm('This is an older unencrypted backup. Restore it anyway?')) {
+					const result = await notesStore.importBackup(data);
+					if (result.success) settingsOpen = false;
+					else backupImportError = result.error || 'Could not import that backup.';
+				}
 			} catch (err) {
 				backupImportError = err instanceof Error ? err.message : 'Could not read that backup file.';
 			} finally {
@@ -178,7 +228,13 @@
 					<button type="button" onclick={() => { uiStore.toggleDark(); }} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
 						{#if uiStore.effectiveDark}☀️ Light mode{:else}🌙 Dark mode{/if}
 					</button>
-					<button type="button" onclick={exportBackup} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">Export full backup</button>
+					<div class="px-3 py-1 text-[11px] text-[var(--gkc-text-muted)]">
+						Device storage: {notesStore.storagePersistent === true ? 'protected' : notesStore.storagePersistent === false ? 'browser managed' : 'checking'}
+					</div>
+					<button type="button" onclick={startBackupExport} class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
+						<span>Export encrypted backup</span>
+						{#if backupDue}<span class="h-2 w-2 rounded-full bg-amber-500" title="Backup due"></span>{/if}
+					</button>
 					<button type="button" onclick={() => fileInputEl?.click()} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">Import full backup</button>
 				{/if}
 				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">{backupImportError}</p>{/if}
@@ -186,7 +242,7 @@
 		{/if}
 		<!-- Keep the real input inside settingsContainer: its programmatic click must not
 		     be mistaken for an outside click that hides the import progress UI. -->
-		<input bind:this={fileInputEl} type="file" accept="application/json" onchange={importBackup} class="hidden" />
+		<input bind:this={fileInputEl} type="file" accept=".shard-backup,application/json" onchange={importBackup} class="hidden" />
 	</div>
 
 	<div
@@ -202,4 +258,19 @@
 
 {#if syncOpen}
 	<SyncModal onClose={() => { syncOpen = false; }} />
+{/if}
+
+{#if backupDialogMode}
+	<BackupPassphraseDialog
+		mode={backupDialogMode}
+		busy={backupBusy}
+		error={backupImportError}
+		onSubmit={submitBackupPassphrase}
+		onClose={() => {
+			if (backupBusy) return;
+			backupDialogMode = null;
+			pendingEncryptedBackup = null;
+			backupImportError = '';
+		}}
+	/>
 {/if}

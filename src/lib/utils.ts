@@ -58,7 +58,12 @@ export function cloneNote(note: import('$lib/types').Note): import('$lib/types')
 			dataUrl: image.dataUrl,
 			createdAt: image.createdAt,
 			...(image.name != null ? { name: image.name } : {}),
-			...(image.thumbUrl ? { thumbUrl: image.thumbUrl } : {})
+			...(image.thumbUrl ? { thumbUrl: image.thumbUrl } : {}),
+			...(image.width != null ? { width: image.width } : {}),
+			...(image.height != null ? { height: image.height } : {}),
+			...(image.byteSize != null ? { byteSize: image.byteSize } : {}),
+			...(image.contentHash ? { contentHash: image.contentHash } : {}),
+			...(image.encodingVersion != null ? { encodingVersion: image.encodingVersion } : {})
 		})),
 		...(note.linkPreviews?.length
 			? {

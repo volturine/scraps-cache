@@ -12,7 +12,7 @@ const VIEWS = new Set<View>(['notes', 'kanban', 'reminders', 'archive', 'trash',
 
 /** Full device backup — complete app/DB snapshot including full-resolution attachments. */
 export type ShardBackup = {
-	version: 3;
+	version: 4;
 	exportedAt: number;
 	notes: Note[];
 	labels: Label[];
@@ -62,7 +62,14 @@ function normalizeImage(value: unknown): NoteImage | null {
 		dataUrl: typeof image.dataUrl === 'string' ? image.dataUrl : '',
 		createdAt: Number(image.createdAt) || 0,
 		...(typeof image.name === 'string' && image.name ? { name: image.name } : {}),
-		...(typeof image.thumbUrl === 'string' && image.thumbUrl ? { thumbUrl: image.thumbUrl } : {})
+		...(typeof image.thumbUrl === 'string' && image.thumbUrl ? { thumbUrl: image.thumbUrl } : {}),
+		...(Number.isFinite(image.width) ? { width: Number(image.width) } : {}),
+		...(Number.isFinite(image.height) ? { height: Number(image.height) } : {}),
+		...(Number.isFinite(image.byteSize) ? { byteSize: Number(image.byteSize) } : {}),
+		...(typeof image.contentHash === 'string' && image.contentHash
+			? { contentHash: image.contentHash }
+			: {}),
+		...(Number.isFinite(image.encodingVersion) ? { encodingVersion: Number(image.encodingVersion) } : {})
 	};
 }
 
@@ -158,7 +165,7 @@ export function normalizeBackup(data: unknown): ShardBackup | null {
 		? raw.sync as Record<string, unknown>
 		: null;
 	return {
-		version: 3,
+		version: 4,
 		exportedAt: Number(raw.exportedAt) || Date.now(),
 		notes,
 		labels,

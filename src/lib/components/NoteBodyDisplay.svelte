@@ -3,7 +3,7 @@
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import type { Note, NoteImage } from '$lib/types';
 	import { parseBody, noteAttachments } from '$lib/checklistBody';
-	import { extractHttpUrls, isUsableLinkPreview } from '$lib/linkPreview';
+	import { extractHttpUrls } from '$lib/linkPreview';
 	import LinkPreview from './LinkPreview.svelte';
 	import { isImageAttachment, isInlinePreviewable, fileIconLabel, openAttachment } from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
@@ -18,9 +18,6 @@
 	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !displayImageSrc(attachment)));
 	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
 	const links = $derived(extractHttpUrls(note.body ?? ''));
-	const previewsByUrl = $derived(
-		new Map((note.linkPreviews ?? []).filter(isUsableLinkPreview).map((preview) => [preview.url, preview]))
-	);
 	let contentElement: HTMLDivElement;
 	let focusedImageIndex = $state<number | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
@@ -101,7 +98,7 @@
 {#if links.length > 0}
 	<div class="mt-2 flex flex-col gap-2">
 		{#each links as url (url)}
-			<LinkPreview {url} metadata={previewsByUrl.get(url)} />
+			<LinkPreview {url} />
 		{/each}
 	</div>
 {/if}

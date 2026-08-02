@@ -3,8 +3,15 @@ import { json } from '@sveltejs/kit';
 import { getSyncStore } from '$lib/server/syncStore';
 import { syncSecretHash } from '$lib/server/syncAuth';
 import { readJsonBody } from '$lib/server/request';
+import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, getClientAddress }) => {
+	const limited = publicApiLimiter.check(
+		`register:${clientAddress(getClientAddress)}`,
+		// Two immediately, then five tokens per hour.
+		{ capacity: 2, refillWindowMs: 24 * 60 * 1000 }
+	);
+	if (!limited.allowed) return rateLimitResponse(limited);
 	let body: { accountId?: unknown; authSecret?: unknown };
 	try {
 		body = await readJsonBody(request, 16_384) as typeof body;

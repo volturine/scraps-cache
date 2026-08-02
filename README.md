@@ -30,6 +30,12 @@ Optional server settings:
 | `SHARD_SYNC_DATA_DIR` | `sync-data` | Persistent sync-data directory |
 | `SHARD_SYNC_MAX_ACCOUNT_BYTES` | `1000000000` | Ciphertext quota per account |
 | `SHARD_SYNC_MAX_ACCOUNT_ENVELOPES` | `50000` | Record quota per account |
+| `SHARD_SYNC_MAX_CONCURRENT_REQUESTS` | `8` | Maximum sync requests in flight |
+| `SHARD_BACKUP_DIR` | disabled | Directory for consistent online SQLite snapshots |
+| `SHARD_BACKUP_INTERVAL_HOURS` | `24` | Snapshot interval |
+| `SHARD_BACKUP_RETAIN` | `2` | Raw verified staging snapshots retained locally |
+| `SHARD_ADMIN_TOKEN` | required in production Compose | Protects metrics and manual backup |
+| `ADDRESS_HEADER` / `XFF_DEPTH` | direct socket / `1` | Trusted proxy client-address configuration |
 
 `npm run preview` remains useful for locally previewing the built app.
 
@@ -51,9 +57,8 @@ Shard is then available at `http://localhost:3000`. The Compose deployment runs
 as an unprivileged user with a read-only application filesystem and stores its
 SQLite database in the persistent `shard-sync-data` volume.
 
-`SHARD_IMAGE` defaults to `ghcr.io/volturine/shard-notes:latest`. For predictable
-production rollouts, set it to a release tag such as
-`ghcr.io/volturine/shard-notes:1.2.3`.
+Production Compose requires `SHARD_IMAGE`. Set it to a release tag such as
+`ghcr.io/volturine/shard-notes:1.2.3`, or preferably an immutable digest.
 
 To build from the local checkout instead, use the development template:
 
@@ -66,25 +71,83 @@ HTTPS URL. TLS should terminate at a reverse proxy in front of the container.
 The container listens on port 3000; change only `SHARD_PORT` to select a
 different host port.
 
-Back up the persistent sync volume before upgrades:
+Node uses the direct socket address by default. Behind exactly one trusted
+reverse proxy, set `SHARD_ADDRESS_HEADER=x-forwarded-for` and
+`SHARD_XFF_DEPTH=1`, and configure the proxy to replace—not append
+untrusted—forwarded headers. Increase the depth only for a known proxy chain.
+Set HSTS at the TLS-terminating proxy after HTTPS is confirmed.
+
+Shard creates verified online SQLite snapshots daily in the
+`shard-backup-snapshots` volume. Trigger one immediately before an upgrade:
 
 ```sh
-docker run --rm \
-  -v shard-notes_shard-sync-data:/data:ro \
-  -v "$PWD":/backup \
-  alpine tar -czf /backup/shard-sync-data.tgz -C /data .
+curl -fsS -X POST \
+  -H "Authorization: Bearer $SHARD_ADMIN_TOKEN" \
+  http://localhost:3000/api/admin/backup
 ```
 
-Restore only while the application is stopped. Existing installations using
-`sync-data/users.json` can mount that directory at `/data`; Shard imports the
-JSON once and retains it as a recovery copy.
+Do not copy `sync.sqlite`, `sync.sqlite-wal`, and `sync.sqlite-shm` independently
+while the app is running. The online snapshot is the supported backup source.
+
+### Encrypted local and S3 backups
+
+The optional backup Compose file sends verified snapshots to encrypted Restic
+repositories. Create a password file outside the repository, then start the
+local repository:
+
+```sh
+export SHARD_RESTIC_PASSWORD_FILE=/secure/path/shard-restic-password
+docker compose -f compose.production.yaml -f compose.backup.yaml \
+  --profile backup up -d
+```
+
+For an S3-compatible repository, also set:
+
+```sh
+export SHARD_RESTIC_S3_REPOSITORY=s3:https://storage.example.com/shard-backups
+export SHARD_S3_ACCESS_KEY_FILE=/secure/path/s3-access-key
+export SHARD_S3_SECRET_KEY_FILE=/secure/path/s3-secret-key
+docker compose -f compose.production.yaml -f compose.backup.yaml \
+  --profile backup-s3 up -d
+```
+
+List and verify local encrypted snapshots:
+
+```sh
+docker compose -f compose.production.yaml -f compose.backup.yaml \
+  --profile backup exec backup-local restic snapshots
+docker compose -f compose.production.yaml -f compose.backup.yaml \
+  --profile backup exec backup-local restic check --read-data
+```
+
+Restore into a temporary directory first, verify `sync.sqlite` with
+`PRAGMA integrity_check`, stop the app, and only then replace the data volume.
+Perform this restore drill monthly.
+
+An operator restore drill is:
+
+1. Trigger a fresh online snapshot and confirm `/metrics` reports a newer
+   `shard_backup_last_success_timestamp_seconds`.
+2. Run `restic check --read-data`, then restore `latest` into a new temporary
+   volume or directory—never over the live volume.
+3. Locate the restored `shard-sync-*.sqlite` and run
+   `sqlite3 restored.sqlite 'PRAGMA integrity_check;'`; the only output must be
+   `ok`.
+4. Stop Shard, copy that verified file into an empty sync-data volume as
+   `sync.sqlite`, and start Shard against the new volume.
+5. Check `/health/ready`, then link an existing device and complete a delta
+   sync before retiring the old volume.
+
+CI runs `npm run test:restore`, which exercises SQLite's online backup API,
+restores into an empty directory, checks integrity, and verifies that existing
+account credentials survive.
 
 ### Docker configuration
 
 | Variable | Default | Purpose |
 | --- | ---: | --- |
 | `SHARD_PORT` | `3000` | Host port published by Compose |
-| `SHARD_IMAGE` | `ghcr.io/volturine/shard-notes:latest` | Image pulled by the production template |
+| `SHARD_IMAGE` | required | Pinned image tag or digest pulled by the production template |
 | `SHARD_ORIGIN` | `http://localhost:3000` | Exact public origin used by SvelteKit |
 | `SHARD_BODY_SIZE_LIMIT` | `110M` | Node adapter request limit; must exceed the 101 MB sync cap |
 | `SHARD_SYNC_MAX_ACCOUNT_BYTES` | `1000000000` | Encrypted bytes retained per account |

@@ -76,6 +76,28 @@ describe('opaque per-record sync payloads', () => {
 		expect(hydrateNoteImages(split.note, attachments).images?.[0]?.dataUrl).toBe(photo.dataUrl);
 	});
 
+	it('keeps attachment references while full bytes are evicted from memory', async () => {
+		const full = image('pic', 'data:image/jpeg;base64,abc');
+		const hash = (await splitNoteForSync(note('source', 1, '', [full]))).note.images?.[0]?.hash;
+		const placeholder = { ...full, dataUrl: '', contentHash: hash };
+		const split = await splitNoteForSync(note('source', 2, 'edited', [placeholder]));
+		expect(split.note.images).toEqual([expect.objectContaining({ id: 'pic', hash })]);
+		expect(split.attachments).toEqual([]);
+	});
+
+	it('builds only durable outbox keys during an ordinary sync', async () => {
+		const records = await buildSyncRecords(
+			[note('one', 1), note('two', 1)],
+			[],
+			[],
+			{},
+			{},
+			{},
+			new Set(['note:two'])
+		);
+		expect(records.map((record) => record.key)).toEqual(['note:two']);
+	});
+
 	it('expands legacy inline-photo snapshots into note + attachment records', async () => {
 		const photo = image('pic', 'data:image/jpeg;base64,legacy');
 		const payloads = await legacySnapshotPayloads({

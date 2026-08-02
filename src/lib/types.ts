@@ -28,6 +28,15 @@ export interface NoteImage {
 	thumbUrl?: string;
 	name?: string;
 	createdAt: number;
+	/** Decoded dimensions after client-side optimization. */
+	width?: number;
+	height?: number;
+	/** Stored attachment bytes, excluding data-URL overhead. */
+	byteSize?: number;
+	/** SHA-256 of the stored data URL, retained when full bytes leave memory. */
+	contentHash?: string;
+	/** Image processing recipe used to produce the stored bytes. */
+	encodingVersion?: number;
 }
 
 /** Alias for clarity; same shape as NoteImage (wire field remains `images`). */

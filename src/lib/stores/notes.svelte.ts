@@ -13,8 +13,7 @@ import {
 	clearAllNotes,
 	clearAllLabels,
 	replaceAllDeviceData,
-	getAllCachedLinkPreviews,
-	putCachedLinkPreview
+	getSyncOutboxKeys
 } from '$lib/db/idb';
 import { mergeNoteLists, mergeTwoNotes, mergeLabelLists } from '$lib/noteMerge';
 import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
@@ -26,7 +25,6 @@ import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import { readLabelsMirror, readNotesMirror, writeLabelsMirror, writeNotesMirror } from '$lib/noteStorage';
 import { readLabelTombstones, readTombstones, writeLabelTombstones, writeTombstones } from '$lib/syncTombstones';
-import { rememberLinkPreviews, type LinkPreview } from '$lib/linkPreview';
 import { stripFullImageBytes } from '$lib/noteImages';
 import { makeImageThumbDataUrl } from '$lib/imageThumb';
 import { replacementFitsStorage } from '$lib/storageCapacity';
@@ -42,6 +40,7 @@ export class NotesStore {
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
 	loaded = $state(false);
+	storagePersistent = $state<boolean | null>(null);
 	lastPersistError = $state<string | null>(null);
 	backupImportProgress = $state<BackupImportProgress | null>(null);
 	deletedNoteIds = $state<Record<string, number>>(readTombstones());
@@ -79,6 +78,7 @@ export class NotesStore {
 
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
+		void this.requestPersistentStorage();
 		if (this.loaded) {
 			await this.rehydrateFromIDB();
 			return;
@@ -125,13 +125,21 @@ export class NotesStore {
 			}
 		}
 		this.purgeOldTrash();
-		this.seedLinkPreviewCache(this.notes);
 		this.loaded = true;
 	}
 
-	private seedLinkPreviewCache(notes: Note[]) {
-		for (const note of notes) {
-			if (note.linkPreviews?.length) rememberLinkPreviews(note.linkPreviews);
+	private async requestPersistentStorage(): Promise<void> {
+		try {
+			if (!navigator.storage?.persist) {
+				this.storagePersistent = null;
+				return;
+			}
+			this.storagePersistent = navigator.storage.persisted
+				? await navigator.storage.persisted()
+				: false;
+			if (!this.storagePersistent) this.storagePersistent = await navigator.storage.persist();
+		} catch {
+			this.storagePersistent = null;
 		}
 	}
 
@@ -140,7 +148,6 @@ export class NotesStore {
 			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
 			this.notes = mergeNoteLists(this.notes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
 			this.labels = mergeLabelLists(this.labels, dbLabels).sort((a, b) => a.name.localeCompare(b.name));
-			this.seedLinkPreviewCache(this.notes);
 			this.mirrorToLS();
 		} catch (err) {
 			this.recordPersistenceError('Could not rehydrate from IndexedDB', err);
@@ -195,7 +202,13 @@ export class NotesStore {
 
 	/** Only hydrate a few notes per sync so photo-heavy accounts transfer in fractions. */
 	private async hydrateAttachmentsForSync(): Promise<void> {
-		const ids = this.notes
+		const dirtyKeys = new Set(await getSyncOutboxKeys().catch(() => []));
+		const prioritized = this.notes.filter((note) =>
+			dirtyKeys.has(`note:${note.id}`)
+			|| (note.images ?? []).some((image) => dirtyKeys.has(`attachment:${image.id}`))
+		);
+		const prioritizedIds = new Set(prioritized.map((note) => note.id));
+		const ids = [...prioritized, ...this.notes.filter((note) => !prioritizedIds.has(note.id))]
 			.filter((note) => (note.images ?? []).some((image) => !image.dataUrl))
 			.map((note) => note.id)
 			.slice(0, 3);
@@ -241,6 +254,10 @@ export class NotesStore {
 		this.mirrorToLS();
 		try {
 			await putNote(note);
+			syncStore.requestAutoSync([
+				`note:${id}`,
+				...(note.images ?? []).map((image) => `attachment:${image.id}`)
+			]);
 			this.lastPersistError = null;
 		} catch (err) {
 			this.recordPersistenceError(`Could not save note ${id}`, err);
@@ -391,7 +408,7 @@ export class NotesStore {
 		this.labels = [...this.labels, label].sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
 		putLabel(label).catch((err) => this.recordPersistenceError('Could not save label', err));
-		this.markLabelsDirty();
+		this.markLabelsDirty([`label:${label.id}`]);
 		return label;
 	}
 
@@ -405,7 +422,7 @@ export class NotesStore {
 		this.labels.sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
 		putLabel(renamed).catch((err) => this.recordPersistenceError('Could not rename label', err));
-		this.markLabelsDirty();
+		this.markLabelsDirty([`label:${renamed.id}`]);
 	}
 
 	removeLabel(id: string, options: { deleteNotes?: boolean } = {}): void {
@@ -472,7 +489,7 @@ export class NotesStore {
 	// Backup ---------------------------------------------------------------
 	/**
 	 * Full app/DB backup: notes (with full-resolution attachments), labels, boards,
-	 * tombstones, UI prefs, optional sync account, and cached link previews.
+	 * tombstones, UI prefs, and the optional sync account.
 	 */
 	async exportBackup(): Promise<ShardBackup> {
 		const fullNotes: Note[] = [];
@@ -480,9 +497,8 @@ export class NotesStore {
 			const needsFull = (note.images ?? []).some((image) => !image.dataUrl);
 			fullNotes.push(needsFull ? await hydrateNoteAttachments(cloneNote(note)) : cloneNote(note));
 		}
-		const linkPreviews = await getAllCachedLinkPreviews().catch(() => [] as LinkPreview[]);
 		return {
-			version: 3,
+			version: 4,
 			exportedAt: Date.now(),
 			notes: fullNotes,
 			labels: this.labels.map((label) => ({ ...label })),
@@ -500,7 +516,8 @@ export class NotesStore {
 			sync: syncStore.account
 				? { syncKey: syncStore.account.syncKey, lastSync: syncStore.lastSync }
 				: null,
-			linkPreviews
+			// Kept empty for v1-v3 import compatibility; new backups never retain remote metadata.
+			linkPreviews: []
 		};
 	}
 
@@ -547,11 +564,6 @@ export class NotesStore {
 			}
 			uiStore.restoreState(backup.ui);
 			syncStore.restoreFromBackup(backup.sync);
-			for (const preview of backup.linkPreviews) {
-				try { await putCachedLinkPreview(preview); } catch { /* best effort */ }
-			}
-			this.seedLinkPreviewCache(this.notes);
-			if (backup.linkPreviews.length) rememberLinkPreviews(backup.linkPreviews);
 			this.mirrorToLS();
 			this.dirty = true;
 			this.scheduleSyncPush();
@@ -587,6 +599,7 @@ export class NotesStore {
 		const deletedAt = Date.now();
 		for (const id of ids) this.deletedNoteIds[id] = deletedAt;
 		writeTombstones(this.deletedNoteIds);
+		syncStore.requestAutoSync(ids.map((id) => `note-tombstone:${id}`));
 		this.dirty = true;
 		this.scheduleSyncPush();
 	}
@@ -595,10 +608,11 @@ export class NotesStore {
 		if (ids.length === 0) return;
 		for (const id of ids) this.deletedLabelIds[id] = deletedAt;
 		writeLabelTombstones(this.deletedLabelIds);
-		this.markLabelsDirty();
+		this.markLabelsDirty(ids.map((id) => `label-tombstone:${id}`));
 	}
 
-	private markLabelsDirty(): void {
+	private markLabelsDirty(keys: Iterable<string> = []): void {
+		syncStore.requestAutoSync(keys);
 		this.dirty = true;
 		this.scheduleSyncPush();
 	}
@@ -618,6 +632,8 @@ export class NotesStore {
 	private noteRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private noteRetryAttempts = new Map<string, number>();
 	private dirty = false;
+	private syncFlight: Promise<boolean> | null = null;
+	private syncFollowupRequested = false;
 
 	private scheduleNoteRetry(id: string): void {
 		if (this.noteRetryTimers.has(id)) return;
@@ -644,6 +660,10 @@ export class NotesStore {
 	private persist(id: string) {
 		const note = this.notes.find((x) => x.id === id);
 		if (!note) return;
+		syncStore.requestAutoSync([
+			`note:${id}`,
+			...(note.images ?? []).map((image) => `attachment:${image.id}`)
+		]);
 		// Preserve a crash-safe, blob-free copy synchronously before async IDB work.
 		this.mirrorToLS();
 		putNote(note)
@@ -718,7 +738,6 @@ export class NotesStore {
 			await replaceAllDeviceData(cloudNotes, cloudLabels, (note) => this.compactPersistedNoteImages(note));
 			this.notes = cloudNotes;
 			this.labels = cloudLabels;
-			this.seedLinkPreviewCache(cloudNotes);
 			this.deletedNoteIds = { ...tombstones };
 			this.deletedLabelIds = { ...labelTombstones };
 			writeTombstones(this.deletedNoteIds);
@@ -735,12 +754,33 @@ export class NotesStore {
 
 	// Manual sync — caller shows UI feedback (spinning cloud icon).
 	async syncWithCloudManual(): Promise<boolean> {
-		return this.doSync(true);
+		return this.queueSync(true);
 	}
 
 	// Auto sync — silent, no UI feedback.
 	async syncWithCloud(): Promise<boolean> {
-		return this.doSync(false);
+		return this.queueSync(false);
+	}
+
+	/** One sync at a time; edits during a flight collapse into exactly one follow-up pass. */
+	private queueSync(indicate: boolean): Promise<boolean> {
+		if (this.syncFlight) {
+			this.syncFollowupRequested = true;
+			return this.syncFlight;
+		}
+		this.syncFlight = (async () => {
+			let success = false;
+			let showProgress = indicate;
+			do {
+				this.syncFollowupRequested = false;
+				success = await this.doSync(showProgress);
+				showProgress = false;
+			} while (this.syncFollowupRequested);
+			return success;
+		})().finally(() => {
+			this.syncFlight = null;
+		});
+		return this.syncFlight;
 	}
 
 	// Core sync. Local IDB remains authoritative; photo bytes move in small fractions.
@@ -748,7 +788,7 @@ export class NotesStore {
 		if (!syncStore.isLoggedIn) return false;
 		// A newly reset relay needs one current-state bootstrap from this source device.
 		// Bytes are returned to thumb-only memory immediately after reconciliation below.
-		if (syncStore.needsCurrentStateBootstrap) await this.hydrateAllAttachments();
+		if (await syncStore.needsCurrentStateBootstrap()) await this.hydrateAllAttachments();
 		// Only pull a few full attachments into memory per normal cycle for upload readiness.
 		await this.hydrateAttachmentsForSync();
 		const localNotes = this.notes.map(cloneNote);
@@ -828,7 +868,6 @@ export class NotesStore {
 			this.notes = mergedNotes;
 			this.labels = mergedLabels;
 			kanbanStore.applySync(result.boards ?? [], result.boardTombstones ?? {});
-			this.seedLinkPreviewCache(mergedNotes);
 			this.mirrorToLS();
 			for (const note of notesToPersist) await putNote(note);
 			await Promise.all([

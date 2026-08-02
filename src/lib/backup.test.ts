@@ -28,7 +28,7 @@ describe('backup normalization', () => {
 		const backup = normalizeBackup(source);
 
 		expect(backup).toMatchObject({
-			version: 3,
+			version: 4,
 			exportedAt: 123,
 			activeBoardId: '',
 			tombstones: { kept: 12 },

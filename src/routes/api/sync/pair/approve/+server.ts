@@ -2,8 +2,14 @@ import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { pairingSessions } from '$lib/server/pairingSessions';
 import { readJsonBody } from '$lib/server/request';
+import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, getClientAddress }) => {
+	const limited = publicApiLimiter.check(
+		`pair:${clientAddress(getClientAddress)}`,
+		{ capacity: 60, refillWindowMs: 60_000 }
+	);
+	if (!limited.allowed) return rateLimitResponse(limited);
 	let body: { sessionId?: unknown; grant?: unknown };
 	try {
 		body = await readJsonBody(request, 16_384) as typeof body;

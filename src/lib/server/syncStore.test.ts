@@ -96,6 +96,61 @@ describe('SQLite sync store', () => {
 		});
 	});
 
+	it('deletes only the expected opaque slot version and releases quota', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		const first = store.sync(
+			'account',
+			0,
+			[{ id: 'old', slot: slot('a'), ciphertext: 'first' }],
+			10
+		);
+		expect(first.usage).toMatchObject({ envelopeCount: 1, ciphertextBytes: 5 });
+
+		const replaced = store.sync(
+			'account',
+			first.cursor,
+			[{ id: 'new', slot: slot('a'), ciphertext: 'replacement' }],
+			[],
+			10
+		);
+		const staleDelete = store.sync(
+			'account',
+			replaced.cursor,
+			[],
+			[{ id: 'old', slot: slot('a') }],
+			10
+		);
+		expect(staleDelete.usage.envelopeCount).toBe(1);
+
+		const removed = store.sync(
+			'account',
+			staleDelete.cursor,
+			[],
+			[{ id: 'new', slot: slot('a') }],
+			10
+		);
+		expect(removed.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0 });
+	});
+
+	it('deletes an account and all of its opaque envelopes', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.sync(
+			'account',
+			0,
+			[{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }],
+			10
+		);
+		expect(store.deleteAccount('account')).toBe(true);
+		expect(store.getCredentialHash('account')).toBeNull();
+		expect(store.aggregateUsage()).toEqual({
+			accounts: 0,
+			envelopeCount: 0,
+			ciphertextBytes: 0
+		});
+	});
+
 	it('imports the legacy JSON once and leaves it available for recovery', () => {
 		const directory = mkdtempSync(join(tmpdir(), 'shard-sync-'));
 		directories.push(directory);

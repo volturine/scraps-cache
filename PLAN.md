@@ -1,5 +1,14 @@
 # Shard Production Hardening Plan
 
+## Implementation status
+
+Implemented on 2026-07-30. The application check, 73 automated tests, SQLite
+restore smoke test, production build, and production/backup Compose
+configuration validation pass locally. The reference 5,000-note browser
+benchmarks and 10,000-account/100-client production load targets remain
+deployment acceptance tests; they require representative devices and a staging
+server, so no performance numbers are claimed in this repository.
+
 ## Goal
 
 Keep Shard's current offline-first SvelteKit and SQLite architecture while
