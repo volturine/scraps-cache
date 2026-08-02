@@ -7,11 +7,13 @@ import type { Label, Note, NoteImage } from '$lib/types';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
 
 const DB_NAME = 'google-keep-clone';
-const DB_VERSION = 4;
+const DB_VERSION = 6;
 const NOTES_STORE = 'notes';
 const LABELS_STORE = 'labels';
 const IMAGES_STORE = 'note-images';
 const LINK_PREVIEWS_STORE = 'link-previews';
+const SYNC_STATE_STORE = 'sync-state';
+const SYNC_OUTBOX_STORE = 'sync-outbox';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 const noteChains = new Map<string, Promise<void>>();
@@ -47,6 +49,12 @@ function getDB(): Promise<IDBPDatabase> {
 				if (!db.objectStoreNames.contains(LINK_PREVIEWS_STORE)) {
 					db.createObjectStore(LINK_PREVIEWS_STORE, { keyPath: 'url' });
 				}
+				if (!db.objectStoreNames.contains(SYNC_STATE_STORE)) {
+					db.createObjectStore(SYNC_STATE_STORE);
+				}
+				if (!db.objectStoreNames.contains(SYNC_OUTBOX_STORE)) {
+					db.createObjectStore(SYNC_OUTBOX_STORE);
+				}
 			}
 		});
 	}
@@ -61,7 +69,14 @@ function plainImage(image: NoteImage): NoteImage {
 		dataUrl: typeof image.dataUrl === 'string' ? image.dataUrl : '',
 		createdAt: Number(image.createdAt) || 0,
 		...(image.name != null && image.name !== '' ? { name: String(image.name) } : {}),
-		...(typeof image.thumbUrl === 'string' && image.thumbUrl ? { thumbUrl: String(image.thumbUrl) } : {})
+		...(typeof image.thumbUrl === 'string' && image.thumbUrl ? { thumbUrl: String(image.thumbUrl) } : {}),
+		...(Number.isFinite(image.width) ? { width: Number(image.width) } : {}),
+		...(Number.isFinite(image.height) ? { height: Number(image.height) } : {}),
+		...(Number.isFinite(image.byteSize) ? { byteSize: Number(image.byteSize) } : {}),
+		...(typeof image.contentHash === 'string' && image.contentHash
+			? { contentHash: String(image.contentHash) }
+			: {}),
+		...(Number.isFinite(image.encodingVersion) ? { encodingVersion: Number(image.encodingVersion) } : {})
 	};
 }
 
@@ -376,4 +391,47 @@ export async function getAllCachedLinkPreviews(): Promise<LinkPreview[]> {
 			...(typeof icon === 'string' ? { icon } : {})
 		})];
 	});
+}
+
+/** Durable sync cursor/baseline state. Unlike localStorage, this is not size-limited. */
+export async function getSyncState<T>(key: string): Promise<T | undefined> {
+	const db = await getDB();
+	return await db.get(SYNC_STATE_STORE, key) as T | undefined;
+}
+
+export async function setSyncState<T>(key: string, value: T): Promise<void> {
+	const db = await getDB();
+	await db.put(SYNC_STATE_STORE, value, key);
+}
+
+export async function deleteSyncState(key: string): Promise<void> {
+	const db = await getDB();
+	await db.delete(SYNC_STATE_STORE, key);
+}
+
+/** Durable set of plaintext-local record keys awaiting encrypted upload. */
+export async function markSyncOutbox(keys: Iterable<string>): Promise<void> {
+	const unique = [...new Set(keys)].filter(Boolean);
+	if (unique.length === 0) return;
+	const db = await getDB();
+	const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
+	for (const key of unique) tx.store.put(Date.now(), key);
+	await tx.done;
+}
+
+export async function getSyncOutboxKeys(): Promise<string[]> {
+	const db = await getDB();
+	return (await db.getAllKeys(SYNC_OUTBOX_STORE)).map(String);
+}
+
+export async function clearSyncOutbox(keys: Iterable<string>, through = Number.POSITIVE_INFINITY): Promise<void> {
+	const unique = [...new Set(keys)].filter(Boolean);
+	if (unique.length === 0) return;
+	const db = await getDB();
+	const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
+	for (const key of unique) {
+		const markedAt = Number(await tx.store.get(key));
+		if (markedAt > 0 && markedAt <= through) await tx.store.delete(key);
+	}
+	await tx.done;
 }

@@ -2,7 +2,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { KEEP_COLORS, KEEP_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
-	import { formatReminder } from '$lib/utils';
+	import { activateOnKeyboard, formatReminder } from '$lib/utils';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 
 	let {
@@ -152,7 +152,9 @@
 	}
 </script>
 
-<article
+<div
+	role="button"
+	tabindex="0"
 	draggable="true"
 	class="kanban-card relative cursor-grab overflow-hidden rounded-xl border border-black/5 shadow-sm active:cursor-grabbing dark:border-white/10 {touchDragging ? 'z-20 opacity-65 shadow-lg' : ''}"
 	style="background-color: {background(note.color)}; left: {touchDragging ? dragX : 0}px; top: {touchDragging ? dragY : 0}px; transition: {touchDragging ? 'none' : 'left 120ms ease, top 120ms ease, box-shadow 120ms ease'};"
@@ -163,6 +165,7 @@
 	ondragstart={onNativeDragStart}
 	ondragend={onNativeDragEnd}
 	onclick={open}
+	onkeydown={(event) => activateOnKeyboard(event, () => onOpen(note.id))}
 	aria-label={`Drag ${note.title || 'untitled note'} to another Kanban column`}
 >
 	<div class="scrollable max-h-[220px] overflow-x-hidden overflow-y-auto p-3">
@@ -182,4 +185,4 @@
 			{/each}
 		</div>
 	{/if}
-</article>
+</div>

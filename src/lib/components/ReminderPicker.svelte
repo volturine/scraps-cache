@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { SvelteDate } from 'svelte/reactivity';
+
 	let {
 		reminder,
 		onClose,
@@ -10,16 +12,17 @@
 	} = $props();
 
 	// Initialize from existing reminder or now+1h default
-	function initDate(ts: number | null): Date {
+	function initDate(ts: number | null): SvelteDate {
 		if (ts == null) {
-			const d = new Date();
+			const d = new SvelteDate();
 			d.setHours(d.getHours() + 1, 0, 0, 0);
 			return d;
 		}
-		return new Date(ts);
+		return new SvelteDate(ts);
 	}
 
-	let selected = $state(initDate(reminder));
+	// A writable derived follows a changed prop but can still hold local picker edits.
+	let selected = $derived(initDate(reminder));
 
 	function apply(ts: number | null) {
 		onApply?.(ts);
@@ -28,7 +31,7 @@
 
 	// Date offset buttons
 	function shiftDay(delta: number) {
-		const d = new Date(selected);
+		const d = new SvelteDate(selected);
 		d.setDate(d.getDate() + delta);
 		selected = d;
 	}
@@ -70,17 +73,17 @@
 	const ampm = $derived(hours24 >= 12 ? 'PM' : 'AM');
 
 	function shiftHour(delta: number) {
-		const d = new Date(selected);
+		const d = new SvelteDate(selected);
 		d.setHours(d.getHours() + delta);
 		selected = d;
 	}
 	function shiftMinute(delta: number) {
-		const d = new Date(selected);
+		const d = new SvelteDate(selected);
 		d.setMinutes(d.getMinutes() + delta);
 		selected = d;
 	}
 	function toggleAmPm() {
-		const d = new Date(selected);
+		const d = new SvelteDate(selected);
 		const h = d.getHours();
 		d.setHours(h < 12 ? h + 12 : h - 12);
 		selected = d;

@@ -12,7 +12,7 @@
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import LinkPreview from './LinkPreview.svelte';
-	import { extractHttpUrls, fetchLinkPreview, isUsableLinkPreview, rememberLinkPreviews, type LinkPreview as LinkPreviewMetadata } from '$lib/linkPreview';
+	import { extractHttpUrls } from '$lib/linkPreview';
 
 	let {
 		noteId = $bindable(),
@@ -29,9 +29,7 @@
 
 	let title = $state('');
 	let body = $state('');
-	let linkPreviews = $state<LinkPreviewMetadata[]>([]);
 	const links = $derived(extractHttpUrls(body));
-	const previewsByUrl = $derived(new Map(linkPreviews.map((preview) => [preview.url, preview])));
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
@@ -59,8 +57,6 @@
 			syncedId = note.id;
 			title = note.title;
 			body = note.body ?? '';
-			linkPreviews = note.linkPreviews?.map((preview) => ({ ...preview })) ?? [];
-			rememberLinkPreviews(linkPreviews);
 			images = noteAttachments(note).map((attachment) => ({ ...attachment }));
 			taskFocusLine = null;
 			draftDirty = false;
@@ -163,11 +159,8 @@
 	}
 
 	function handleBack() {
-		if (taskFocusLine !== null) {
-			taskFocusLine = null;
-			focusBodySignal++;
-			return;
-		}
+		// Always leave the note. Task focus mode must not trap the user behind a
+		// second back press or block dismissing the editor.
 		void close();
 	}
 
@@ -181,36 +174,6 @@
 		return uiStore.effectiveDark ? KEEP_DARK_COLORS[c] : KEEP_COLORS[c];
 	}
 
-	function previewsForUrls(urls: string[]): LinkPreviewMetadata[] {
-		return urls.flatMap((url) => {
-			const preview = previewsByUrl.get(url);
-			return isUsableLinkPreview(preview) ? [preview] : [];
-		});
-	}
-
-	async function resolveLinkPreviews(noteId: string, urls: string[]): Promise<void> {
-		const known = new Map(
-			linkPreviews.filter(isUsableLinkPreview).map((preview) => [preview.url, preview])
-		);
-		const missing = urls.filter((url) => !known.has(url));
-		if (missing.length === 0) return;
-
-		const fetched = await Promise.all(missing.map(async (url) => {
-			const preview = await fetchLinkPreview(url);
-			return preview ? { ...preview, url } : null;
-		}));
-		if (!note || note.id !== noteId || extractHttpUrls(body).join('\n') !== urls.join('\n')) return;
-
-		for (const preview of fetched) if (preview) known.set(preview.url, preview);
-		const resolved = urls.flatMap((url) => {
-			const preview = known.get(url);
-			return preview ? [preview] : [];
-		});
-		rememberLinkPreviews(resolved);
-		linkPreviews = resolved;
-		commit({ linkPreviews: resolved });
-	}
-
 	function commit(patch: Record<string, unknown>) {
 		if (!note) return;
 		notesStore.updateNote(note.id, patch);
@@ -222,11 +185,7 @@
 		if (timer) clearTimeout(timer);
 		timer = setTimeout(() => {
 			if (!note) return;
-			const urls = extractHttpUrls(body);
-			const savedPreviews = previewsForUrls(urls);
-			linkPreviews = savedPreviews;
-			commit({ title, body, images, linkPreviews: savedPreviews });
-			void resolveLinkPreviews(note.id, urls);
+			commit({ title, body, images, linkPreviews: [] });
 		}, 250);
 	}
 
@@ -237,18 +196,16 @@
 	}
 
 	async function close() {
+		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
+		taskFocusLine = null;
 		if (timer) clearTimeout(timer);
 		if (note && draftDirty) {
-			const urls = extractHttpUrls(body);
-			const savedPreviews = previewsForUrls(urls);
-			linkPreviews = savedPreviews;
-			commit({ title, body, images, linkPreviews: savedPreviews });
+			commit({ title, body, images, linkPreviews: [] });
 			try {
-				await notesStore.flushNote(note.id, { title, body, images, linkPreviews: savedPreviews });
+				await notesStore.flushNote(note.id, { title, body, images, linkPreviews: [] });
 			} catch (err) {
 				console.error('[NoteEditor] flush failed:', err);
 			}
-			void resolveLinkPreviews(note.id, urls);
 		}
 		if (note) notesStore.discardIfEmpty(note.id);
 		onClose();
@@ -279,12 +236,15 @@
 		class="fixed left-0 top-0 z-50 flex h-[100lvh] w-screen items-center justify-center overflow-hidden bg-black/40 p-4"
 		role="presentation"
 		onclick={(e) => {
-			if (e.target === e.currentTarget) close();
+			// Backdrop click always dismisses, including while a task is focused.
+			if (e.target === e.currentTarget) void close();
 		}}
 		onkeydown={(e) => {
-			if (e.key === 'Escape') close();
+			if (e.key === 'Escape') void close();
 		}}
 	>
+		<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			bind:this={editorDialog}
 			class="flex h-[72lvh] max-h-[90lvh] min-h-[50lvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
@@ -301,9 +261,9 @@
 				<button
 					type="button"
 					class="icon-btn h-10 w-10 p-2"
-					title={taskFocusLine !== null ? 'Back to note' : 'Back'}
+					title="Close note"
 					onclick={handleBack}
-					aria-label="Back"
+					aria-label="Close note"
 				>
 					<svg viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M15 18l-6-6 6-6" />
@@ -371,9 +331,9 @@
 				/>
 
 				{#if links.length > 0}
-					<div class="mt-3 flex flex-col gap-2" aria-label="Link previews">
+					<div class="mt-3 flex flex-col gap-2" aria-label="Links">
 						{#each links as url (url)}
-							<LinkPreview {url} metadata={previewsByUrl.get(url)} />
+							<LinkPreview {url} />
 						{/each}
 					</div>
 				{/if}

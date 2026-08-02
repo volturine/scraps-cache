@@ -3,6 +3,8 @@ import type { NoteImage } from './types';
 import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
 import { dataUrlToBlob } from './imageBlob';
 import { makeImageThumbDataUrl } from './imageThumb';
+import { optimizeImageBlob, optimizedImageName } from './imageOptimize';
+import { sha256 } from './syncHash';
 
 /** Browser-renderable image (preview / fullscreen). Excludes raw DNG before convert. */
 export function isImageMime(mime: string): boolean {
@@ -76,9 +78,30 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 			mp3: 'audio/mpeg',
 			mp4: 'video/mp4'
 		};
-		if (ext && byExt[ext]) mime = byExt[ext];
+			if (ext && byExt[ext]) mime = byExt[ext];
+	}
+	let optimized:
+		| { width: number; height: number; byteSize: number; encodingVersion: number }
+		| undefined;
+	if (isImageMime(mime)) {
+		try {
+			const result = await optimizeImageBlob(image);
+			image = result.blob;
+			mime = 'image/webp';
+			name = optimizedImageName(name);
+			optimized = {
+				width: result.width,
+				height: result.height,
+				byteSize: result.byteSize,
+				encodingVersion: result.encodingVersion
+			};
+		} catch {
+			// Keep an undecodable image as an ordinary downloadable attachment.
+			mime = 'application/octet-stream';
+		}
 	}
 	const dataUrl = await readBlobAsDataUrl(image);
+	const contentHash = await sha256(dataUrl);
 	const thumbUrl = isImageMime(mime) ? (await makeImageThumbDataUrl(dataUrl)) ?? undefined : undefined;
 	return {
 		id: uid(),
@@ -86,7 +109,9 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 		dataUrl,
 		...(thumbUrl ? { thumbUrl } : {}),
 		name,
-		createdAt: Date.now()
+		createdAt: Date.now(),
+		contentHash,
+		...(optimized ?? { byteSize: image.size })
 	};
 }
 

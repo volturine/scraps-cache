@@ -1,0 +1,35 @@
+name: shard-notes
+
+services:
+  app:
+    image: "${SHARD_IMAGE:?Set SHARD_IMAGE to a pinned release tag or digest in .env}"
+    pull_policy: always
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${SHARD_PORT:-3000}:3000"
+    environment:
+      ORIGIN: "${SHARD_ORIGIN:-http://localhost:3000}"
+      BODY_SIZE_LIMIT: "${SHARD_BODY_SIZE_LIMIT:-110M}"
+      ADDRESS_HEADER: "${SHARD_ADDRESS_HEADER:-}"
+      XFF_DEPTH: "${SHARD_XFF_DEPTH:-1}"
+      SHARD_SYNC_DATA_DIR: /data
+      SHARD_SYNC_MAX_ACCOUNT_BYTES: "${SHARD_SYNC_MAX_ACCOUNT_BYTES:-1000000000}"
+      SHARD_SYNC_MAX_ACCOUNT_ENVELOPES: "${SHARD_SYNC_MAX_ACCOUNT_ENVELOPES:-50000}"
+      SHARD_SYNC_MAX_CONCURRENT_REQUESTS: "${SHARD_SYNC_MAX_CONCURRENT_REQUESTS:-8}"
+      SHARD_BACKUP_DIR: /backups
+      SHARD_BACKUP_INTERVAL_HOURS: "${SHARD_BACKUP_INTERVAL_HOURS:-24}"
+      SHARD_BACKUP_RETAIN: "${SHARD_BACKUP_RETAIN:-2}"
+      SHARD_ADMIN_TOKEN: "${SHARD_ADMIN_TOKEN:?Set SHARD_ADMIN_TOKEN in .env}"
+    volumes:
+      - shard-sync-data:/data
+      - shard-backup-snapshots:/backups
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  shard-sync-data:
+  shard-backup-snapshots:

@@ -9,16 +9,15 @@ export type SyncImageRef = {
 	name?: string;
 	createdAt: number;
 	hash: string;
+	width?: number;
+	height?: number;
+	byteSize?: number;
+	encodingVersion?: number;
 };
 
 export type SyncNote = Omit<Note, 'images'> & { images?: SyncImageRef[] };
 
-export type SyncAttachment = {
-	id: string;
-	mime: string;
-	name?: string;
-	createdAt: number;
-	hash: string;
+export type SyncAttachment = SyncImageRef & {
 	dataUrl: string;
 };
 
@@ -32,6 +31,18 @@ export type SyncRecordPayload =
 	| { kind: 'board-tombstone'; id: string; deletedAt: number };
 
 export type SyncRecord = { key: string; payload: SyncRecordPayload; fingerprint: string };
+
+export function syncRecordKey(payload: SyncRecordPayload): string {
+	switch (payload.kind) {
+		case 'note': return `note:${payload.value.id}`;
+		case 'attachment': return `attachment:${payload.value.id}`;
+		case 'label': return `label:${payload.value.id}`;
+		case 'board': return `board:${payload.value.id}`;
+		case 'note-tombstone': return `note-tombstone:${payload.id}`;
+		case 'label-tombstone': return `label-tombstone:${payload.id}`;
+		case 'board-tombstone': return `board-tombstone:${payload.id}`;
+	}
+}
 
 function validTombstones(value: Record<string, number>): [string, number][] {
 	return Object.entries(value)
@@ -58,17 +69,23 @@ export async function splitNoteForSync(note: Note): Promise<{ note: SyncNote; at
 	const attachments: SyncAttachment[] = [];
 	const images: SyncImageRef[] = [];
 	for (const image of note.images ?? []) {
-		if (!image?.id || typeof image.dataUrl !== 'string' || !image.dataUrl.length) continue;
-		const hash = await imageHash(image.dataUrl);
+		if (!image?.id) continue;
+		const hasBytes = typeof image.dataUrl === 'string' && image.dataUrl.length > 0;
+		const hash = hasBytes ? await imageHash(image.dataUrl) : image.contentHash;
+		if (!hash) continue;
 		const meta: SyncImageRef = {
 			id: image.id,
 			mime: image.mime || 'application/octet-stream',
 			createdAt: Number(image.createdAt) || 0,
 			hash,
-			...(image.name ? { name: image.name } : {})
+			...(image.name ? { name: image.name } : {}),
+			...(image.width != null ? { width: image.width } : {}),
+			...(image.height != null ? { height: image.height } : {}),
+			...(image.byteSize != null ? { byteSize: image.byteSize } : {}),
+			...(image.encodingVersion != null ? { encodingVersion: image.encodingVersion } : {})
 		};
 		images.push(meta);
-		attachments.push({ ...meta, dataUrl: image.dataUrl });
+		if (hasBytes) attachments.push({ ...meta, dataUrl: image.dataUrl });
 	}
 	const { images: _drop, ...rest } = note;
 	return { note: { ...rest, ...(images.length ? { images } : {}) }, attachments };
@@ -80,7 +97,12 @@ export function attachmentToImage(attachment: SyncAttachment): NoteImage {
 		mime: attachment.mime,
 		dataUrl: attachment.dataUrl,
 		createdAt: attachment.createdAt,
-		...(attachment.name ? { name: attachment.name } : {})
+		...(attachment.name ? { name: attachment.name } : {}),
+		...(attachment.width != null ? { width: attachment.width } : {}),
+		...(attachment.height != null ? { height: attachment.height } : {}),
+		...(attachment.byteSize != null ? { byteSize: attachment.byteSize } : {}),
+		contentHash: attachment.hash,
+		...(attachment.encodingVersion != null ? { encodingVersion: attachment.encodingVersion } : {})
 	};
 }
 
@@ -96,7 +118,14 @@ export function hydrateNoteImages(note: Note | SyncNote, attachments: Map<string
 			mime: image.mime || fallback?.mime || 'application/octet-stream',
 			dataUrl,
 			createdAt: Number(image.createdAt) || fallback?.createdAt || 0,
-			...((image.name || fallback?.name) ? { name: image.name || fallback?.name } : {})
+			...((image.name || fallback?.name) ? { name: image.name || fallback?.name } : {}),
+			...((image.width ?? fallback?.width) != null ? { width: image.width ?? fallback?.width } : {}),
+			...((image.height ?? fallback?.height) != null ? { height: image.height ?? fallback?.height } : {}),
+			...((image.byteSize ?? fallback?.byteSize) != null ? { byteSize: image.byteSize ?? fallback?.byteSize } : {}),
+			contentHash: ('hash' in image ? image.hash : image.contentHash) ?? fallback?.contentHash,
+			...((image.encodingVersion ?? fallback?.encodingVersion) != null
+				? { encodingVersion: image.encodingVersion ?? fallback?.encodingVersion }
+				: {})
 		} satisfies NoteImage;
 	});
 	return { ...(note as Note), images };
@@ -112,15 +141,21 @@ export async function buildSyncRecords(
 	boards: KanbanBoard[],
 	tombstones: Record<string, number> = {},
 	labelTombstones: Record<string, number> = {},
-	boardTombstones: Record<string, number> = {}
+	boardTombstones: Record<string, number> = {},
+	onlyKeys?: ReadonlySet<string>
 ): Promise<SyncRecord[]> {
 	const values: { key: string; payload: SyncRecordPayload }[] = [];
 	const seenAttachments = new Set<string>();
 
 	for (const note of notes.filter((item) => (Number(tombstones[item.id]) || 0) < item.updatedAt)) {
+		const noteKey = `note:${note.id}`;
+		const wantsNote = !onlyKeys || onlyKeys.has(noteKey);
+		const wantsAttachment = !onlyKeys || (note.images ?? []).some((image) => onlyKeys.has(`attachment:${image.id}`));
+		if (!wantsNote && !wantsAttachment) continue;
 		const split = await splitNoteForSync(note);
-		values.push({ key: `note:${split.note.id}`, payload: { kind: 'note', value: split.note } });
+		if (wantsNote) values.push({ key: noteKey, payload: { kind: 'note', value: split.note } });
 		for (const attachment of split.attachments) {
+			if (onlyKeys && !onlyKeys.has(`attachment:${attachment.id}`)) continue;
 			if (seenAttachments.has(attachment.id)) continue;
 			seenAttachments.add(attachment.id);
 			values.push({ key: `attachment:${attachment.id}`, payload: { kind: 'attachment', value: attachment } });
@@ -128,18 +163,23 @@ export async function buildSyncRecords(
 	}
 
 	for (const label of labels.filter((item) => (Number(labelTombstones[item.id]) || 0) < item.updatedAt)) {
+		if (onlyKeys && !onlyKeys.has(`label:${label.id}`)) continue;
 		values.push({ key: `label:${label.id}`, payload: { kind: 'label', value: label } });
 	}
 	for (const board of boards.filter((item) => (Number(boardTombstones[item.id]) || 0) < item.updatedAt)) {
+		if (onlyKeys && !onlyKeys.has(`board:${board.id}`)) continue;
 		values.push({ key: `board:${board.id}`, payload: { kind: 'board', value: board } });
 	}
 	for (const [id, deletedAt] of validTombstones(tombstones)) {
+		if (onlyKeys && !onlyKeys.has(`note-tombstone:${id}`)) continue;
 		values.push({ key: `note-tombstone:${id}`, payload: { kind: 'note-tombstone', id, deletedAt } });
 	}
 	for (const [id, deletedAt] of validTombstones(labelTombstones)) {
+		if (onlyKeys && !onlyKeys.has(`label-tombstone:${id}`)) continue;
 		values.push({ key: `label-tombstone:${id}`, payload: { kind: 'label-tombstone', id, deletedAt } });
 	}
 	for (const [id, deletedAt] of validTombstones(boardTombstones)) {
+		if (onlyKeys && !onlyKeys.has(`board-tombstone:${id}`)) continue;
 		values.push({ key: `board-tombstone:${id}`, payload: { kind: 'board-tombstone', id, deletedAt } });
 	}
 

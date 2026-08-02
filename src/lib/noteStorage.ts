@@ -3,6 +3,7 @@ import type { Label, Note } from './types';
 /** Canonical fast-boot mirrors. IndexedDB remains the durable device store. */
 export const NOTES_MIRROR_KEY = 'gkc-notes-mirror';
 export const LABELS_MIRROR_KEY = 'gkc-labels-mirror';
+export const MAX_MIRRORED_NOTES = 50;
 
 type MirroredNote = Omit<Note, 'images'> & { hasImages?: boolean };
 
@@ -65,7 +66,13 @@ export function readNotesMirror(): Note[] {
 }
 
 export function writeNotesMirror(notes: Note[]): void {
-	writeJson(NOTES_MIRROR_KEY, notes.map(noteForLocalStorage));
+	writeJson(
+		NOTES_MIRROR_KEY,
+		[...notes]
+			.sort((left, right) => right.updatedAt - left.updatedAt)
+			.slice(0, MAX_MIRRORED_NOTES)
+			.map(noteForLocalStorage)
+	);
 }
 
 export function readLabelsMirror(): Label[] {

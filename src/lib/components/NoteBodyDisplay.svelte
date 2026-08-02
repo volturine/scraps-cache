@@ -3,7 +3,7 @@
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import type { Note, NoteImage } from '$lib/types';
 	import { parseBody, noteAttachments } from '$lib/checklistBody';
-	import { extractHttpUrls, isUsableLinkPreview } from '$lib/linkPreview';
+	import { extractHttpUrls } from '$lib/linkPreview';
 	import LinkPreview from './LinkPreview.svelte';
 	import { isImageAttachment, isInlinePreviewable, fileIconLabel, openAttachment } from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
@@ -18,9 +18,6 @@
 	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !displayImageSrc(attachment)));
 	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
 	const links = $derived(extractHttpUrls(note.body ?? ''));
-	const previewsByUrl = $derived(
-		new Map((note.linkPreviews ?? []).filter(isUsableLinkPreview).map((preview) => [preview.url, preview]))
-	);
 	let contentElement: HTMLDivElement;
 	let focusedImageIndex = $state<number | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
@@ -76,15 +73,20 @@
 				<button
 					type="button"
 					data-checklist-toggle
-					class="mt-0.5 shrink-0 rounded border border-black/40 dark:border-white/40 flex items-center justify-center text-[10px] {seg.indent > 0 ? 'h-3.5 w-3.5' : 'h-4 w-4'}"
-					style={seg.checked ? 'background: rgba(0,0,0,0.1)' : ''}
+					class="checklist-toggle shrink-0 {seg.indent > 0 ? 'checklist-toggle-sub' : ''}"
+					class:checked={seg.checked}
 					onclick={(e) => {
 						e.stopPropagation();
 						toggle(seg.lineIndex);
 					}}
 					aria-label={seg.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
+					aria-pressed={seg.checked}
 				>
-					{#if seg.checked}✓{/if}
+					{#if seg.checked}
+						<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
+							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+						</svg>
+					{/if}
 				</button>
 				<span class="flex-1 break-words {seg.checked ? 'line-through opacity-50' : ''} {seg.indent > 0 ? 'text-[13px]' : ''}">
 					{seg.text || '\u00a0'}
@@ -101,7 +103,7 @@
 {#if links.length > 0}
 	<div class="mt-2 flex flex-col gap-2">
 		{#each links as url (url)}
-			<LinkPreview {url} metadata={previewsByUrl.get(url)} />
+			<LinkPreview {url} />
 		{/each}
 	</div>
 {/if}

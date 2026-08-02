@@ -7,7 +7,7 @@
 		type Note,
 		type NoteColor
 	} from '$lib/types';
-	import { formatReminder } from '$lib/utils';
+	import { activateOnKeyboard, formatReminder } from '$lib/utils';
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 
@@ -91,14 +91,18 @@
 		</button>
 	</div>
 
-	<article
+		<div
+			role="button"
+			tabindex="0"
+			aria-label={`Open ${note.title || 'untitled note'} in trash`}
 		class="relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-hidden rounded-lg border border-black/5 shadow-sm transition-shadow dark:border-white/10"
 		style="background-color: {bgColor(note.color)}; {cardSwipeStyle(offsetX, dragging)}"
 		onpointerdown={swipe.onPointerDown}
 		onpointermove={swipe.onPointerMove}
 		onpointerup={swipe.onPointerUp}
 		onpointercancel={swipe.onPointerCancel}
-		onclick={openUnlessAction}
+			onclick={openUnlessAction}
+			onkeydown={(event) => activateOnKeyboard(event, () => onOpen(note.id))}
 	>
 		<div class="scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
 			{#if note.reminder != null}
@@ -125,5 +129,5 @@
 				{/each}
 			</div>
 		{/if}
-	</article>
+		</div>
 </div>

@@ -70,27 +70,29 @@
 <svelte:window onkeydown={handleKey} />
 
 {#if activeIndex !== null && images[activeIndex]}
-	<div use:portal>
+		<div {@attach portal}>
 	<button
 		type="button"
 		class="fixed inset-0 z-[80] cursor-zoom-out bg-black"
 		onclick={close}
 		aria-label="Close photo"
 	></button>
-	<div
-		class="pointer-events-none fixed inset-0 z-[81] flex items-center justify-center"
-		ontouchstart={onTouchStart}
-		ontouchend={onTouchEnd}
-	>
-		<img
+		<button
+			type="button"
+			class="pointer-events-none fixed inset-0 z-[81] flex items-center justify-center"
+			ontouchstart={onTouchStart}
+			ontouchend={onTouchEnd}
+			onclick={revealControls}
+			aria-label="Show photo controls"
+		>
+			<img
 			src={images[activeIndex].dataUrl}
 			alt={images[activeIndex].name ?? 'Photo'}
 			class="pointer-events-auto max-h-[100dvh] max-w-full select-none object-contain"
-			decoding="async"
-			draggable="false"
-			onclick={revealControls}
-		/>
-	</div>
+				decoding="async"
+				draggable="false"
+			/>
+		</button>
 	{#if controlsVisible}
 		<button type="button" class="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-[90] grid h-9 w-9 place-items-center rounded-full bg-black/40 text-xl text-white backdrop-blur-sm touch-manipulation" onclick={close} aria-label="Close photo">×</button>
 		{#if images.length > 1}

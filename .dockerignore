@@ -1,0 +1,12 @@
+.git
+.github
+.svelte-kit
+build
+node_modules
+sync-data
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage
