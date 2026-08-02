@@ -620,7 +620,7 @@
 						if (lines[parentTaskIndex(i)]?.id !== focusedRootId) onFocusTask?.(i);
 					}}
 					placeholder={line.indent > 0 ? 'Sub-task' : 'Task'}
-					class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked ? 'line-through opacity-50' : ''} {line.id === focusedRootId ? 'text-[15px] font-medium' : line.indent > 0 ? 'text-[13px]' : ''}"
+					class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked ? 'line-through opacity-50' : ''} {line.indent > 0 ? 'text-[13px]' : ''}"
 				></textarea>
 			</div>
 			{#if focusedRootId !== null && line.id === visibleRows[visibleRows.length - 1]?.line.id && focusedRootIndent === 0}

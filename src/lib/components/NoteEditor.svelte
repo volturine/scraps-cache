@@ -159,11 +159,8 @@
 	}
 
 	function handleBack() {
-		if (taskFocusLine !== null) {
-			taskFocusLine = null;
-			focusBodySignal++;
-			return;
-		}
+		// Always leave the note. Task focus mode must not trap the user behind a
+		// second back press or block dismissing the editor.
 		void close();
 	}
 
@@ -199,6 +196,8 @@
 	}
 
 	async function close() {
+		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
+		taskFocusLine = null;
 		if (timer) clearTimeout(timer);
 		if (note && draftDirty) {
 			commit({ title, body, images, linkPreviews: [] });
@@ -237,10 +236,11 @@
 		class="fixed left-0 top-0 z-50 flex h-[100lvh] w-screen items-center justify-center overflow-hidden bg-black/40 p-4"
 		role="presentation"
 		onclick={(e) => {
-			if (e.target === e.currentTarget) close();
+			// Backdrop click always dismisses, including while a task is focused.
+			if (e.target === e.currentTarget) void close();
 		}}
 		onkeydown={(e) => {
-			if (e.key === 'Escape') close();
+			if (e.key === 'Escape') void close();
 		}}
 	>
 		<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
@@ -261,9 +261,9 @@
 				<button
 					type="button"
 					class="icon-btn h-10 w-10 p-2"
-					title={taskFocusLine !== null ? 'Back to note' : 'Back'}
+					title="Close note"
 					onclick={handleBack}
-					aria-label="Back"
+					aria-label="Close note"
 				>
 					<svg viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M15 18l-6-6 6-6" />
