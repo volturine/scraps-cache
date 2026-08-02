@@ -568,11 +568,11 @@
 		focusedRootId === null ? 0 : (lines.find((line) => line.id === focusedRootId)?.indent ?? 0)
 	);
 
-	const visibleRows = $derived.by(() => {
-		const all = lines.map((line, index) => ({ line, index }));
-		if (focusedRootId === null) return all;
+	/** Root + its sub-tasks — used for the shared focus envelope. */
+	const focusedGroupRows = $derived.by(() => {
+		if (focusedRootId === null) return [] as { line: Line; index: number }[];
 		const rootIndex = lines.findIndex((line) => line.id === focusedRootId);
-		if (rootIndex < 0 || !lines[rootIndex].isCheck) return all;
+		if (rootIndex < 0 || !lines[rootIndex].isCheck) return [];
 		const root = lines[rootIndex];
 		const rows = [{ line: root, index: rootIndex }];
 		for (let index = rootIndex + 1; index < lines.length; index++) {
@@ -583,56 +583,78 @@
 		return rows;
 	});
 
+	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
+
 </script>
+
+{#snippet taskRow(line: Line, i: number)}
+	<div
+		class="flex w-full min-w-0 items-start gap-2 py-0.5"
+		style={line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
+	>
+		<button
+			type="button"
+			data-checklist-toggle
+			class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
+			class:checked={line.checked}
+			onclick={(e) => toggleCheck(i, e)}
+			aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
+			aria-pressed={line.checked}
+		>
+			{#if line.checked}
+				<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
+					<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+				</svg>
+			{/if}
+		</button>
+		<textarea
+			rows="1"
+			data-line={i}
+			data-line-id={line.id}
+			value={line.text}
+			oninput={(e) => onLineInput(i, e)}
+			onblur={() => discardEmptyDraft(line.id)}
+			onkeydown={(e) => onLineKeydown(e, i)}
+			enterkeyhint="enter"
+			onclick={() => {
+				if (lines[parentTaskIndex(i)]?.id !== focusedRootId) onFocusTask?.(i);
+			}}
+			placeholder={line.indent > 0 ? 'Sub-task' : 'Task'}
+			class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked
+				? 'line-through opacity-50'
+				: ''} {line.indent > 0 ? 'text-[13px]' : ''}"
+		></textarea>
+	</div>
+{/snippet}
 
 <div bind:this={container} class="block w-full min-w-0 text-sm leading-relaxed text-[var(--gkc-text)]">
 	{#each lines as line, i (line.id)}
 		{#if line.isCheck}
-			<div
-				class="flex w-full min-w-0 items-start gap-2 {line.id === focusedRootId ? '-mx-2 my-0.5 rounded-lg bg-black/[0.035] px-2 py-0.5 dark:bg-white/[0.06]' : 'py-0.5'}"
-				style={line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
-			>
-				<button
-					type="button"
-					data-checklist-toggle
-					class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
-					class:checked={line.checked}
-					onclick={(e) => toggleCheck(i, e)}
-					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
-					aria-pressed={line.checked}
+			{#if focusedRootId !== null && line.id === focusedRootId}
+				<!-- One envelope around the focused root, its sub-tasks, and Add sub-task. -->
+				<div
+					class="-mx-2 my-0.5 rounded-lg bg-black/[0.035] px-2 py-1 dark:bg-white/[0.06]"
+					data-focus-group
 				>
-					{#if line.checked}
-						<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
-							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-						</svg>
+					{#each focusedGroupRows as { line: groupLine, index: groupIndex } (groupLine.id)}
+						{@render taskRow(groupLine, groupIndex)}
+					{/each}
+					{#if focusedRootIndent === 0}
+						<button
+							type="button"
+							data-add-subtask
+							class="mt-0.5 flex items-center gap-1.5 rounded px-1 py-1 pl-6 text-left text-xs text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] dark:hover:bg-white/10"
+							onclick={() => addSubtask(focusedGroupRows[0]?.index ?? -1)}
+						>
+							<span class="text-base leading-none" aria-hidden="true">+</span>
+							Add sub-task
+						</button>
 					{/if}
-				</button>
-				<textarea
-					rows="1"
-					data-line={i}
-					data-line-id={line.id}
-					value={line.text}
-					oninput={(e) => onLineInput(i, e)}
-					onblur={() => discardEmptyDraft(line.id)}
-					onkeydown={(e) => onLineKeydown(e, i)}
-					enterkeyhint="enter"
-					onclick={() => {
-						if (lines[parentTaskIndex(i)]?.id !== focusedRootId) onFocusTask?.(i);
-					}}
-					placeholder={line.indent > 0 ? 'Sub-task' : 'Task'}
-					class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked ? 'line-through opacity-50' : ''} {line.indent > 0 ? 'text-[13px]' : ''}"
-				></textarea>
-			</div>
-			{#if focusedRootId !== null && line.id === visibleRows[visibleRows.length - 1]?.line.id && focusedRootIndent === 0}
-				<button
-					type="button"
-					data-add-subtask
-					class="mt-1 flex items-center gap-1.5 rounded px-1 py-1 pl-6 text-left text-xs text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] dark:hover:bg-white/10"
-					onclick={() => addSubtask(visibleRows[0]?.index ?? -1)}
-				>
-					<span class="text-base leading-none" aria-hidden="true">+</span>
-					Add sub-task
-				</button>
+				</div>
+			{:else if focusedGroupIds.has(line.id)}
+				<!-- Already rendered inside the focus envelope. -->
+			{:else}
+				{@render taskRow(line, i)}
 			{/if}
 		{:else if isPlainRunStart(i)}
 			<!-- One textarea for consecutive plain lines: multi-line select without affecting task focus. -->
