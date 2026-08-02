@@ -1,4 +1,4 @@
-import type { KanbanBoard } from '$lib/kanban';
+import { normalizeBacklogFilter, type KanbanBoard } from '$lib/kanban';
 import type { LinkPreview } from '$lib/linkPreview';
 import type { Layout, View } from '$lib/stores/ui.svelte';
 import type { Label, Note, NoteImage } from '$lib/types';
@@ -105,6 +105,7 @@ function normalizeBoard(value: unknown): KanbanBoard | null {
 		id: board.id,
 		name: String(board.name ?? ''),
 		columns,
+		backlogFilter: normalizeBacklogFilter(board.backlogFilter),
 		updatedAt: Number(board.updatedAt) || 0
 	};
 }
