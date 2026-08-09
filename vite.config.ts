@@ -10,6 +10,9 @@ export default defineConfig({
 			ignored: ['**/sync-data/**']
 		}
 	},
+	resolve: {
+		conditions: ['browser']
+	},
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}'],
 		environment: 'jsdom',

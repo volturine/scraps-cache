@@ -234,6 +234,18 @@
 			const end = input.selectionEnd ?? start;
 
 			if (line.isCheck && line.text.trim() === '') {
+				if (line.indent === 0) {
+					// Empty root task + Enter → remove the task and leave an editable
+					// plain-text line in its place. This also applies to a newly added,
+					// unsaved root task rather than returning focus to the prior row.
+					const replacement = newLine();
+					lines.splice(i, 1, replacement);
+					if (line.id === draftTaskId) draftTaskId = null;
+					syncBody();
+					focusLineNow(i, 0, replacement.id);
+					return;
+				}
+
 				if (line.id === draftTaskId) {
 					const prevIndex = Math.max(0, i - 1);
 					const prevId = lines[prevIndex]?.id;
@@ -249,19 +261,10 @@
 					handoffFocusToExisting(idx, caret, prevId);
 					return;
 				}
-				if (line.indent > 0) {
-					// Empty sub-task + Enter → outdent one level
-					line.indent -= 1;
-					syncBody();
-					handoffFocusToExisting(i, 0, line.id);
-				} else {
-					// Empty top-level checklist + Enter → plain text
-					line.isCheck = false;
-					line.checked = false;
-					line.indent = 0;
-					syncBody();
-					focusLineNow(i, 0, line.id);
-				}
+				// Empty sub-task + Enter → outdent one level
+				line.indent -= 1;
+				syncBody();
+				handoffFocusToExisting(i, 0, line.id);
 			} else {
 				// Split at the cursor: text after it moves to the newly-created line.
 				const before = line.text.slice(0, start);
