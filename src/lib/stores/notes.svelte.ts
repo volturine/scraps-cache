@@ -131,7 +131,8 @@ export class NotesStore {
 	private async requestPersistentStorage(): Promise<void> {
 		try {
 			if (!navigator.storage?.persist) {
-				this.storagePersistent = null;
+				// API unsupported (e.g. older Safari): storage is browser managed.
+				this.storagePersistent = false;
 				return;
 			}
 			this.storagePersistent = navigator.storage.persisted
@@ -139,7 +140,7 @@ export class NotesStore {
 				: false;
 			if (!this.storagePersistent) this.storagePersistent = await navigator.storage.persist();
 		} catch {
-			this.storagePersistent = null;
+			this.storagePersistent = false;
 		}
 	}
 

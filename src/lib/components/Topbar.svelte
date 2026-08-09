@@ -18,7 +18,6 @@
 	let fileInputEl: HTMLInputElement | null = $state(null);
 	let settingsOpen = $state(false);
 	let syncOpen = $state(false);
-	let quickSyncBusy = $state(false);
 	let importingBackup = $state(false);
 	let backupImportError = $state('');
 	let backupDialogMode = $state<'export' | 'import' | null>(null);
@@ -28,16 +27,6 @@
 		typeof localStorage === 'undefined' ? 0 : Number(localStorage.getItem('shard-last-backup-at')) || 0
 	);
 	const backupDue = $derived(!lastBackupAt || Date.now() - lastBackupAt > 30 * 24 * 60 * 60 * 1000);
-
-	async function doQuickSync() {
-		if (quickSyncBusy) return;
-		quickSyncBusy = true;
-		try {
-			await notesStore.syncWithCloudManual();
-		} finally {
-			quickSyncBusy = false;
-		}
-	}
 
 	function startBackupExport() {
 		settingsOpen = false;
@@ -174,11 +163,10 @@
 
 	<button
 		type="button"
-		class="icon-btn icon-btn-plain h-10 w-10 p-2"
-		title={syncStore.isLoggedIn ? 'Sync' : 'Set up sync'}
-		onclick={syncStore.isLoggedIn ? doQuickSync : () => { syncOpen = true; }}
-		aria-label="Sync"
-		aria-busy={quickSyncBusy}
+		class="icon-btn h-10 w-10 p-2"
+		title="Sync settings"
+		onclick={() => { syncOpen = true; }}
+		aria-label="Sync settings"
 	>
 		<svg
 			data-gkc-sync-icon
@@ -214,10 +202,6 @@
 		</button>
 		{#if settingsOpen}
 			<div class="absolute right-0 top-12 z-30 w-48 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-surface)] py-1 shadow-lg">
-				<button type="button" onclick={() => { syncOpen = true; settingsOpen = false; }} disabled={importingBackup} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10">
-					☁️ Sync settings
-				</button>
-				<div class="my-1 border-t border-[var(--gkc-border)]"></div>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
 					<div class="space-y-2 px-3 py-2 text-xs text-[var(--gkc-text-muted)]" role="status" aria-live="polite">

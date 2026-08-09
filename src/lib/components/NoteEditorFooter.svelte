@@ -44,7 +44,6 @@
 		onClose?: () => void;
 	} = $props();
 
-	let moreOpen = $state(false);
 	let focusedImageIndex = $state<number | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
 	let attachError = $state('');
@@ -54,11 +53,6 @@
 	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !displayImageSrc(attachment)));
 	const files = $derived(images.filter((a) => !isImageAttachment(a)));
 	const photoIndexById = $derived(new Map(photos.map((p, i) => [p.id, i])));
-
-	function toggleMore(e: MouseEvent) {
-		e.stopPropagation();
-		moreOpen = !moreOpen;
-	}
 
 	/**
 	 * Normal button: each press creates a one-shot file input in this gesture,
@@ -170,7 +164,6 @@
 
 	function openTags(e: MouseEvent) {
 		e.stopPropagation();
-		moreOpen = false;
 		if (!noteId) {
 			attachError = 'Save the note first to add tags';
 			return;
@@ -264,28 +257,23 @@
 	</div>
 
 	<div class="flex max-w-[calc(100%-5.5rem)] flex-wrap items-center justify-end gap-1">
-		{#if moreOpen}
-			<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Color" aria-label="Color" onclick={() => { moreOpen = false; onOpenColor?.(); }}>
-				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9c0-1.2-1-2.1-2.2-2.1h-1.5a1.8 1.8 0 0 0-1.7 2.4 1.8 1.8 0 0 1-1.7 2.4A9 9 0 0 1 12 3z"/><circle cx="7.5" cy="10" r=".75" class="fill-current"/><circle cx="10" cy="6.8" r=".75" class="fill-current"/><circle cx="14" cy="6.8" r=".75" class="fill-current"/></svg>
-			</button>
-			{#if showCopy}
-				<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Copy note" aria-label="Copy note" onclick={() => { moreOpen = false; onCopy?.(); }}>
-					{#if copyFlash}<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 6" /></svg>{:else}<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linejoin="round"><rect x="9" y="9" width="10" height="11" rx="1"/><path d="M15 9V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4"/></svg>{/if}
-				</button>
-			{/if}
-			{#if showDelete}
-				<button type="button" class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400" title="Delete note" aria-label="Delete note" onclick={() => { moreOpen = false; onDelete?.(); }}>
-					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m2 0v14H6V6m4 4v6m4-6v6" /></svg>
-				</button>
-			{/if}
-			{#if onClose}
-				<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Done" aria-label="Done" onclick={() => { moreOpen = false; onClose(); }}>
-					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 6" /></svg>
-				</button>
-			{/if}
-		{/if}
-		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title={moreOpen ? 'Hide actions' : 'More actions'} onclick={toggleMore} aria-label="More options" aria-expanded={moreOpen}>
-			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg>
+		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Color" aria-label="Color" onclick={() => onOpenColor?.()}>
+			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9c0-1.2-1-2.1-2.2-2.1h-1.5a1.8 1.8 0 0 0-1.7 2.4 1.8 1.8 0 0 1-1.7 2.4A9 9 0 0 1 12 3z"/><circle cx="7.5" cy="10" r=".75" class="fill-current"/><circle cx="10" cy="6.8" r=".75" class="fill-current"/><circle cx="14" cy="6.8" r=".75" class="fill-current"/></svg>
 		</button>
+		{#if showCopy}
+			<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Copy note" aria-label="Copy note" onclick={() => onCopy?.()}>
+				{#if copyFlash}<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 6" /></svg>{:else}<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linejoin="round"><rect x="9" y="9" width="10" height="11" rx="1"/><path d="M15 9V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4"/></svg>{/if}
+			</button>
+		{/if}
+		{#if showDelete}
+			<button type="button" class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400" title="Delete note" aria-label="Delete note" onclick={() => onDelete?.()}>
+				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m2 0v14H6V6m4 4v6m4-6v6" /></svg>
+			</button>
+		{/if}
+		{#if onClose}
+			<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Done" aria-label="Done" onclick={() => onClose?.()}>
+				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 6" /></svg>
+			</button>
+		{/if}
 	</div>
 </footer>

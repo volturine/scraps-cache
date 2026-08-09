@@ -212,7 +212,7 @@
 				{#if info}<p class="text-sm text-[var(--gkc-text-muted)]">{info}</p>{/if}
 				{#if error}<p class="text-sm text-red-600">{error}</p>{/if}
 				<button type="button" onclick={() => void syncNow()} disabled={loading || syncing} class="w-full rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-medium text-white disabled:opacity-50 touch-manipulation">{syncing ? 'Syncing…' : '🔄 Sync now'}</button>
-				<button type="button" onclick={() => void startExistingConnection()} disabled={loading || syncing} class="w-full rounded-lg border border-[var(--gkc-border)] px-3 py-2 text-sm touch-manipulation">Connect another device</button>
+				<button type="button" onclick={() => void startExistingConnection()} disabled={loading || syncing} class="w-full rounded-lg border border-[var(--gkc-border)] px-3 py-2.5 text-sm touch-manipulation">Connect another device</button>
 				{#if syncStore.usage}
 					<div class="text-center text-xs text-[var(--gkc-text-muted)]">
 						{formatBytes(syncStore.usage.ciphertextBytes)} encrypted · {syncStore.usage.envelopeCount} records

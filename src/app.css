@@ -294,16 +294,6 @@ body {
 	outline-offset: 2px;
 }
 
-/* No hover/press/focus chrome — e.g. cloud sync (spin only). */
-.icon-btn-plain,
-.icon-btn-plain:hover,
-.icon-btn-plain:active,
-.icon-btn-plain:focus,
-.icon-btn-plain:focus-visible {
-	background-color: transparent !important;
-	outline: none !important;
-	box-shadow: none !important;
-}
 /* Hide elements on phone screens (under 640px) */
 @media (max-width: 639px) {
 	.mobile-hide { display: none !important; }
@@ -319,7 +309,13 @@ body {
 	color: #fde68a; /* yellow-100 */
 }
 
-/* Cloud sync spin — class on <html> so Svelte re-renders don't reset the animation */
+/* Cloud sync spin — class on <html> so Svelte re-renders don't reset the animation.
+ * Own keyframes: Tailwind tree-shakes its `spin` keyframes unless `animate-spin` is used. */
+@keyframes gkc-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
 html.gkc-sync-active [data-gkc-sync-icon] {
-	animation: spin 1s linear infinite;
+	animation: gkc-spin 1s linear infinite;
 }
