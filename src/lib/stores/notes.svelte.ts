@@ -40,7 +40,6 @@ export class NotesStore {
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
 	loaded = $state(false);
-	storagePersistent = $state<boolean | null>(null);
 	lastPersistError = $state<string | null>(null);
 	backupImportProgress = $state<BackupImportProgress | null>(null);
 	deletedNoteIds = $state<Record<string, number>>(readTombstones());
@@ -78,7 +77,6 @@ export class NotesStore {
 
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
-		void this.requestPersistentStorage();
 		if (this.loaded) {
 			await this.rehydrateFromIDB();
 			return;
@@ -126,22 +124,6 @@ export class NotesStore {
 		}
 		this.purgeOldTrash();
 		this.loaded = true;
-	}
-
-	private async requestPersistentStorage(): Promise<void> {
-		try {
-			if (!navigator.storage?.persist) {
-				// API unsupported (e.g. older Safari): storage is browser managed.
-				this.storagePersistent = false;
-				return;
-			}
-			this.storagePersistent = navigator.storage.persisted
-				? await navigator.storage.persisted()
-				: false;
-			if (!this.storagePersistent) this.storagePersistent = await navigator.storage.persist();
-		} catch {
-			this.storagePersistent = false;
-		}
 	}
 
 	private async rehydrateFromIDB() {

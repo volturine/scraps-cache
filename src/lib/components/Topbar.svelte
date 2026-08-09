@@ -212,9 +212,6 @@
 					<button type="button" onclick={() => { uiStore.toggleDark(); }} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
 						{#if uiStore.effectiveDark}☀️ Light mode{:else}🌙 Dark mode{/if}
 					</button>
-					<div class="px-3 py-1 text-[11px] text-[var(--gkc-text-muted)]">
-						Device storage: {notesStore.storagePersistent === true ? 'protected' : notesStore.storagePersistent === false ? 'browser managed' : 'checking'}
-					</div>
 					<button type="button" onclick={startBackupExport} class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
 						<span>Export encrypted backup</span>
 						{#if backupDue}<span class="h-2 w-2 rounded-full bg-amber-500" title="Backup due"></span>{/if}
