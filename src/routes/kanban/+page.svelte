@@ -142,16 +142,22 @@
 
 <div class="pt-4 pb-8">
 	<div class="mb-4 flex flex-wrap items-center gap-2">
-		<select
-			aria-label="Kanban board"
-			value={board.id}
-			onchange={(event) => kanbanStore.selectBoard((event.currentTarget as HTMLSelectElement).value)}
-			class="min-w-0 max-w-full rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-3 py-2 text-base font-semibold text-[var(--gkc-text)] outline-none"
-		>
-			{#each kanbanStore.boards as choice (choice.id)}
-				<option value={choice.id}>{choice.name}</option>
-			{/each}
-		</select>
+		<div class="relative min-w-0 max-w-full">
+			<select
+				aria-label="Kanban board"
+				value={board.id}
+				onchange={(event) => kanbanStore.selectBoard((event.currentTarget as HTMLSelectElement).value)}
+				class="min-w-0 max-w-full appearance-none rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] py-2 pl-3 pr-8 text-sm font-semibold text-[var(--gkc-text)] outline-none"
+			>
+				{#each kanbanStore.boards as choice (choice.id)}
+					<option value={choice.id}>{choice.name}</option>
+				{/each}
+			</select>
+			<svg
+				class="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--gkc-text-muted)]"
+				viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+			><path d="m6 9 6 6 6-6"/></svg>
+		</div>
 		<button
 			type="button"
 			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] dark:hover:bg-white/10"
