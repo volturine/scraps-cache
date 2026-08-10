@@ -1,0 +1,72 @@
+# Development
+
+Contributor-oriented notes for working on Shard. Also read
+[CONTRIBUTING.md](../CONTRIBUTING.md).
+
+## Prerequisites
+
+- Node.js **24** (`.nvmrc`, `package.json` `engines`)
+- npm
+- Optional: Docker for Compose workflows
+
+## Scripts
+
+| Script | Description |
+| --- | --- |
+| `npm run dev` | Vite dev server (SvelteKit) |
+| `npm run build` | Production build (`adapter-node` → `build/`) |
+| `npm start` | Run the built server (`node build`) |
+| `npm run preview` | Vite preview of the production build |
+| `npm run check` | `svelte-check` with native TypeScript |
+| `npm test` | Vitest once |
+| `npm run test:watch` | Vitest watch mode |
+| `npm run test:restore` | SQLite online-backup restore smoke test |
+| `npm run validate` | check + test + restore + build |
+
+## Local sync data
+
+By default the Node process stores the relay database under `sync-data/`
+(gitignored). Override with `SHARD_SYNC_DATA_DIR`.
+
+When developing sync features, use two browser profiles (or a normal window +
+a private window) against the same origin and exercise pairing in the Sync UI.
+
+## Testing layout
+
+- Co-located unit tests: `src/lib/**/*.test.ts`, some component tests
+- Shared setup: `src/tests/setup.ts` (e.g. fake IndexedDB)
+- Restore smoke: `scripts/restore-smoke.mjs`
+
+Prefer tests for:
+
+- Crypto and backup format edge cases
+- Sync merge / tombstones / quota
+- Rate limiting and request validation
+- Image optimization invariants
+
+## CI
+
+GitHub Actions workflow: `.github/workflows/ci-cd.yaml`.
+
+- **validate** job: `npm ci` + `npm run validate`
+- **image** job: Docker build (publish only outside PRs)
+
+Dependabot (`.github/dependabot.yml`) updates npm, Docker, and GitHub Actions
+weekly.
+
+## Debugging tips
+
+- CSP is strict in production config; if a new asset source is required, update
+  `svelte.config.js` deliberately and document why.
+- Admin endpoints need `SHARD_ADMIN_TOKEN` once you leave the dev Compose
+  default.
+- Structured logs on API errors include `requestId` — pass `x-request-id` from
+  clients when correlating.
+
+## Documentation
+
+| Doc | Use when |
+| --- | --- |
+| [architecture.md](architecture.md) | Understanding modules and data flow |
+| [security.md](security.md) | Touching crypto, headers, or logging |
+| [self-hosting.md](self-hosting.md) | Changing env vars or Compose |

@@ -2,6 +2,26 @@
 	"name": "shard-notes",
 	"private": true,
 	"version": "0.0.1",
+	"description": "Offline-first notes with optional end-to-end encrypted cloud sync",
+	"license": "MIT",
+	"author": "Roland Rajcsanyi",
+	"homepage": "https://github.com/volturine/shard-notes#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/volturine/shard-notes.git"
+	},
+	"bugs": {
+		"url": "https://github.com/volturine/shard-notes/issues"
+	},
+	"keywords": [
+		"notes",
+		"offline-first",
+		"end-to-end-encryption",
+		"self-hosted",
+		"sveltekit",
+		"pwa",
+		"sync"
+	],
 	"type": "module",
 	"engines": {
 		"node": ">=24 <25"
