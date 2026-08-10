@@ -5,13 +5,13 @@ on the client before optional cloud sync, and the relay stores opaque ciphertext
 
 ## Supported versions
 
-Security fixes are applied to the latest release on `main` and to the most
+Security fixes are applied to the latest release on `master` and to the most
 recent tagged semantic version when practical. Older tags may not receive
 backports.
 
 | Version | Supported |
 | --- | --- |
-| Latest `main` | Yes |
+| Latest `master` | Yes |
 | Latest tagged release | Yes |
 | Older tags | Best effort only |
 
@@ -77,7 +77,7 @@ Out of scope examples (unless they lead to a practical exploit):
 - Denial of service without a realistic amplification path
 - Issues that require a fully compromised client device or physical access
 - Misconfiguration of a third-party reverse proxy outside our documented guidance
-- Dependency vulnerabilities already fixed on `main` or with no reachable path
+- Dependency vulnerabilities already fixed on `master` or with no reachable path
 
 ## Safe harbor
 

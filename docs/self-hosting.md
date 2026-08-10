@@ -28,9 +28,9 @@ Edit `.env` at minimum:
 | `SHARD_PORT` | Host port (default `3000`) |
 
 ```sh
-docker compose -f compose.production.yaml pull
-docker compose -f compose.production.yaml up -d
-docker compose -f compose.production.yaml ps
+docker compose --project-directory . -f docker/compose.production.yaml pull
+docker compose --project-directory . -f docker/compose.production.yaml up -d
+docker compose --project-directory . -f docker/compose.production.yaml ps
 ```
 
 Shard listens on container port **3000**. The production template:
@@ -42,11 +42,11 @@ Shard listens on container port **3000**. The production template:
 ### Build locally instead of pulling
 
 ```sh
-docker compose up -d --build
+docker compose --project-directory . -f docker/compose.yaml up -d --build
 ```
 
-Uses `compose.yaml` (development-oriented defaults). Prefer
-`compose.production.yaml` + a pinned GHCR image for real deployments.
+Uses `docker/compose.yaml` (development-oriented defaults). Prefer
+`docker/compose.production.yaml` + a pinned GHCR image for real deployments.
 
 ## Reverse proxy and TLS
 
@@ -120,13 +120,14 @@ supported backup source.
 
 ## Encrypted backups with Restic
 
-Optional overlay: `compose.backup.yaml`.
+Optional overlay: `docker/compose.backup.yaml`.
 
 ### Local encrypted repository
 
 ```sh
 export SHARD_RESTIC_PASSWORD_FILE=/secure/path/shard-restic-password
-docker compose -f compose.production.yaml -f compose.backup.yaml \
+docker compose --project-directory . \
+  -f docker/compose.production.yaml -f docker/compose.backup.yaml \
   --profile backup up -d
 ```
 
@@ -136,16 +137,19 @@ docker compose -f compose.production.yaml -f compose.backup.yaml \
 export SHARD_RESTIC_S3_REPOSITORY=s3:https://storage.example.com/shard-backups
 export SHARD_S3_ACCESS_KEY_FILE=/secure/path/s3-access-key
 export SHARD_S3_SECRET_KEY_FILE=/secure/path/s3-secret-key
-docker compose -f compose.production.yaml -f compose.backup.yaml \
+docker compose --project-directory . \
+  -f docker/compose.production.yaml -f docker/compose.backup.yaml \
   --profile backup-s3 up -d
 ```
 
 List and verify:
 
 ```sh
-docker compose -f compose.production.yaml -f compose.backup.yaml \
+docker compose --project-directory . \
+  -f docker/compose.production.yaml -f docker/compose.backup.yaml \
   --profile backup exec backup-local restic snapshots
-docker compose -f compose.production.yaml -f compose.backup.yaml \
+docker compose --project-directory . \
+  -f docker/compose.production.yaml -f docker/compose.backup.yaml \
   --profile backup exec backup-local restic check --read-data
 ```
 
@@ -173,7 +177,7 @@ CI runs `npm run test:restore` for a smaller automated variant of this path.
 [`.github/workflows/ci-cd.yaml`](../.github/workflows/ci-cd.yaml):
 
 - Every PR: full `npm run validate` + `amd64` image build
-- Push to `main`: multi-arch (`amd64`/`arm64`) publish to GHCR with SBOM and
+- Push to `master`: multi-arch (`amd64`/`arm64`) publish to GHCR with SBOM and
   provenance
 - Tags `v*`: semantic version tags (e.g. `v1.2.3` → `1.2.3`, `1.2`)
 
