@@ -44,9 +44,8 @@ npm run validate
 This runs:
 
 1. `svelte-check` (TypeScript / Svelte diagnostics)
-2. Vitest unit tests
-3. SQLite restore smoke test (`npm run test:restore`)
-4. Production build
+2. Vitest unit tests (including SQLite online-backup / restore coverage)
+3. Production build
 
 Useful partial commands:
 
@@ -54,7 +53,6 @@ Useful partial commands:
 | --- | --- |
 | `npm run check` | Type / Svelte diagnostics |
 | `npm test` | Vitest suite |
-| `npm run test:restore` | Online backup restore smoke test |
 | `npm run build` | Production build |
 | `npm start` | Run the built Node adapter app |
 | `npm run preview` | Preview the production build via Vite |

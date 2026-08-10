@@ -18,10 +18,9 @@ Contributor-oriented notes for working on Shard. Also read
 | `npm start` | Run the built server (`node build`) |
 | `npm run preview` | Vite preview of the production build |
 | `npm run check` | `svelte-check` with native TypeScript |
-| `npm test` | Vitest once |
+| `npm test` | Vitest once (includes SQLite backup/restore coverage) |
 | `npm run test:watch` | Vitest watch mode |
-| `npm run test:restore` | SQLite online-backup restore smoke test |
-| `npm run validate` | check + test + restore + build |
+| `npm run validate` | check + test + build |
 
 ## Local sync data
 
@@ -35,11 +34,13 @@ a private window) against the same origin and exercise pairing in the Sync UI.
 
 - Co-located unit tests: `src/lib/**/*.test.ts`, some component tests
 - Shared setup: `src/tests/setup.ts` (e.g. fake IndexedDB)
-- Restore smoke: `scripts/restore-smoke.mjs`
+- Server backup/restore: `syncStore.test.ts` (online backup → reopen) and
+  `backupManager.test.ts` (verified snapshots, retention, concurrency, failures)
 
 Prefer tests for:
 
 - Crypto and backup format edge cases
+- Server online backup / restore into a fresh `SyncStore`
 - Sync merge / tombstones / quota
 - Rate limiting and request validation
 - Image optimization invariants

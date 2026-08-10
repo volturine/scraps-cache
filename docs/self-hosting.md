@@ -170,7 +170,8 @@ newer local edits and repopulate a restored relay.
 5. Check `/health/ready`, link an existing device, complete a delta sync, then
    retire the old volume.
 
-CI runs `npm run test:restore` for a smaller automated variant of this path.
+CI Vitest coverage exercises the same online-backup API and restore-into-fresh-store
+path used here (`SyncStore.backup` + `BackupManager` verified snapshots).
 
 ## Images and CI
 

@@ -14,6 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Required PR status check: typecheck + full Vitest suite (incl. backup/restore) + production build.
   validate:
     name: Validate application
     runs-on: ubuntu-latest
@@ -33,8 +34,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate
-        run: npm run validate
+      - name: Typecheck
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      - name: Production build
+        run: npm run build
 
   image:
     name: Build container image
