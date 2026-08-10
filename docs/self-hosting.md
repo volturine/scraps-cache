@@ -177,10 +177,14 @@ path used here (`SyncStore.backup` + `BackupManager` verified snapshots).
 
 [`.github/workflows/ci-cd.yaml`](../.github/workflows/ci-cd.yaml):
 
-- Every PR: full `npm run validate` + `amd64` image build
-- Push to `master`: multi-arch (`amd64`/`arm64`) publish to GHCR with SBOM and
-  provenance
+- Every PR: typecheck + Vitest + production build, then an `amd64` image build
+  published as **`dev-pr-<n>`** / **`dev-sha-<commit>`** (never `latest`)
+- Push/merge to `master`: multi-arch (`amd64`/`arm64`) publish with **`latest`**,
+  **`master`**, and **`sha-<commit>`**, plus SBOM and provenance
 - Tags `v*`: semantic version tags (e.g. `v1.2.3` → `1.2.3`, `1.2`)
+
+`latest` is only moved by successful publishes from `master`. Pull request
+images use a `dev-` prefix so they cannot overwrite production tags.
 
 Registry auth uses the repository-scoped `GITHUB_TOKEN`; no custom registry
 password is required for GitHub Actions.

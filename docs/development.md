@@ -49,8 +49,9 @@ Prefer tests for:
 
 GitHub Actions workflow: `.github/workflows/ci-cd.yaml`.
 
-- **validate** job: `npm ci` + `npm run validate`
-- **image** job: Docker build (publish only outside PRs)
+- **validate** job: typecheck + Vitest + production build (required PR check)
+- **image** job: Docker build; PRs publish `dev-*` tags only, `master` publishes
+  `latest` / `master` / `sha-*`
 
 Dependabot (`.github/dependabot.yml`) updates npm, Docker, and GitHub Actions
 weekly.
