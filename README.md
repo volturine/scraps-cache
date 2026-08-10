@@ -1,181 +1,140 @@
 # Shard
 
-Offline-first notes — pins, labels, reminders, and optional cloud sync.
+**Offline-first notes** that stay on your device — with optional **end-to-end
+encrypted** sync when you want the same notes on another phone or laptop.
 
-## Develop
+Shard is a self-hostable notes app: pins, labels, reminders, checklists,
+attachments, kanban boards, trash/archive, and a ciphertext-only sync relay.
+The server never sees your note contents.
+
+[![CI/CD](https://github.com/volturine/shard-notes/actions/workflows/ci-cd.yaml/badge.svg)](https://github.com/volturine/shard-notes/actions/workflows/ci-cd.yaml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-24-brightgreen.svg)](.nvmrc)
+
+---
+
+## Why Shard
+
+| Principle | What it means |
+| --- | --- |
+| **Works offline** | Notes live in the browser (IndexedDB). No network required for day-to-day use. |
+| **E2E encrypted sync** | Optional multi-device sync uploads opaque ciphertext only. |
+| **Self-hosted** | Run the app and relay yourself. One Node process, one SQLite database. |
+| **Private by design** | No remote link previews, no third-party trackers, restrictive CSP. |
+| **Recoverable** | Encrypted client backups (`.shard-backup`) and operator-friendly server snapshots. |
+
+## Features
+
+- **Notes** — title, body, colors, pins, archive, trash
+- **Checklists** — `[ ]` / `[x]` lines in the note body
+- **Labels** — organize and filter notes
+- **Reminders** — time-based reminders view
+- **Attachments** — photos and files; images optimized client-side (EXIF stripped)
+- **Kanban** — boards with custom backlog filters
+- **Search** — local full-text style filtering on your device
+- **Sync** — pair devices with a short code; server stores encrypted envelopes only
+- **Backups** — passphrase-protected client exports; optional automated SQLite + Restic on the server
+- **PWA** — installable shell with a service worker
+
+## Quick start (development)
+
+Requires **Node.js 24** (see [`.nvmrc`](.nvmrc)).
 
 ```sh
+git clone https://github.com/volturine/shard-notes.git
 cd shard-notes
 npm install
 npm run dev -- --host 0.0.0.0
 ```
 
-Tailscale / LAN: `http://<your-ip>:5173/`
-
-## Build
+Open `http://localhost:5173/` (or your LAN / Tailscale IP on port `5173`).
 
 ```sh
-npm run build
-npm start
+npm run validate   # check + tests + restore smoke + production build
+npm run build && npm start   # production Node adapter on port 3000 by default
 ```
 
-The production build uses SvelteKit's Node adapter. Sync data is stored in
-`sync-data/sync.sqlite`; an existing `sync-data/users.json` is imported once and
-left in place as a recovery copy.
+## Self-host (Docker)
 
-Optional server settings:
-
-| Variable | Default | Purpose |
-| --- | ---: | --- |
-| `SHARD_SYNC_DATA_DIR` | `sync-data` | Persistent sync-data directory |
-| `SHARD_SYNC_MAX_ACCOUNT_BYTES` | `1000000000` | Ciphertext quota per account |
-| `SHARD_SYNC_MAX_ACCOUNT_ENVELOPES` | `50000` | Record quota per account |
-| `SHARD_SYNC_MAX_CONCURRENT_REQUESTS` | `8` | Maximum sync requests in flight |
-| `SHARD_BACKUP_DIR` | disabled | Directory for consistent online SQLite snapshots |
-| `SHARD_BACKUP_INTERVAL_HOURS` | `24` | Snapshot interval |
-| `SHARD_BACKUP_RETAIN` | `2` | Raw verified staging snapshots retained locally |
-| `SHARD_ADMIN_TOKEN` | required in production Compose | Protects metrics and manual backup |
-| `ADDRESS_HEADER` / `XFF_DEPTH` | direct socket / `1` | Trusted proxy client-address configuration |
-
-`npm run preview` remains useful for locally previewing the built app.
-
-## Docker
-
-### Pull the published image
-
-The recommended server deployment pulls the multi-architecture image published
-to GitHub Container Registry:
+The recommended production path pulls the multi-arch image from GitHub Container Registry:
 
 ```sh
 cp .env.example .env
+# Edit .env: set SHARD_IMAGE, SHARD_ADMIN_TOKEN, and SHARD_ORIGIN for public HTTPS
 docker compose -f compose.production.yaml pull
 docker compose -f compose.production.yaml up -d
-docker compose -f compose.production.yaml ps
 ```
 
-Shard is then available at `http://localhost:3000`. The Compose deployment runs
-as an unprivileged user with a read-only application filesystem and stores its
-SQLite database in the persistent `shard-sync-data` volume.
+App: `http://localhost:3000` (or the origin you configured).
 
-Production Compose requires `SHARD_IMAGE`. Set it to a release tag such as
-`ghcr.io/volturine/shard-notes:1.2.3`, or preferably an immutable digest.
+Full operator guide — reverse proxy, backups, restore drill, env reference:
 
-To build from the local checkout instead, use the development template:
+**→ [docs/self-hosting.md](docs/self-hosting.md)**
 
-```sh
-docker compose up -d --build
-```
+Published images:
 
-For a public deployment, set `SHARD_ORIGIN` to the exact externally visible
-HTTPS URL. TLS should terminate at a reverse proxy in front of the container.
-The container listens on port 3000; change only `SHARD_PORT` to select a
-different host port.
-
-Node uses the direct socket address by default. Behind exactly one trusted
-reverse proxy, set `SHARD_ADDRESS_HEADER=x-forwarded-for` and
-`SHARD_XFF_DEPTH=1`, and configure the proxy to replace—not append
-untrusted—forwarded headers. Increase the depth only for a known proxy chain.
-Set HSTS at the TLS-terminating proxy after HTTPS is confirmed.
-
-Shard creates verified online SQLite snapshots daily in the
-`shard-backup-snapshots` volume. Trigger one immediately before an upgrade:
-
-```sh
-curl -fsS -X POST \
-  -H "Authorization: Bearer $SHARD_ADMIN_TOKEN" \
-  http://localhost:3000/api/admin/backup
-```
-
-Do not copy `sync.sqlite`, `sync.sqlite-wal`, and `sync.sqlite-shm` independently
-while the app is running. The online snapshot is the supported backup source.
-
-### Encrypted local and S3 backups
-
-The optional backup Compose file sends verified snapshots to encrypted Restic
-repositories. Create a password file outside the repository, then start the
-local repository:
-
-```sh
-export SHARD_RESTIC_PASSWORD_FILE=/secure/path/shard-restic-password
-docker compose -f compose.production.yaml -f compose.backup.yaml \
-  --profile backup up -d
-```
-
-For an S3-compatible repository, also set:
-
-```sh
-export SHARD_RESTIC_S3_REPOSITORY=s3:https://storage.example.com/shard-backups
-export SHARD_S3_ACCESS_KEY_FILE=/secure/path/s3-access-key
-export SHARD_S3_SECRET_KEY_FILE=/secure/path/s3-secret-key
-docker compose -f compose.production.yaml -f compose.backup.yaml \
-  --profile backup-s3 up -d
-```
-
-List and verify local encrypted snapshots:
-
-```sh
-docker compose -f compose.production.yaml -f compose.backup.yaml \
-  --profile backup exec backup-local restic snapshots
-docker compose -f compose.production.yaml -f compose.backup.yaml \
-  --profile backup exec backup-local restic check --read-data
-```
-
-Restore into a temporary directory first, verify `sync.sqlite` with
-`PRAGMA integrity_check`, stop the app, and only then replace the data volume.
-Perform this restore drill monthly.
-
-An operator restore drill is:
-
-1. Trigger a fresh online snapshot and confirm `/metrics` reports a newer
-   `shard_backup_last_success_timestamp_seconds`.
-2. Run `restic check --read-data`, then restore `latest` into a new temporary
-   volume or directory—never over the live volume.
-3. Locate the restored `shard-sync-*.sqlite` and run
-   `sqlite3 restored.sqlite 'PRAGMA integrity_check;'`; the only output must be
-   `ok`.
-4. Stop Shard, copy that verified file into an empty sync-data volume as
-   `sync.sqlite`, and start Shard against the new volume.
-5. Check `/health/ready`, then link an existing device and complete a delta
-   sync before retiring the old volume.
-
-CI runs `npm run test:restore`, which exercises SQLite's online backup API,
-restores into an empty directory, checks integrity, and verifies that existing
-account credentials survive.
-
-### Docker configuration
-
-| Variable | Default | Purpose |
-| --- | ---: | --- |
-| `SHARD_PORT` | `3000` | Host port published by Compose |
-| `SHARD_IMAGE` | required | Pinned image tag or digest pulled by the production template |
-| `SHARD_ORIGIN` | `http://localhost:3000` | Exact public origin used by SvelteKit |
-| `SHARD_BODY_SIZE_LIMIT` | `110M` | Node adapter request limit; must exceed the 101 MB sync cap |
-| `SHARD_SYNC_MAX_ACCOUNT_BYTES` | `1000000000` | Encrypted bytes retained per account |
-| `SHARD_SYNC_MAX_ACCOUNT_ENVELOPES` | `50000` | Encrypted records retained per account |
-
-`HOST`, `PORT`, and `SHARD_SYNC_DATA_DIR` are fixed inside the Compose service
-to `0.0.0.0`, `3000`, and `/data`. Direct `docker run` deployments may override
-them when needed.
-
-## CI/CD
-
-[`.github/workflows/ci-cd.yaml`](.github/workflows/ci-cd.yaml) runs the complete
-application validation and an `amd64` Docker build for every pull request. After
-changes reach `main`, it publishes an `amd64`/`arm64` image:
-
-- `ghcr.io/volturine/shard-notes:latest`
-- `ghcr.io/volturine/shard-notes:main`
+- `ghcr.io/volturine/shard-notes:latest` (main)
+- `ghcr.io/volturine/shard-notes:<version>` (tags like `v1.2.3`)
 - `ghcr.io/volturine/shard-notes:sha-<commit>`
 
-Tags beginning with `v` additionally publish semantic-version tags. For example,
-`v1.2.3` publishes `1.2.3` and `1.2`. Images include SBOM and provenance
-attestations. The workflow uses the repository-scoped `GITHUB_TOKEN`; no registry
-password or custom secret is required.
+Prefer a **pinned tag or digest**, not floating `latest`, for production.
 
-## Validate
+## How privacy works (short)
 
-```sh
-npm run validate
+```text
+┌─────────────┐     encrypted envelopes      ┌──────────────────┐
+│  Browser    │ ───────────────────────────► │  Sync relay      │
+│  IndexedDB  │ ◄─────────────────────────── │  SQLite (opaque) │
+│  (plaintext │     ciphertext only          │  no note content │
+│   locally)  │                              └──────────────────┘
+└─────────────┘
 ```
 
-This runs Svelte/TypeScript diagnostics, the Vitest suite, and a production build.
+1. Notes are created and stored **locally**.
+2. If sync is enabled, the client encrypts payloads with a device-held sync key
+   (XChaCha20-Poly1305) before upload.
+3. Pairing transfers that key between devices using a short code and **CPace**
+   (PAKE) so the relay never sees the key in the clear.
+4. User-triggered **backups** are encrypted with Argon2id + a passphrase in the
+   browser.
+
+Details, threat model, and limits: **[docs/security.md](docs/security.md)**.
+
+## Documentation
+
+| Doc | Contents |
+| --- | --- |
+| [docs/architecture.md](docs/architecture.md) | System layout, data flow, major modules |
+| [docs/security.md](docs/security.md) | Crypto, threat model, headers, logging rules |
+| [docs/self-hosting.md](docs/self-hosting.md) | Docker, env vars, backups, restore, metrics |
+| [docs/development.md](docs/development.md) | Local workflow, testing, CI |
+| [docs/design/production-hardening.md](docs/design/production-hardening.md) | Historical hardening plan (implemented) |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
+
+## Stack
+
+- [SvelteKit](https://svelte.dev/) + Svelte 5 + TypeScript
+- Tailwind CSS 4
+- IndexedDB (`idb`) on the client; SQLite (`better-sqlite3`) on the server
+- [@noble](https://paulmillr.com/noble/) cryptography + [CPace](https://github.com/cipherman/pake-js) for pairing
+- Node adapter for self-hosting; multi-arch Docker images via GHCR
+
+## Status
+
+Shard is under active development. APIs and on-disk formats may evolve; releases
+aim to keep backup import and sync recoverable across supported versions.
+Please file issues for bugs and ideas.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup,
+coding guidelines, and PR expectations.
+
+- **Bugs / features** — [GitHub Issues](https://github.com/volturine/shard-notes/issues)
+- **Security** — private report via [SECURITY.md](SECURITY.md) (do not open a public issue)
+
+## License
+
+[MIT](LICENSE) © 2026 Roland Rajcsanyi

@@ -1,7 +1,7 @@
 {
 	"name": "Shard",
 	"short_name": "Shard",
-	"description": "Quick notes, pins, reminders, and sync",
+	"description": "Offline-first notes with optional end-to-end encrypted sync",
 	"start_url": "/",
 	"display": "standalone",
 	"background_color": "#ffffff",
