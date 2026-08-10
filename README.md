@@ -1,11 +1,8 @@
 # Shard
 
-**Offline-first notes** that stay on your device — with optional **end-to-end
-encrypted** sync when you want the same notes on another phone or laptop.
-
-Shard is a self-hostable notes app: pins, labels, reminders, checklists,
-attachments, kanban boards, trash/archive, and a ciphertext-only sync relay.
-The server never sees your note contents.
+**Shard** is a self-hostable notes app with **end-to-end encrypted** multi-device
+sync. Pins, labels, reminders, checklists, attachments, kanban boards,
+trash/archive — and a ciphertext-only relay that never sees your note contents.
 
 [![CI/CD](https://github.com/volturine/shard-notes/actions/workflows/ci-cd.yaml/badge.svg)](https://github.com/volturine/shard-notes/actions/workflows/ci-cd.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -17,10 +14,10 @@ The server never sees your note contents.
 
 | Principle | What it means |
 | --- | --- |
-| **Works offline** | Notes live in the browser (IndexedDB). No network required for day-to-day use. |
-| **E2E encrypted sync** | Optional multi-device sync uploads opaque ciphertext only. |
+| **Private by design** | Note contents never leave your devices in plaintext. No remote link previews, no third-party trackers, restrictive CSP. |
+| **E2E encrypted sync** | Multi-device sync always encrypts on the client. The relay stores opaque ciphertext only. |
 | **Self-hosted** | Run the app and relay yourself. One Node process, one SQLite database. |
-| **Private by design** | No remote link previews, no third-party trackers, restrictive CSP. |
+| **Local-first data** | Notes live in the browser (IndexedDB). Day-to-day use does not require the network. |
 | **Recoverable** | Encrypted client backups (`.shard-backup`) and operator-friendly server snapshots. |
 
 ## Features
@@ -32,7 +29,7 @@ The server never sees your note contents.
 - **Attachments** — photos and files; images optimized client-side (EXIF stripped)
 - **Kanban** — boards with custom backlog filters
 - **Search** — local full-text style filtering on your device
-- **Sync** — pair devices with a short code; server stores encrypted envelopes only
+- **Sync** — pair devices with a short code; payloads are always E2E encrypted; server stores ciphertext only
 - **Backups** — passphrase-protected client exports; optional automated SQLite + Restic on the server
 - **PWA** — installable shell with a service worker
 
@@ -95,8 +92,8 @@ Prefer a **pinned release tag or digest**, not floating `latest`, for production
 ```
 
 1. Notes are created and stored **locally**.
-2. If sync is enabled, the client encrypts payloads with a device-held sync key
-   (XChaCha20-Poly1305) before upload.
+2. When sync is used, the client **always** encrypts payloads with a device-held
+   sync key (XChaCha20-Poly1305) before upload.
 3. Pairing transfers that key between devices using a short code and **CPace**
    (PAKE) so the relay never sees the key in the clear.
 4. User-triggered **backups** are encrypted with Argon2id + a passphrase in the
