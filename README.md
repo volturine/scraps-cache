@@ -61,8 +61,8 @@ The recommended production path pulls the multi-arch image from GitHub Container
 ```sh
 cp .env.example .env
 # Edit .env: set SHARD_IMAGE, SHARD_ADMIN_TOKEN, and SHARD_ORIGIN for public HTTPS
-docker compose -f compose.production.yaml pull
-docker compose -f compose.production.yaml up -d
+docker compose --project-directory . -f docker/compose.production.yaml pull
+docker compose --project-directory . -f docker/compose.production.yaml up -d
 ```
 
 App: `http://localhost:3000` (or the origin you configured).
@@ -73,7 +73,7 @@ Full operator guide — reverse proxy, backups, restore drill, env reference:
 
 Published images:
 
-- `ghcr.io/volturine/shard-notes:latest` (main)
+- `ghcr.io/volturine/shard-notes:latest` (master)
 - `ghcr.io/volturine/shard-notes:<version>` (tags like `v1.2.3`)
 - `ghcr.io/volturine/shard-notes:sha-<commit>`
 

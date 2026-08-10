@@ -100,7 +100,7 @@ Deeper orientation: [docs/architecture.md](docs/architecture.md) and
 
 ## Pull requests
 
-1. Fork and branch from `main` (or open a PR from a branch in this repo if you
+1. Fork and branch from `master` (or open a PR from a branch in this repo if you
    have write access).
 2. Keep the PR focused; split unrelated work.
 3. Ensure `npm run validate` passes locally.

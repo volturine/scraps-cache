@@ -3,7 +3,9 @@ name: shard-notes
 services:
   app:
     build:
+      # Requires: docker compose --project-directory . -f docker/compose.yaml …
       context: .
+      dockerfile: docker/Dockerfile
     image: shard-notes:latest
     restart: unless-stopped
     init: true
