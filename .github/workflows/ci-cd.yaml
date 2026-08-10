@@ -63,8 +63,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
+      # Same-repo PRs may push dev-* tags; fork PRs only build (no registry write).
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
+        if: >-
+          github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
@@ -77,12 +80,17 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
-            type=ref,event=branch
-            type=ref,event=pr
+            # Production floating tag — only on merge/push to master (never PRs).
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' && github.event_name != 'pull_request' }}
+            type=raw,value=master,enable=${{ github.ref == 'refs/heads/master' && github.event_name != 'pull_request' }}
+            # Immutable production commit tag.
+            type=sha,prefix=sha-,format=short,enable=${{ github.event_name != 'pull_request' }}
+            # Release tags (v1.2.3 → 1.2.3, 1.2).
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=sha-
+            # PR / pre-merge images use a dev- prefix and never share production tags.
+            type=ref,event=pr,prefix=dev-
+            type=sha,prefix=dev-sha-,format=short,enable=${{ github.event_name == 'pull_request' }}
 
       - name: Build and publish image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
@@ -90,7 +98,12 @@ jobs:
           context: .
           file: docker/Dockerfile
           platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          push: ${{ github.event_name != 'pull_request' }}
+          # Push production tags from master/tags; push dev-* tags from same-repo PRs only.
+          push: >-
+            ${{
+              github.event_name != 'pull_request' ||
+              github.event.pull_request.head.repo.full_name == github.repository
+            }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}

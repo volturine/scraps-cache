@@ -73,11 +73,15 @@ Full operator guide — reverse proxy, backups, restore drill, env reference:
 
 Published images:
 
-- `ghcr.io/volturine/shard-notes:latest` (master)
-- `ghcr.io/volturine/shard-notes:<version>` (tags like `v1.2.3`)
-- `ghcr.io/volturine/shard-notes:sha-<commit>`
+| Tag | When |
+| --- | --- |
+| `latest` | Push/merge to `master` (current production build) |
+| `master` | Same as above |
+| `sha-<commit>` | Non-PR publishes (immutable) |
+| `<version>` / `<major>.<minor>` | Git tags like `v1.2.3` |
+| `dev-pr-<n>` / `dev-sha-<commit>` | Pull requests only (never overwrites `latest`) |
 
-Prefer a **pinned tag or digest**, not floating `latest`, for production.
+Prefer a **pinned release tag or digest**, not floating `latest`, for production.
 
 ## How privacy works (short)
 

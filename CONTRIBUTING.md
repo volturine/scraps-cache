@@ -106,7 +106,8 @@ Deeper orientation: [docs/architecture.md](docs/architecture.md) and
 5. Link related issues when applicable.
 
 CI (`.github/workflows/ci-cd.yaml`) runs the full validation suite and an
-`amd64` image build on every pull request.
+`amd64` image build on every pull request (published as `dev-pr-*` / `dev-sha-*`,
+never `latest`).
 
 ### Commit messages
 
