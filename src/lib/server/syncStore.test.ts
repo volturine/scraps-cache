@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SyncQuotaExceededError, SyncStore } from './syncStore';
@@ -175,5 +175,53 @@ describe('SQLite sync store', () => {
 			{ seq: 7, id: 'new', slot: slot('a'), ciphertext: 'new' }
 		]);
 		expect(readFileSync(legacyFile, 'utf8')).toBe(legacy);
+	});
+
+	it('online-backup snapshot restores credentials and opaque envelopes', async () => {
+		const { store } = createStore();
+		store.createAccount('account', 'restore-credential');
+		store.sync(
+			'account',
+			0,
+			[
+				{ id: 'note-1', slot: slot('a'), ciphertext: 'cipher-a' },
+				{ id: 'note-2', slot: slot('b'), ciphertext: 'cipher-b' }
+			],
+			10
+		);
+
+		const snapshotDirectory = mkdtempSync(join(tmpdir(), 'shard-snapshot-'));
+		directories.push(snapshotDirectory);
+		const snapshotPath = join(snapshotDirectory, 'snapshot.sqlite');
+		await store.backup(snapshotPath);
+
+		// Later live writes must not appear in the already-taken snapshot.
+		store.sync(
+			'account',
+			2,
+			[{ id: 'note-3', slot: slot('c'), ciphertext: 'cipher-c' }],
+			10
+		);
+
+		const restoredDirectory = mkdtempSync(join(tmpdir(), 'shard-restored-'));
+		directories.push(restoredDirectory);
+		copyFileSync(snapshotPath, join(restoredDirectory, 'sync.sqlite'));
+		const restored = new SyncStore(restoredDirectory);
+		stores.push(restored);
+
+		expect(restored.getCredentialHash('account')).toBe('restore-credential');
+		expect(restored.sync('account', 0, [], 10)).toMatchObject({
+			cursor: 2,
+			hasMore: false,
+			envelopes: [
+				{ seq: 1, id: 'note-1', slot: slot('a'), ciphertext: 'cipher-a' },
+				{ seq: 2, id: 'note-2', slot: slot('b'), ciphertext: 'cipher-b' }
+			]
+		});
+		expect(restored.aggregateUsage()).toEqual({
+			accounts: 1,
+			envelopeCount: 2,
+			ciphertextBytes: 'cipher-a'.length + 'cipher-b'.length
+		});
 	});
 });

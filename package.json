@@ -32,9 +32,8 @@
 		"start": "node build",
 		"preview": "vite preview",
 		"test": "vitest run",
-		"test:restore": "node scripts/restore-smoke.mjs",
 		"test:watch": "vitest",
-		"validate": "npm run check && npm test && npm run test:restore && npm run build",
+		"validate": "npm run check && npm test && npm run build",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --tsgo",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
