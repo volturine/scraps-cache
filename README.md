@@ -108,7 +108,6 @@ Details, threat model, and limits: **[docs/security.md](docs/security.md)**.
 | [docs/security.md](docs/security.md) | Crypto, threat model, headers, logging rules |
 | [docs/self-hosting.md](docs/self-hosting.md) | Docker, env vars, backups, restore, metrics |
 | [docs/development.md](docs/development.md) | Local workflow, testing, CI |
-| [docs/design/production-hardening.md](docs/design/production-hardening.md) | Historical hardening plan (implemented) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |

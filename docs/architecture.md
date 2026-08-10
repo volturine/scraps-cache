@@ -117,4 +117,3 @@ counts per account for quotas (default 1 GB / 50k envelopes).
 - [security.md](security.md) — threat model and crypto choices
 - [self-hosting.md](self-hosting.md) — operator runbook
 - [development.md](development.md) — contributor workflow
-- [design/production-hardening.md](design/production-hardening.md) — original hardening plan

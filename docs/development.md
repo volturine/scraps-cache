@@ -70,4 +70,3 @@ weekly.
 | [architecture.md](architecture.md) | Understanding modules and data flow |
 | [security.md](security.md) | Touching crypto, headers, or logging |
 | [self-hosting.md](self-hosting.md) | Changing env vars or Compose |
-| [design/production-hardening.md](design/production-hardening.md) | Historical requirements / acceptance criteria |
