@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SvelteDate } from 'svelte/reactivity';
+	import WheelPicker from './WheelPicker.svelte';
 
 	let {
 		reminder,
@@ -10,6 +11,23 @@
 		onClose: () => void;
 		onApply?: (value: number | null) => void;
 	} = $props();
+
+	const MONTH_ITEMS = Array.from({ length: 12 }, (_, month) => ({
+		value: month,
+		label: new Date(2020, month, 1).toLocaleDateString([], { month: 'long' })
+	}));
+	const HOUR_ITEMS = Array.from({ length: 12 }, (_, i) => ({
+		value: i + 1,
+		label: String(i + 1)
+	}));
+	const MINUTE_ITEMS = Array.from({ length: 60 }, (_, minute) => ({
+		value: minute,
+		label: String(minute).padStart(2, '0')
+	}));
+	const AMPM_ITEMS = [
+		{ value: 'AM', label: 'AM' },
+		{ value: 'PM', label: 'PM' }
+	];
 
 	// Initialize from existing reminder or now+1h default
 	function initDate(ts: number | null): SvelteDate {
@@ -23,13 +41,26 @@
 
 	// A writable derived follows a changed prop but can still hold local picker edits.
 	let selected = $derived(initDate(reminder));
+	let monthYearOpen = $state(false);
 
 	function apply(ts: number | null) {
 		onApply?.(ts);
 		onClose();
 	}
 
-	// Date offset buttons
+	function daysInMonth(year: number, month: number): number {
+		return new Date(year, month + 1, 0).getDate();
+	}
+
+	function setDateParts(parts: { year?: number; month?: number; day?: number }) {
+		const d = new SvelteDate(selected);
+		const year = parts.year ?? d.getFullYear();
+		const month = parts.month ?? d.getMonth();
+		const day = parts.day ?? d.getDate();
+		d.setFullYear(year, month, Math.min(day, daysInMonth(year, month)));
+		selected = d;
+	}
+
 	function shiftDay(delta: number) {
 		const d = new SvelteDate(selected);
 		d.setDate(d.getDate() + delta);
@@ -37,12 +68,17 @@
 	}
 
 	const dateLabel = $derived(
-		selected.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+		selected.toLocaleDateString([], {
+			weekday: 'short',
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric'
+		})
 	);
 
 	function formatCompact(d: Date): string {
 		const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-		return `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · ${time}`;
+		return `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} · ${time}`;
 	}
 
 	const willSaveLabel = $derived(formatCompact(selected));
@@ -63,29 +99,43 @@
 		else onClose();
 	}
 
-	// Time spinner
 	const hours24 = $derived(selected.getHours());
 	const minutes = $derived(selected.getMinutes());
+	const selectedMonth = $derived(selected.getMonth());
+	const selectedYear = $derived(selected.getFullYear());
 
-	const displayHour = $derived(
-		hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24
-	);
+	const displayHour = $derived(hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24);
 	const ampm = $derived(hours24 >= 12 ? 'PM' : 'AM');
 
-	function shiftHour(delta: number) {
+	const yearItems = $derived.by(() => {
+		const nowYear = new Date().getFullYear();
+		const start = Math.min(nowYear - 10, selectedYear);
+		const end = Math.max(nowYear + 15, selectedYear);
+		const items: { value: number; label: string }[] = [];
+		for (let year = start; year <= end; year++) {
+			items.push({ value: year, label: String(year) });
+		}
+		return items;
+	});
+
+	function setDisplayHour(hour: number) {
 		const d = new SvelteDate(selected);
-		d.setHours(d.getHours() + delta);
+		const isPm = d.getHours() >= 12;
+		d.setHours((hour % 12) + (isPm ? 12 : 0));
 		selected = d;
 	}
-	function shiftMinute(delta: number) {
+
+	function setMinute(minute: number) {
 		const d = new SvelteDate(selected);
-		d.setMinutes(d.getMinutes() + delta);
+		d.setMinutes(minute);
 		selected = d;
 	}
-	function toggleAmPm() {
+
+	function setAmPm(period: string) {
 		const d = new SvelteDate(selected);
-		const h = d.getHours();
-		d.setHours(h < 12 ? h + 12 : h - 12);
+		const hour = d.getHours();
+		if (period === 'PM' && hour < 12) d.setHours(hour + 12);
+		if (period === 'AM' && hour >= 12) d.setHours(hour - 12);
 		selected = d;
 	}
 
@@ -97,7 +147,7 @@
 	}
 </script>
 
-<div class="w-72 rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-5 shadow-2xl">
+<div class="w-80 rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-5 shadow-2xl">
 	<div class="mb-3 text-base font-medium text-[var(--gkc-text)]">Reminder</div>
 
 	<div
@@ -137,57 +187,74 @@
 	<div class="mb-4 border-t border-[var(--gkc-border)] pt-4">
 		<div class="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--gkc-text-muted)]">Pick date & time</div>
 
-		<!-- Date picker: simple day shuttle -->
-		<div class="mb-4 flex items-center justify-between">
-			<button type="button" class="icon-btn h-8 w-8 p-2" onclick={() => shiftDay(-1)} aria-label="Previous day">
+		<div class="mb-3 flex items-center">
+			<button type="button" class="icon-btn h-8 w-8 shrink-0 p-2" onclick={() => shiftDay(-1)} aria-label="Previous day">
 				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
 			</button>
-			<div class="text-sm font-medium text-[var(--gkc-text)]">{dateLabel}</div>
-			<button type="button" class="icon-btn h-8 w-8 p-2" onclick={() => shiftDay(1)} aria-label="Next day">
+			<button
+				type="button"
+				class="mx-1 flex min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--gkc-text)] {monthYearOpen
+					? 'bg-[var(--gkc-bg)]'
+					: ''}"
+				onclick={() => (monthYearOpen = !monthYearOpen)}
+				aria-label="Choose month and year"
+				aria-expanded={monthYearOpen}
+			>
+				<span class="truncate">{dateLabel}</span>
+				<svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0 fill-current text-[var(--gkc-text-muted)] {monthYearOpen ? 'rotate-180' : ''}" aria-hidden="true">
+					<path d="M7 10l5 5 5-5z"/>
+				</svg>
+			</button>
+			<button type="button" class="icon-btn h-8 w-8 shrink-0 p-2" onclick={() => shiftDay(1)} aria-label="Next day">
 				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
 			</button>
 		</div>
 
-		<!-- Time spinner: hour : minute AM/PM — colon & AM aligned to digit row -->
-		<div class="flex justify-center gap-1">
-			<div class="flex flex-col items-center">
-				<button type="button" class="icon-btn h-8 w-11 shrink-0" onclick={() => shiftHour(1)} aria-label="Hour up">
-					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M7 14l5-5 5 5z"/></svg>
-				</button>
-				<div class="flex h-11 w-12 items-center justify-center rounded-lg bg-[var(--gkc-bg)] text-xl font-semibold tabular-nums text-[var(--gkc-text)]">
-					{String(displayHour).padStart(2, '0')}
+		{#if monthYearOpen}
+			<div class="mb-1 flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]">
+				<WheelPicker
+					class="w-[9.5rem]"
+					items={MONTH_ITEMS}
+					value={selectedMonth}
+					onChange={(month) => setDateParts({ month })}
+					ariaLabel="Month"
+				/>
+				<WheelPicker
+					class="w-[4.75rem]"
+					items={yearItems}
+					value={selectedYear}
+					onChange={(year) => setDateParts({ year })}
+					ariaLabel="Year"
+				/>
+			</div>
+		{:else}
+			<div class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]">
+				<WheelPicker
+					class="w-14"
+					items={HOUR_ITEMS}
+					value={displayHour}
+					onChange={setDisplayHour}
+					ariaLabel="Hour"
+				/>
+				<div class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--gkc-text)]" aria-hidden="true">
+					:
 				</div>
-				<button type="button" class="icon-btn h-8 w-11 shrink-0" onclick={() => shiftHour(-1)} aria-label="Hour down">
-					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M7 10l5 5 5-5z"/></svg>
-				</button>
+				<WheelPicker
+					class="w-14"
+					items={MINUTE_ITEMS}
+					value={minutes}
+					onChange={setMinute}
+					ariaLabel="Minute"
+				/>
+				<WheelPicker
+					class="w-14"
+					items={AMPM_ITEMS}
+					value={ampm}
+					onChange={setAmPm}
+					ariaLabel="AM/PM"
+				/>
 			</div>
-
-			<div class="flex h-[4.75rem] w-4 shrink-0 items-center justify-center self-center pt-1 text-xl font-semibold leading-none text-[var(--gkc-text)]">
-				:
-			</div>
-
-			<div class="flex flex-col items-center">
-				<button type="button" class="icon-btn h-8 w-11 shrink-0" onclick={() => shiftMinute(15)} aria-label="Minute up">
-					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M7 14l5-5 5 5z"/></svg>
-				</button>
-				<div class="flex h-11 w-12 items-center justify-center rounded-lg bg-[var(--gkc-bg)] text-xl font-semibold tabular-nums text-[var(--gkc-text)]">
-					{String(minutes).padStart(2, '0')}
-				</div>
-				<button type="button" class="icon-btn h-8 w-11 shrink-0" onclick={() => shiftMinute(-15)} aria-label="Minute down">
-					<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M7 10l5 5 5-5z"/></svg>
-				</button>
-			</div>
-
-			<div class="flex h-[4.75rem] shrink-0 items-center justify-center self-center pt-1">
-				<button
-					type="button"
-					class="rounded-lg bg-[var(--gkc-bg)] px-3 py-2.5 text-sm font-semibold text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
-					onclick={toggleAmPm}
-				>
-					{ampm}
-				</button>
-			</div>
-		</div>
+		{/if}
 	</div>
 
 	<div class="flex items-center justify-between gap-3 border-t border-[var(--gkc-border)] pt-4">
