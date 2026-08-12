@@ -48,6 +48,18 @@
 	const keyboardVisible = $derived(
 		isOpen && visualViewportHeight > 0 && visualViewportHeight < layoutViewportHeight - 120
 	);
+	// iOS does not resize 100lvh when the software keyboard opens. Shrink the
+	// overlay to the visual viewport only then; otherwise keep the original sheet.
+	const editorOverlayStyle = $derived(
+		keyboardVisible
+			? `height:${visualViewportHeight}px;top:${visualViewportTop}px;`
+			: ''
+	);
+	const editorDialogClass = $derived(
+		keyboardVisible
+			? 'flex h-full max-h-full min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl'
+			: 'flex h-[72lvh] max-h-[90lvh] min-h-[50lvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl'
+	);
 	const editorDialogStyle = $derived(`background-color: ${note ? bgColor(note.color) : 'transparent'};`);
 
 	let syncedId: string | null = null;
@@ -120,9 +132,11 @@
 		};
 		updateViewport();
 		viewport?.addEventListener('resize', updateViewport);
+		viewport?.addEventListener('scroll', updateViewport);
 		window.addEventListener('resize', updateViewport);
 		return () => {
 			viewport?.removeEventListener('resize', updateViewport);
+			viewport?.removeEventListener('scroll', updateViewport);
 			window.removeEventListener('resize', updateViewport);
 			if (revealFrame !== null) cancelAnimationFrame(revealFrame);
 		};
@@ -234,6 +248,7 @@
 {#if isOpen && note}
 	<div
 		class="fixed left-0 top-0 z-50 flex h-[100lvh] w-screen items-center justify-center overflow-hidden bg-black/40 p-4"
+		style={editorOverlayStyle}
 		role="presentation"
 		onclick={(e) => {
 			// Backdrop click always dismisses, including while a task is focused.
@@ -247,7 +262,7 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			bind:this={editorDialog}
-			class="flex h-[72lvh] max-h-[90lvh] min-h-[50lvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
+			class={editorDialogClass}
 			style={editorDialogStyle}
 			role="dialog"
 			tabindex="-1"
