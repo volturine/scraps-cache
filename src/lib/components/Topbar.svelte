@@ -23,10 +23,6 @@
 	let backupDialogMode = $state<'export' | 'import' | null>(null);
 	let backupBusy = $state(false);
 	let pendingEncryptedBackup = $state<EncryptedShardBackup | null>(null);
-	let lastBackupAt = $state(
-		typeof localStorage === 'undefined' ? 0 : Number(localStorage.getItem('shard-last-backup-at')) || 0
-	);
-	const backupDue = $derived(!lastBackupAt || Date.now() - lastBackupAt > 30 * 24 * 60 * 60 * 1000);
 
 	function startBackupExport() {
 		settingsOpen = false;
@@ -42,8 +38,6 @@
 				const data = await notesStore.exportBackup();
 				const encrypted = await encryptBackup(data, passphrase);
 				downloadJSON(encrypted, `shard-backup-${new Date().toISOString().slice(0, 10)}.shard-backup`);
-				localStorage.setItem('shard-last-backup-at', String(Date.now()));
-				lastBackupAt = Date.now();
 				backupDialogMode = null;
 				return;
 			}
@@ -212,11 +206,18 @@
 					<button type="button" onclick={() => { uiStore.toggleDark(); }} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
 						{#if uiStore.effectiveDark}☀️ Light mode{:else}🌙 Dark mode{/if}
 					</button>
-					<button type="button" onclick={startBackupExport} class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
-						<span>Export encrypted backup</span>
-						{#if backupDue}<span class="h-2 w-2 rounded-full bg-amber-500" title="Backup due"></span>{/if}
+					<button type="button" onclick={startBackupExport} class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
+						<svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+						</svg>
+						Export backup
 					</button>
-					<button type="button" onclick={() => fileInputEl?.click()} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">Import full backup</button>
+					<button type="button" onclick={() => fileInputEl?.click()} class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
+						<svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+						</svg>
+						Import backup
+					</button>
 				{/if}
 				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">{backupImportError}</p>{/if}
 			</div>

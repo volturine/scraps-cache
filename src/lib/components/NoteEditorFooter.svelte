@@ -21,11 +21,14 @@
 		body = $bindable(''),
 		noteId = null as string | null,
 		showCopy = false,
+		showArchive = false,
 		showDelete = false,
+		archived = false,
 		copyFlash = false,
 		onOpenColor,
 		onOpenTags,
 		onCopy,
+		onArchive,
 		onDelete,
 		onImagesChange,
 		onClose
@@ -34,11 +37,14 @@
 		body?: string;
 		noteId?: string | null;
 		showCopy?: boolean;
+		showArchive?: boolean;
 		showDelete?: boolean;
+		archived?: boolean;
 		copyFlash?: boolean;
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
 		onCopy?: () => void;
+		onArchive?: () => void;
 		onDelete?: () => void;
 		onImagesChange?: (images: NoteImage[]) => void;
 		onClose?: () => void;
@@ -263,6 +269,11 @@
 		{#if showCopy}
 			<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Copy note" aria-label="Copy note" onclick={() => onCopy?.()}>
 				{#if copyFlash}<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 6" /></svg>{:else}<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2" stroke-linejoin="round"><rect x="9" y="9" width="10" height="11" rx="1"/><path d="M15 9V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4"/></svg>{/if}
+			</button>
+		{/if}
+		{#if showArchive}
+			<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title={archived ? 'Unarchive' : 'Archive'} aria-label={archived ? 'Unarchive' : 'Archive'} onclick={() => onArchive?.()}>
+				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M20 6h-8V4H4v2H2v4h20V6h-2zM4 12v8h16v-8H4z"/></svg>
 			</button>
 		{/if}
 		{#if showDelete}
