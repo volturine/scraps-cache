@@ -48,11 +48,12 @@
 	const keyboardVisible = $derived(
 		isOpen && visualViewportHeight > 0 && visualViewportHeight < layoutViewportHeight - 120
 	);
-	// iOS does not resize 100lvh when the software keyboard opens. Shrink the
-	// overlay to the visual viewport only then; otherwise keep the original sheet.
-	const editorOverlayStyle = $derived(
+	// Keep the dimmed backdrop at 100lvh so the feed cannot show or scroll
+	// through. Only the sheet moves into the visual viewport when the keyboard
+	// is open — iOS does not resize 100lvh for the software keyboard.
+	const editorSheetFrameStyle = $derived(
 		keyboardVisible
-			? `height:${visualViewportHeight}px;top:${visualViewportTop}px;`
+			? `top:${visualViewportTop}px;height:${visualViewportHeight}px;`
 			: ''
 	);
 	const editorDialogClass = $derived(
@@ -144,6 +145,23 @@
 
 	$effect(() => {
 		if (keyboardVisible) queueFocusedEditorReveal();
+	});
+
+	$effect(() => {
+		if (!isOpen) return;
+		const onTouchMove = (event: TouchEvent) => {
+			const target = event.target;
+			if (
+				target instanceof Element &&
+				editorDialog?.contains(target) &&
+				target.closest('.scrollable')
+			) {
+				return;
+			}
+			event.preventDefault();
+		};
+		document.addEventListener('touchmove', onTouchMove, { passive: false });
+		return () => document.removeEventListener('touchmove', onTouchMove);
 	});
 
 	$effect(() => {
@@ -247,17 +265,24 @@
 
 {#if isOpen && note}
 	<div
-		class="fixed left-0 top-0 z-50 flex h-[100lvh] w-screen items-center justify-center overflow-hidden bg-black/40 p-4"
-		style={editorOverlayStyle}
+		class="fixed left-0 top-0 z-50 h-[100lvh] w-screen overflow-hidden bg-black/40"
 		role="presentation"
 		onclick={(e) => {
 			// Backdrop click always dismisses, including while a task is focused.
-			if (e.target === e.currentTarget) void close();
+			if (editorDialog && e.target instanceof Node && editorDialog.contains(e.target)) return;
+			void close();
 		}}
 		onkeydown={(e) => {
 			if (e.key === 'Escape') void close();
 		}}
 	>
+		<div
+			class="flex items-center justify-center p-4 {keyboardVisible
+				? 'absolute left-0 right-0'
+				: 'h-full'}"
+			style={editorSheetFrameStyle}
+			role="presentation"
+		>
 		<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
@@ -361,6 +386,7 @@
 				onDelete={() => { notesStore.trashNote(note.id); close(); }}
 				onImagesChange={(imgs) => commitNow(imgs)}
 			/>
+		</div>
 		</div>
 	</div>
 

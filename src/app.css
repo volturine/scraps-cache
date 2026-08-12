@@ -49,10 +49,16 @@ html {
 	background-color: var(--gkc-bg);
 }
 
-/* Note editor open: promote app shell to its own layer so iOS does not repaint the whole page under the modal. */
+/* Note editor open: promote app shell to its own layer so iOS does not repaint the whole page under the modal.
+ * Also freeze the feed scroller so background notes cannot be panned under the overlay. */
 html.editor-open .app-shell {
 	transform: translateZ(0);
 	-webkit-transform: translateZ(0);
+	pointer-events: none;
+}
+html.editor-open .app-shell .scrollable {
+	overflow: hidden;
+	touch-action: none;
 }
 
 html,
