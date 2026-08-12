@@ -44,14 +44,16 @@
 	let layoutViewportHeight = $state(0);
 	let layoutViewportWidth = $state(0);
 	let revealFrame: number | null = null;
+	let lastTouchY = 0;
 
 	const keyboardVisible = $derived(
 		isOpen && visualViewportHeight > 0 && visualViewportHeight < layoutViewportHeight - 120
 	);
-	// Keep the dimmed backdrop at 100lvh so the feed cannot show or scroll
-	// through. Only the sheet moves into the visual viewport when the keyboard
-	// is open — iOS does not resize 100lvh for the software keyboard.
-	const editorSheetFrameStyle = $derived(
+	// Pin the dim to the visual viewport while the keyboard is open. iOS turns
+	// position:fixed into a scrolling layer once the keyboard shows; following
+	// visualViewport keeps the veil over the feed. Without the keyboard the
+	// overlay stays the original 100lvh sheet.
+	const editorOverlayStyle = $derived(
 		keyboardVisible
 			? `top:${visualViewportTop}px;height:${visualViewportHeight}px;`
 			: ''
@@ -147,21 +149,48 @@
 		if (keyboardVisible) queueFocusedEditorReveal();
 	});
 
+	function lockPageScroll() {
+		window.scrollTo(0, 0);
+		document.documentElement.scrollTop = 0;
+		document.body.scrollTop = 0;
+	}
+
+	function allowEditorBodyScroll(event: TouchEvent): boolean {
+		const target = event.target;
+		if (!(target instanceof Element) || !editorDialog?.contains(target)) return false;
+		const scroller = target.closest('.scrollable');
+		if (!(scroller instanceof HTMLElement) || !editorDialog.contains(scroller)) return false;
+		if (scroller.scrollHeight <= scroller.clientHeight + 1) return false;
+		const y = event.touches[0]?.clientY ?? lastTouchY;
+		const dy = y - lastTouchY;
+		const atTop = scroller.scrollTop <= 0;
+		const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+		if ((atTop && dy > 0) || (atBottom && dy < 0)) return false;
+		return true;
+	}
+
 	$effect(() => {
 		if (!isOpen) return;
-		const onTouchMove = (event: TouchEvent) => {
-			const target = event.target;
-			if (
-				target instanceof Element &&
-				editorDialog?.contains(target) &&
-				target.closest('.scrollable')
-			) {
-				return;
-			}
-			event.preventDefault();
+		lockPageScroll();
+		const viewport = window.visualViewport;
+		const onTouchStart = (event: TouchEvent) => {
+			lastTouchY = event.touches[0]?.clientY ?? 0;
 		};
-		document.addEventListener('touchmove', onTouchMove, { passive: false });
-		return () => document.removeEventListener('touchmove', onTouchMove);
+		const onTouchMove = (event: TouchEvent) => {
+			if (!allowEditorBodyScroll(event)) event.preventDefault();
+			lastTouchY = event.touches[0]?.clientY ?? lastTouchY;
+		};
+		const onScroll = () => lockPageScroll();
+		document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+		document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+		window.addEventListener('scroll', onScroll, { capture: true, passive: false });
+		viewport?.addEventListener('scroll', onScroll);
+		return () => {
+			document.removeEventListener('touchstart', onTouchStart, { capture: true });
+			document.removeEventListener('touchmove', onTouchMove, { capture: true });
+			window.removeEventListener('scroll', onScroll, { capture: true });
+			viewport?.removeEventListener('scroll', onScroll);
+		};
 	});
 
 	$effect(() => {
@@ -265,24 +294,17 @@
 
 {#if isOpen && note}
 	<div
-		class="fixed left-0 top-0 z-50 h-[100lvh] w-screen overflow-hidden bg-black/40"
+		class="fixed left-0 top-0 z-50 flex h-[100lvh] w-screen items-center justify-center overflow-hidden bg-black/40 p-4"
+		style={editorOverlayStyle}
 		role="presentation"
 		onclick={(e) => {
 			// Backdrop click always dismisses, including while a task is focused.
-			if (editorDialog && e.target instanceof Node && editorDialog.contains(e.target)) return;
-			void close();
+			if (e.target === e.currentTarget) void close();
 		}}
 		onkeydown={(e) => {
 			if (e.key === 'Escape') void close();
 		}}
 	>
-		<div
-			class="flex items-center justify-center p-4 {keyboardVisible
-				? 'absolute left-0 right-0'
-				: 'h-full'}"
-			style={editorSheetFrameStyle}
-			role="presentation"
-		>
 		<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
@@ -386,7 +408,6 @@
 				onDelete={() => { notesStore.trashNote(note.id); close(); }}
 				onImagesChange={(imgs) => commitNow(imgs)}
 			/>
-		</div>
 		</div>
 	</div>
 
