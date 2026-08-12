@@ -286,15 +286,6 @@
 					</button>
 					<button
 						type="button"
-						class="icon-btn h-9 w-9 p-2"
-						title="Archive"
-						onclick={() => { notesStore.toggleArchive(note.id); close(); }}
-						aria-label="Archive"
-					>
-						<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M20 6h-8V4H4v2H2v4h20V6h-2zM4 12v8h16v-8H4z"/></svg>
-					</button>
-					<button
-						type="button"
 						class="icon-btn h-9 w-9 p-2 {note.reminder != null ? 'text-blue-600 dark:text-blue-400' : ''}"
 						title="Reminder"
 						onclick={() => { closePopups(); reminderOpen = true; }}
@@ -344,11 +335,14 @@
 				bind:body
 				noteId={note.id}
 				showCopy={true}
+				showArchive={true}
 				showDelete={true}
+				archived={note.archived}
 				{copyFlash}
 				onOpenColor={() => { closePopups(); paletteOpen = true; }}
 				onOpenTags={() => { closePopups(); labelOpen = true; }}
 				onCopy={() => void copyText()}
+				onArchive={() => { notesStore.toggleArchive(note.id); void close(); }}
 				onDelete={() => { notesStore.trashNote(note.id); close(); }}
 				onImagesChange={(imgs) => commitNow(imgs)}
 			/>
