@@ -16,18 +16,14 @@
 		value: month,
 		label: new Date(2020, month, 1).toLocaleDateString([], { month: 'long' })
 	}));
-	const HOUR_ITEMS = Array.from({ length: 12 }, (_, i) => ({
-		value: i + 1,
-		label: String(i + 1)
+	const HOUR_ITEMS = Array.from({ length: 24 }, (_, hour) => ({
+		value: hour,
+		label: String(hour).padStart(2, '0')
 	}));
 	const MINUTE_ITEMS = Array.from({ length: 60 }, (_, minute) => ({
 		value: minute,
 		label: String(minute).padStart(2, '0')
 	}));
-	const AMPM_ITEMS = [
-		{ value: 'AM', label: 'AM' },
-		{ value: 'PM', label: 'PM' }
-	];
 
 	// Initialize from existing reminder or now+1h default
 	function initDate(ts: number | null): SvelteDate {
@@ -77,7 +73,7 @@
 	);
 
 	function formatCompact(d: Date): string {
-		const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+		const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 		return `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} · ${time}`;
 	}
 
@@ -104,9 +100,6 @@
 	const selectedMonth = $derived(selected.getMonth());
 	const selectedYear = $derived(selected.getFullYear());
 
-	const displayHour = $derived(hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24);
-	const ampm = $derived(hours24 >= 12 ? 'PM' : 'AM');
-
 	const yearItems = $derived.by(() => {
 		const nowYear = new Date().getFullYear();
 		const start = Math.min(nowYear - 10, selectedYear);
@@ -118,24 +111,15 @@
 		return items;
 	});
 
-	function setDisplayHour(hour: number) {
+	function setHour(hour: number) {
 		const d = new SvelteDate(selected);
-		const isPm = d.getHours() >= 12;
-		d.setHours((hour % 12) + (isPm ? 12 : 0));
+		d.setHours(hour);
 		selected = d;
 	}
 
 	function setMinute(minute: number) {
 		const d = new SvelteDate(selected);
 		d.setMinutes(minute);
-		selected = d;
-	}
-
-	function setAmPm(period: string) {
-		const d = new SvelteDate(selected);
-		const hour = d.getHours();
-		if (period === 'PM' && hour < 12) d.setHours(hour + 12);
-		if (period === 'AM' && hour >= 12) d.setHours(hour - 12);
 		selected = d;
 	}
 
@@ -193,7 +177,7 @@
 			</button>
 			<button
 				type="button"
-				class="mx-1 flex min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--gkc-text)] {monthYearOpen
+				class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--gkc-text)] {monthYearOpen
 					? 'bg-[var(--gkc-bg)]'
 					: ''}"
 				onclick={() => (monthYearOpen = !monthYearOpen)}
@@ -201,9 +185,6 @@
 				aria-expanded={monthYearOpen}
 			>
 				<span class="truncate">{dateLabel}</span>
-				<svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0 fill-current text-[var(--gkc-text-muted)] {monthYearOpen ? 'rotate-180' : ''}" aria-hidden="true">
-					<path d="M7 10l5 5 5-5z"/>
-				</svg>
 			</button>
 			<button type="button" class="icon-btn h-8 w-8 shrink-0 p-2" onclick={() => shiftDay(1)} aria-label="Next day">
 				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
@@ -230,28 +211,21 @@
 		{:else}
 			<div class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]">
 				<WheelPicker
-					class="w-14"
+					class="w-16"
 					items={HOUR_ITEMS}
-					value={displayHour}
-					onChange={setDisplayHour}
+					value={hours24}
+					onChange={setHour}
 					ariaLabel="Hour"
 				/>
 				<div class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--gkc-text)]" aria-hidden="true">
 					:
 				</div>
 				<WheelPicker
-					class="w-14"
+					class="w-16"
 					items={MINUTE_ITEMS}
 					value={minutes}
 					onChange={setMinute}
 					ariaLabel="Minute"
-				/>
-				<WheelPicker
-					class="w-14"
-					items={AMPM_ITEMS}
-					value={ampm}
-					onChange={setAmPm}
-					ariaLabel="AM/PM"
 				/>
 			</div>
 		{/if}

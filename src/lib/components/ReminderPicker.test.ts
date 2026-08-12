@@ -9,15 +9,23 @@ function monthName(month: number): string {
 }
 
 describe('ReminderPicker date and time controls', () => {
-	it('shows a per-minute time wheel instead of 15-minute steps', () => {
+	it('shows a 24-hour wheel and per-minute steps', () => {
 		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
 
-		const minuteOptions = screen.getByRole('listbox', { name: 'Minute' }).querySelectorAll('[role="option"]');
+		const hourOptions = screen.getByRole('listbox', { name: 'Hour' }).querySelectorAll('[role="option"]');
+		expect(hourOptions).toHaveLength(24);
+		expect(hourOptions[0].textContent).toBe('00');
+		expect(hourOptions[23].textContent).toBe('23');
+		expect(hourOptions[15].getAttribute('aria-selected')).toBe('true');
+		expect(screen.queryByRole('listbox', { name: 'AM/PM' })).toBeNull();
+
+		const minuteBox = screen.getByRole('listbox', { name: 'Minute' });
+		const minuteOptions = minuteBox.querySelectorAll('[role="option"]');
 		expect(minuteOptions).toHaveLength(60);
 		expect(minuteOptions[0].textContent).toBe('00');
 		expect(minuteOptions[1].textContent).toBe('01');
 		expect(minuteOptions[59].textContent).toBe('59');
-		expect(screen.getByRole('option', { name: '30' }).getAttribute('aria-selected')).toBe('true');
+		expect(minuteOptions[30].getAttribute('aria-selected')).toBe('true');
 	});
 
 	it('opens month and year wheels when the date label is pressed', async () => {
