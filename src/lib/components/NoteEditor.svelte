@@ -291,7 +291,7 @@
 
 {#if isOpen && note}
 	<div
-		class="fixed left-0 top-0 z-50 h-[200lvh] w-screen overflow-hidden bg-black/40"
+		class="fixed left-0 top-0 z-50 h-[200lvh] w-screen bg-transparent backdrop-blur-xl"
 		role="presentation"
 		onclick={(e) => {
 			// Backdrop click always dismisses, including while a task is focused.
