@@ -13,6 +13,8 @@
 	import BodyEditor from './BodyEditor.svelte';
 	import LinkPreview from './LinkPreview.svelte';
 	import { extractHttpUrls } from '$lib/linkPreview';
+	import { formatReminder, isReminderOverdue } from '$lib/utils';
+	import ReminderLabel from './ReminderLabel.svelte';
 
 	let {
 		noteId = $bindable(),
@@ -24,6 +26,8 @@
 
 	const note = $derived(noteId ? notesStore.notes.find((n) => n.id === noteId) : null);
 	const isOpen = $derived(noteId !== null && note !== null);
+	const reminderOverdue = $derived(note?.reminder != null && isReminderOverdue(note.reminder));
+	const reminderLabel = $derived(formatReminder(note?.reminder ?? null));
 
 	let taskFocusLine = $state<number | null>(null);
 
@@ -170,6 +174,11 @@
 		labelOpen = false;
 	}
 
+	function openReminder() {
+		closePopups();
+		reminderOpen = true;
+	}
+
 	function bgColor(c: NoteColor): string {
 		return uiStore.effectiveDark ? KEEP_DARK_COLORS[c] : KEEP_COLORS[c];
 	}
@@ -272,7 +281,31 @@
 
 				<div class="flex-1" aria-hidden="true"></div>
 
-				<div class="flex items-center gap-0.5">
+				<div class="flex min-w-0 items-center gap-1">
+					{#if note.reminder != null}
+						<button
+							type="button"
+							class="min-w-0"
+							title={reminderOverdue ? `Overdue · ${reminderLabel}` : reminderLabel}
+							onclick={openReminder}
+							aria-label={reminderOverdue ? `Overdue reminder, ${reminderLabel}` : `Reminder, ${reminderLabel}`}
+						>
+							<ReminderLabel reminder={note.reminder} variant="chip" />
+						</button>
+					{/if}
+					<button
+						type="button"
+						class="icon-btn h-9 w-9 p-2 {note.reminder == null
+							? ''
+							: reminderOverdue
+								? 'text-rose-600 dark:text-rose-400'
+								: 'text-blue-600 dark:text-blue-400'}"
+						title="Reminder"
+						onclick={openReminder}
+						aria-label="Reminder"
+					>
+						<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10.5 3.17 10.5 4v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+					</button>
 					<button
 						type="button"
 						class="icon-btn h-9 w-9 p-2"
@@ -283,15 +316,6 @@
 						<svg viewBox="0 0 24 24" class="h-5 w-5 {note.pinned ? 'fill-current' : 'fill-none stroke-current'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<path d="M14 2l8 8-4 1-3 7-3-3-4 4-1-1 4-4-3-3 7-3z" fill="{note.pinned ? 'currentColor' : 'none'}" stroke="{note.pinned ? 'none' : 'currentColor'}"/>
 						</svg>
-					</button>
-					<button
-						type="button"
-						class="icon-btn h-9 w-9 p-2 {note.reminder != null ? 'text-blue-600 dark:text-blue-400' : ''}"
-						title="Reminder"
-						onclick={() => { closePopups(); reminderOpen = true; }}
-						aria-label="Reminder"
-					>
-						<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10.5 3.17 10.5 4v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
 					</button>
 				</div>
 			</header>

@@ -2,9 +2,10 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { KEEP_COLORS, KEEP_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
-	import { activateOnKeyboard, formatReminder } from '$lib/utils';
+	import { activateOnKeyboard, formatReminder, isReminderOverdue } from '$lib/utils';
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
+	import ReminderLabel from './ReminderLabel.svelte';
 
 	let {
 		note,
@@ -34,6 +35,15 @@
 			.filter((l): l is NonNullable<typeof l> => !!l)
 	);
 
+	const openLabel = $derived.by(() => {
+		const title = note.title || 'untitled note';
+		if (note.reminder == null) return `Open ${title}`;
+		const when = formatReminder(note.reminder);
+		return isReminderOverdue(note.reminder)
+			? `Open ${title}, overdue reminder ${when}`
+			: `Open ${title}, reminder ${when}`;
+	});
+
 	let offsetX = $state(0);
 	let dragging = $state(false);
 
@@ -61,7 +71,7 @@
 		<div
 			role="button"
 			tabindex="0"
-			aria-label={`Open ${note.title || 'untitled note'}`}
+			aria-label={openLabel}
 		class="relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-hidden rounded-lg border border-black/5 shadow-sm transition-shadow dark:border-white/10"
 		style="background-color: {bgColor(note.color)}; {cardSwipeStyle(offsetX, dragging)}"
 		class:shadow-md={note.pinned}
@@ -74,12 +84,7 @@
 	>
 		<div class="scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
 			{#if note.reminder != null}
-				<div
-					class="flex items-center gap-1 rounded-t-lg bg-black/5 px-3 py-1 text-xs text-[var(--gkc-text-muted)] dark:bg-white/5"
-				>
-					<span>⏰</span>
-					<span>{formatReminder(note.reminder)}</span>
-				</div>
+				<ReminderLabel reminder={note.reminder} />
 			{/if}
 
 			<div class="block w-full p-3 pb-2 text-left">

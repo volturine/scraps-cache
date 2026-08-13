@@ -7,9 +7,10 @@
 		type Note,
 		type NoteColor
 	} from '$lib/types';
-	import { activateOnKeyboard, formatReminder } from '$lib/utils';
+	import { activateOnKeyboard } from '$lib/utils';
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
+	import ReminderLabel from './ReminderLabel.svelte';
 
 	let {
 		note,
@@ -106,10 +107,7 @@
 	>
 		<div class="scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
 			{#if note.reminder != null}
-				<div class="flex items-center gap-1 rounded-t-lg bg-black/5 px-3 py-1 text-xs text-[var(--gkc-text-muted)] dark:bg-white/5">
-					<span>⏰</span>
-					<span>{formatReminder(note.reminder)}</span>
-				</div>
+				<ReminderLabel reminder={note.reminder} />
 			{/if}
 
 			<div class="block w-full p-3 pb-2 text-left opacity-60">
