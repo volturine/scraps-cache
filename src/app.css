@@ -283,10 +283,10 @@ body {
 
 /* Even omnidirectional shadow — 0 offset so it is the same on every side. */
 .note-sheet-shadow {
-	box-shadow: 0 0 16px rgba(0, 0, 0, 0.16);
+	box-shadow: 0 0 24px 2px rgba(0, 0, 0, 0.22);
 }
 .dark .note-sheet-shadow {
-	box-shadow: 0 0 16px rgba(0, 0, 0, 0.4);
+	box-shadow: 0 0 24px 2px rgba(0, 0, 0, 0.55);
 }
 
 /* Icon buttons — hover only on fine pointers (touch never gets sticky :hover). */
