@@ -1,7 +1,9 @@
 import { env } from '$env/dynamic/private';
-import webpush from 'web-push';
+import webPushPkg from 'web-push';
 import { getSyncStore } from '$lib/server/syncStore';
 import type { DueWake } from '$lib/server/syncStore';
+
+const webpush = ('default' in webPushPkg ? webPushPkg.default : webPushPkg) as typeof webPushPkg;
 
 const META_PUBLIC = 'vapid-public-v1';
 const META_PRIVATE = 'vapid-private-v1';
@@ -11,7 +13,7 @@ export type WakeSendResult = 'sent' | 'gone' | 'failed';
 function vapidSubject(): string {
 	const subject = env.SHARD_VAPID_SUBJECT?.trim();
 	if (subject && (/^mailto:/i.test(subject) || /^https:/i.test(subject))) return subject;
-	const origin = env.SHARD_ORIGIN?.trim();
+	const origin = env.SHARD_ORIGIN?.trim() || env.ORIGIN?.trim();
 	if (origin && /^https:/i.test(origin)) return origin.replace(/\/$/, '');
 	return 'mailto:shard@localhost';
 }
@@ -46,7 +48,7 @@ export async function sendReminderTick(device: DueWake): Promise<WakeSendResult>
 			},
 			JSON.stringify({ type: 'reminder-tick' }),
 			{
-				TTL: 300,
+				TTL: 86_400,
 				urgency: 'high',
 				vapidDetails: {
 					subject: vapidSubject(),
@@ -57,7 +59,17 @@ export async function sendReminderTick(device: DueWake): Promise<WakeSendResult>
 		);
 		return 'sent';
 	} catch (error) {
-		const status = (error as { statusCode?: number }).statusCode;
+		const status =
+			error && typeof error === 'object' && 'statusCode' in error
+				? Number((error as { statusCode?: number }).statusCode)
+				: null;
+		console.info(
+			JSON.stringify({
+				level: 'info',
+				event: 'reminder_wake_failed',
+				status: Number.isFinite(status) ? status : null
+			})
+		);
 		if (status === 404 || status === 410) return 'gone';
 		return 'failed';
 	}

@@ -174,7 +174,7 @@
 			<span class="min-w-0 truncate">{willSaveLabel}</span>
 		</div>
 		<div class="mt-1 text-[11px] leading-snug text-[var(--gkc-text-muted)]">
-			Notifies on this device, including after Shard is closed.
+			Notifies on this device. Closed-app alerts need Sync on this device.
 		</div>
 	</div>
 

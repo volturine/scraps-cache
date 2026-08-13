@@ -5,6 +5,8 @@ import { recordHttpRequest } from '$lib/server/metrics';
 import { closeSyncStore } from '$lib/server/syncStore';
 import { wakeScheduler } from '$lib/server/wakeScheduler';
 
+wakeScheduler.start();
+
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
 	['x-content-type-options', 'nosniff'],

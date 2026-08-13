@@ -41,7 +41,7 @@
 					class="mb-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-3 py-2.5"
 				>
 					<p class="text-xs text-[var(--gkc-text-muted)]">
-						Allow notifications so this device can alert you after Shard is closed.
+						Allow notifications. Closed-app alerts also need Sync on this device.
 					</p>
 					<button
 						type="button"

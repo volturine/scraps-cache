@@ -44,18 +44,14 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (typeof body.deviceSecret !== 'string' || !DEVICE_SECRET_RE.test(body.deviceSecret)) {
 		return json({ error: 'A device secret is required' }, { status: 400 });
 	}
-	let accountId: string | null = null;
-	if (body.accountId != null || body.authSecret != null) {
-		if (
-			typeof body.accountId !== 'string' ||
-			!ACCOUNT_ID_RE.test(body.accountId) ||
-			typeof body.authSecret !== 'string' ||
-			body.authSecret.length < 32 ||
-			body.authSecret.length > 256
-		) {
-			return json({ error: 'Invalid sync account credentials' }, { status: 400 });
-		}
-		accountId = body.accountId;
+	if (
+		typeof body.accountId !== 'string' ||
+		!ACCOUNT_ID_RE.test(body.accountId) ||
+		typeof body.authSecret !== 'string' ||
+		body.authSecret.length < 32 ||
+		body.authSecret.length > 256
+	) {
+		return json({ error: 'Sync account credentials are required' }, { status: 400 });
 	}
 	if (!isPushSubscription(body.subscription)) {
 		return json({ error: 'A push subscription is required' }, { status: 400 });
@@ -71,11 +67,9 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 
 	try {
 		const store = getSyncStore();
-		if (accountId && typeof body.authSecret === 'string') {
-			const credentialHash = store.getCredentialHash(accountId);
-			if (!credentialHash || !sameSyncSecret(credentialHash, body.authSecret)) {
-				return json({ error: 'Invalid sync account credentials' }, { status: 404 });
-			}
+		const credentialHash = store.getCredentialHash(body.accountId);
+		if (!credentialHash || !sameSyncSecret(credentialHash, body.authSecret)) {
+			return json({ error: 'Invalid sync account credentials' }, { status: 404 });
 		}
 		store.savePushDevice(
 			{
@@ -84,7 +78,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 				endpoint: body.subscription.endpoint,
 				p256dh: body.subscription.keys.p256dh,
 				auth: body.subscription.keys.auth,
-				accountId
+				accountId: body.accountId
 			},
 			fireAt
 		);
