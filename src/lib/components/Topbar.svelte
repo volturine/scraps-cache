@@ -12,6 +12,19 @@
 		isEncryptedShardBackup,
 		type EncryptedShardBackup
 	} from '$lib/backupCrypto';
+	import {
+		Cloud,
+		Download,
+		LayoutGrid,
+		List,
+		Menu,
+		Moon,
+		Search,
+		Settings,
+		Sun,
+		Upload,
+		X
+	} from '@lucide/svelte';
 
 	const { startNewNote } = useEditorActions();
 
@@ -134,15 +147,13 @@
 		onclick={() => uiStore.toggleSidebar()}
 		aria-label="Toggle sidebar"
 	>
-		<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"
-			><path d="M3 6h18v2H3zM3 11h18v2H3zM3 16h18v2H3z" /></svg
-		>
+		<Menu class="h-5 w-5" aria-hidden="true" />
 	</button>
 
 	<div
 		class="flex h-12 flex-1 items-center gap-2 rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-4"
 	>
-		<span class="text-[var(--gkc-text-muted)]">🔍</span>
+		<Search class="h-4 w-4 shrink-0 text-[var(--gkc-text-muted)]" aria-hidden="true" />
 		<input
 			bind:value={uiStore.search}
 			type="text"
@@ -153,8 +164,10 @@
 			<button
 				class="icon-btn h-8 w-8 p-1.5 text-sm text-[var(--gkc-text-muted)]"
 				onclick={() => (uiStore.search = '')}
-				aria-label="Clear search">✕</button
+				aria-label="Clear search"
 			>
+				<X class="h-4 w-4" aria-hidden="true" />
+			</button>
 		{/if}
 	</div>
 
@@ -167,11 +180,7 @@
 		}}
 		aria-label="Sync settings"
 	>
-		<svg data-gkc-sync-icon viewBox="0 0 24 24" class="h-5 w-5 fill-current" aria-hidden="true">
-			<path
-				d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
-			/>
-		</svg>
+		<Cloud class="h-5 w-5" data-gkc-sync-icon aria-hidden="true" />
 	</button>
 
 	<button
@@ -181,38 +190,9 @@
 		aria-label="Toggle layout"
 	>
 		{#if uiStore.layout === 'grid'}
-			<svg
-				viewBox="0 0 24 24"
-				class="h-5 w-5"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="1.8"
-				stroke-linecap="round"
-				><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></svg
-			>
+			<List class="h-5 w-5" aria-hidden="true" />
 		{:else}
-			<svg
-				viewBox="0 0 24 24"
-				class="h-5 w-5"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="1.8"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				><rect x="3" y="3" width="7" height="7" rx="1" /><rect
-					x="14"
-					y="3"
-					width="7"
-					height="7"
-					rx="1"
-				/><rect x="3" y="14" width="7" height="7" rx="1" /><rect
-					x="14"
-					y="14"
-					width="7"
-					height="7"
-					rx="1"
-				/></svg
-			>
+			<LayoutGrid class="h-5 w-5" aria-hidden="true" />
 		{/if}
 	</button>
 
@@ -223,11 +203,7 @@
 			onclick={() => (settingsOpen = !settingsOpen)}
 			aria-label="Settings"
 		>
-			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"
-				><path
-					d="M19.14 12.94a7.49 7.49 0 000-1.88l2.03-1.58-2-3.46-2.39.97a7.49 7.49 0 00-1.63-.94l-.36-2.55h-4l-.36 2.55a7.49 7.49 0 00-1.63.94l-2.39-.97-2 3.46 2.03 1.58a7.49 7.49 0 000 1.88l-2.03 1.58 2 3.46 2.39-.97a7.49 7.49 0 001.63.94l.36 2.55h4l.36-2.55a7.49 7.49 0 001.63-.94l2.39.97 2-3.46-2.03-1.58zM12 15.5A3.5 3.5 0 1112 8.5a3.5 3.5 0 010 7z"
-				/></svg
-			>
+			<Settings class="h-5 w-5" aria-hidden="true" />
 		</button>
 		{#if settingsOpen}
 			<div
@@ -262,25 +238,22 @@
 						onclick={() => {
 							uiStore.toggleDark();
 						}}
-						class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
-						{#if uiStore.effectiveDark}☀️ Light mode{:else}🌙 Dark mode{/if}
+						{#if uiStore.effectiveDark}
+							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Light mode
+						{:else}
+							<Moon class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Dark mode
+						{/if}
 					</button>
 					<button
 						type="button"
 						onclick={startBackupExport}
 						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
-						<svg
-							viewBox="0 0 24 24"
-							class="h-4 w-4 shrink-0 fill-none stroke-current"
-							stroke-width="1.75"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"
-						>
-							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-						</svg>
+						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Export backup
 					</button>
 					<button
@@ -288,16 +261,7 @@
 						onclick={() => fileInputEl?.click()}
 						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
-						<svg
-							viewBox="0 0 24 24"
-							class="h-4 w-4 shrink-0 fill-none stroke-current"
-							stroke-width="1.75"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"
-						>
-							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
-						</svg>
+						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Import backup
 					</button>
 				{/if}

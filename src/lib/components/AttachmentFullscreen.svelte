@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { NoteImage } from '$lib/types';
 	import { dataUrlToBlob } from '$lib/imageBlob';
+	import { ChevronLeft } from '@lucide/svelte';
 
 	let {
 		attachment = null,
@@ -90,14 +91,7 @@
 					onclick={close}
 					aria-label="Close file"
 				>
-					<svg
-						viewBox="0 0 24 24"
-						class="h-6 w-6 fill-none stroke-current"
-						stroke-width="2.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg
-					>
+					<ChevronLeft class="h-6 w-6" aria-hidden="true" />
 				</button>
 				<div class="min-w-0 flex-1 truncate text-sm font-medium">
 					{attachment.name || 'Attachment'}

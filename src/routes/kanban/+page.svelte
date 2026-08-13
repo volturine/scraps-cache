@@ -11,6 +11,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { kanbanStore } from '$lib/stores/kanban.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import { ChevronDown, X } from '@lucide/svelte';
 
 	const { openNote } = useEditorActions();
 	const board = $derived(kanbanStore.activeBoard);
@@ -160,16 +161,10 @@
 					<option value={choice.id}>{choice.name}</option>
 				{/each}
 			</select>
-			<svg
+			<ChevronDown
 				class="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--gkc-text-muted)]"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2.5"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg
-			>
+				aria-hidden="true"
+			/>
 		</div>
 		<button
 			type="button"
@@ -258,7 +253,7 @@
 								aria-label={`Remove ${columnName(column)} column`}
 								title="Remove column"
 							>
-								×
+								<X class="h-3.5 w-3.5" aria-hidden="true" />
 							</button>
 						{/if}
 					</div>

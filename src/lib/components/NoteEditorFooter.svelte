@@ -15,6 +15,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
 	import { formatStorageError } from '$lib/imageBlob';
+	import { Archive, Check, Copy, Palette, Paperclip, Tag, Trash2, X } from '@lucide/svelte';
 
 	let {
 		images = $bindable<NoteImage[]>([]),
@@ -211,8 +212,10 @@
 					type="button"
 					class="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-xs text-white touch-manipulation"
 					onclick={() => removeAttachment(img.id)}
-					aria-label="Remove photo">✕</button
+					aria-label="Remove photo"
 				>
+					<X class="h-3 w-3" aria-hidden="true" />
+				</button>
 			</div>
 		{/each}
 		{#each pendingPhotos as img (img.id)}
@@ -256,8 +259,10 @@
 					type="button"
 					class="shrink-0 rounded-full px-1.5 py-0.5 text-xs text-[var(--gkc-text-muted)] touch-manipulation"
 					onclick={() => removeAttachment(file.id)}
-					aria-label="Remove file">✕</button
+					aria-label="Remove file"
 				>
+					<X class="h-3.5 w-3.5" aria-hidden="true" />
+				</button>
 			</li>
 		{/each}
 	</ul>
@@ -282,18 +287,7 @@
 			onclick={openAttach}
 			aria-label="Attach"
 		>
-			<svg
-				viewBox="0 0 24 24"
-				class="h-5 w-5 fill-none stroke-current"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<path
-					d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-				/>
-			</svg>
+			<Paperclip class="h-5 w-5" aria-hidden="true" />
 		</button>
 		<button
 			type="button"
@@ -302,11 +296,7 @@
 			onclick={openTags}
 			aria-label="Tags"
 		>
-			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"
-				><path
-					d="M20 12l-8 8-9-9V4h7l10 10zM5 6.5C5 5.7 5.7 5 6.5 5S8 5.7 8 6.5 7.3 8 6.5 8 5 7.3 5 6.5z"
-				/></svg
-			>
+			<Tag class="h-5 w-5" aria-hidden="true" />
 		</button>
 	</div>
 
@@ -318,21 +308,7 @@
 			aria-label="Color"
 			onclick={() => onOpenColor?.()}
 		>
-			<svg
-				viewBox="0 0 24 24"
-				class="h-5 w-5 fill-none stroke-current"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				><path
-					d="M12 3a9 9 0 1 0 9 9c0-1.2-1-2.1-2.2-2.1h-1.5a1.8 1.8 0 0 0-1.7 2.4 1.8 1.8 0 0 1-1.7 2.4A9 9 0 0 1 12 3z"
-				/><circle cx="7.5" cy="10" r=".75" class="fill-current" /><circle
-					cx="10"
-					cy="6.8"
-					r=".75"
-					class="fill-current"
-				/><circle cx="14" cy="6.8" r=".75" class="fill-current" /></svg
-			>
+			<Palette class="h-5 w-5" aria-hidden="true" />
 		</button>
 		{#if showCopy}
 			<button
@@ -342,21 +318,11 @@
 				aria-label="Copy note"
 				onclick={() => onCopy?.()}
 			>
-				{#if copyFlash}<svg
-						viewBox="0 0 24 24"
-						class="h-5 w-5 fill-none stroke-current"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"><path d="M5 12l4 4L19 6" /></svg
-					>{:else}<svg
-						viewBox="0 0 24 24"
-						class="h-5 w-5 fill-none stroke-current"
-						stroke-width="2"
-						stroke-linejoin="round"
-						><rect x="9" y="9" width="10" height="11" rx="1" /><path
-							d="M15 9V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4"
-						/></svg
-					>{/if}
+				{#if copyFlash}
+					<Check class="h-5 w-5" aria-hidden="true" />
+				{:else}
+					<Copy class="h-5 w-5" aria-hidden="true" />
+				{/if}
 			</button>
 		{/if}
 		{#if showArchive}
@@ -367,9 +333,7 @@
 				aria-label={archived ? 'Unarchive' : 'Archive'}
 				onclick={() => onArchive?.()}
 			>
-				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"
-					><path d="M20 6h-8V4H4v2H2v4h20V6h-2zM4 12v8h16v-8H4z" /></svg
-				>
+				<Archive class="h-5 w-5" aria-hidden="true" />
 			</button>
 		{/if}
 		{#if showDelete}
@@ -380,13 +344,7 @@
 				aria-label="Delete note"
 				onclick={() => onDelete?.()}
 			>
-				<svg
-					viewBox="0 0 24 24"
-					class="h-5 w-5 fill-none stroke-current"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m2 0v14H6V6m4 4v6m4-6v6" /></svg
-				>
+				<Trash2 class="h-5 w-5" aria-hidden="true" />
 			</button>
 		{/if}
 		{#if onClose}
@@ -397,13 +355,7 @@
 				aria-label="Done"
 				onclick={() => onClose?.()}
 			>
-				<svg
-					viewBox="0 0 24 24"
-					class="h-5 w-5 fill-none stroke-current"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"><path d="M5 12l4 4L19 6" /></svg
-				>
+				<Check class="h-5 w-5" aria-hidden="true" />
 			</button>
 		{/if}
 	</div>

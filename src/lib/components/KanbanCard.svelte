@@ -2,8 +2,9 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { KEEP_COLORS, KEEP_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
-	import { activateOnKeyboard, formatReminder } from '$lib/utils';
+	import { activateOnKeyboard } from '$lib/utils';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
+	import ReminderLabel from './ReminderLabel.svelte';
 
 	let {
 		note,
@@ -197,8 +198,8 @@
 >
 	<div class="scrollable max-h-[220px] overflow-x-hidden overflow-y-auto p-3">
 		{#if note.reminder != null}
-			<div class="mb-1 flex items-center gap-1 text-xs text-[var(--gkc-text-muted)]">
-				<span>⏰</span>{formatReminder(note.reminder)}
+			<div class="mb-1">
+				<ReminderLabel reminder={note.reminder} variant="inline" />
 			</div>
 		{/if}
 		{#if note.title}

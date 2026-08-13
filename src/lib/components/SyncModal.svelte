@@ -4,6 +4,7 @@
 	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { Cloud, X } from '@lucide/svelte';
 
 	let { onClose }: { onClose: () => void } = $props();
 	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'choice' | 'linked'>(
@@ -259,8 +260,16 @@
 		transition:fly={{ y: 20, duration: 200 }}
 	>
 		<div class="mb-4 flex items-center justify-between">
-			<h2 id="sync-title" class="text-lg font-medium text-[var(--gkc-text)]">☁️ Sync</h2>
-			<button type="button" onclick={close} class="icon-btn h-8 w-8" aria-label="Close">✕</button>
+			<h2
+				id="sync-title"
+				class="flex items-center gap-2 text-lg font-medium text-[var(--gkc-text)]"
+			>
+				<Cloud class="h-5 w-5" aria-hidden="true" />
+				Sync
+			</h2>
+			<button type="button" onclick={close} class="icon-btn h-8 w-8" aria-label="Close">
+				<X class="h-4 w-4" aria-hidden="true" />
+			</button>
 		</div>
 
 		{#if mode === 'linked' && syncStore.account}
