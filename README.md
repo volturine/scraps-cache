@@ -25,7 +25,7 @@ trash/archive — and a ciphertext-only relay that never sees your note contents
 - **Notes** — title, body, colors, pins, archive, trash
 - **Checklists** — `[ ]` / `[x]` lines in the note body
 - **Labels** — organize and filter notes
-- **Reminders** — time-based reminders view
+- **Reminders** — time-based reminders with on-device notifications while Shard is open
 - **Attachments** — photos and files; images optimized client-side (EXIF stripped)
 - **Kanban** — boards with custom backlog filters
 - **Search** — local full-text style filtering on your device

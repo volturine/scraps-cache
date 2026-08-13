@@ -7,7 +7,9 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Topbar from '$lib/components/Topbar.svelte';
 	import NoteEditor from '$lib/components/NoteEditor.svelte';
+	import ReminderAlert from '$lib/components/ReminderAlert.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
+	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { provideEditorActions } from '$lib/editorContext';
 	import { fade, fly } from 'svelte/transition';
 	import { onMount } from 'svelte';
@@ -17,18 +19,37 @@
 
 	let { children } = $props();
 	const mobile = new MediaQuery('max-width: 767px');
+	let editingId = $state<string | null>(null);
+	let editorDismissTick = $state(0);
+	let editorFocusOnOpen = $state(false);
+
+	function openEditor(id: string) {
+		editorFocusOnOpen = false;
+		editingId = id;
+	}
+
+	function openNoteFromQuery() {
+		const noteId = new URL(window.location.href).searchParams.get('note');
+		if (!noteId || !notesStore.notes.some((note) => note.id === noteId)) return;
+		editingId = noteId;
+		const next = new URL(window.location.href);
+		next.searchParams.delete('note');
+		history.replaceState(history.state, '', `${next.pathname}${next.search}${next.hash}`);
+	}
 
 	onMount(() => {
 		attachSyncCloudIndicator(syncStore);
 		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(() => {
+			openNoteFromQuery();
 			if (syncStore.isLoggedIn) setTimeout(() => notesStore.syncWithCloud(), 3000);
 		});
+		const stopReminders = reminderStore.attach(openEditor);
 		if ('serviceWorker' in navigator) {
 			if (import.meta.env.PROD) {
 				// Version query forces browsers to re-fetch sw.js after deploys.
 				void navigator.serviceWorker
-					.register('/sw.js?v=2')
+					.register('/sw.js?v=3')
 					.then((reg) => reg.update())
 					.catch(() => undefined);
 			} else {
@@ -40,11 +61,8 @@
 					.catch(() => undefined);
 			}
 		}
+		return stopReminders;
 	});
-
-	let editingId = $state<string | null>(null);
-	let editorDismissTick = $state(0);
-	let editorFocusOnOpen = $state(false);
 
 	$effect(() => {
 		const dark = uiStore.effectiveDark;
@@ -56,11 +74,6 @@
 		document.documentElement.style.backgroundColor = bg;
 		document.body.style.backgroundColor = bg;
 	});
-
-	function openEditor(id: string) {
-		editorFocusOnOpen = false;
-		editingId = id;
-	}
 
 	function startNewNote() {
 		const routeLabelId = page.params.label;
@@ -84,6 +97,10 @@
 	}
 
 	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: requestCloseEditor });
+
+	$effect(() => {
+		reminderStore.sync(notesStore.notes);
+	});
 
 	// Toggle editor-open class on <html> for compositing isolation.
 	$effect(() => {
@@ -146,6 +163,7 @@
 				</main>
 				<div class="app-float" data-app-float>
 					<BottomNav />
+					<ReminderAlert />
 					<NoteEditor
 						noteId={editingId}
 						dismissTick={editorDismissTick}

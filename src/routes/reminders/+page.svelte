@@ -4,11 +4,17 @@
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+	import { notificationPermission, requestReminderPermission } from '$lib/reminderNotify';
 	import { AlarmClock } from '@lucide/svelte';
 
 	const { openNote: openEditor, startNewNote } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
 	const shell = $derived(notesShellClass());
+	let permission = $state(notificationPermission());
+
+	async function enableNotifications() {
+		permission = await requestReminderPermission();
+	}
 </script>
 
 <div class="pt-4 pb-8">
@@ -26,6 +32,22 @@
 			>
 				Reminders
 			</h2>
+			{#if permission === 'default'}
+				<div
+					class="mb-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-3 py-2.5"
+				>
+					<p class="text-xs text-[var(--gkc-text-muted)]">
+						Allow notifications to see reminders when Shard is in the background.
+					</p>
+					<button
+						type="button"
+						class="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+						onclick={() => void enableNotifications()}
+					>
+						Enable
+					</button>
+				</div>
+			{/if}
 		</div>
 		<NotesFeed notes={reminders} onOpen={openEditor} />
 	{/if}

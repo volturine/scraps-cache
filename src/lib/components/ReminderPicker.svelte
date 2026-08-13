@@ -2,6 +2,7 @@
 	import { SvelteDate } from 'svelte/reactivity';
 	import WheelPicker from './WheelPicker.svelte';
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
+	import { requestReminderPermission } from '$lib/reminderNotify';
 
 	let {
 		reminder,
@@ -124,7 +125,8 @@
 		selected = d;
 	}
 
-	function save() {
+	async function save() {
+		await requestReminderPermission();
 		apply(selected.getTime());
 	}
 	function clear() {
@@ -168,6 +170,9 @@
 		<div class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--shard-text)]">
 			<AlarmClock class="h-4 w-4 shrink-0" aria-hidden="true" />
 			<span class="min-w-0 truncate">{willSaveLabel}</span>
+		</div>
+		<div class="mt-1 text-[11px] leading-snug text-[var(--gkc-text-muted)]">
+			Notifies on this device while Shard is open.
 		</div>
 	</div>
 

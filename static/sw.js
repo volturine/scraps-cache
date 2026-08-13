@@ -90,3 +90,23 @@ self.addEventListener('fetch', (event) => {
 			.catch(() => caches.match(req).then((res) => res || fetch(req)))
 	);
 });
+
+self.addEventListener('notificationclick', (event) => {
+	event.notification.close();
+	const noteId = event.notification.data && event.notification.data.noteId;
+	const path = typeof noteId === 'string' && noteId ? '/?note=' + encodeURIComponent(noteId) : '/';
+	event.waitUntil(
+		self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+			for (const client of clients) {
+				try {
+					if (new URL(client.url).origin !== self.location.origin) continue;
+				} catch {
+					continue;
+				}
+				client.postMessage({ type: 'open-note', noteId: typeof noteId === 'string' ? noteId : null });
+				if ('focus' in client) return client.focus();
+			}
+			if (self.clients.openWindow) return self.clients.openWindow(path);
+		})
+	);
+});

@@ -48,6 +48,16 @@ import { formatStorageError } from '$lib/imageBlob';
 import type { NoteImage } from '$lib/types';
 import { normalizeBackup, type BackupImportProgress, type ShardBackup } from '$lib/backup';
 
+/** True when closing the editor should throw the note away. */
+export function noteIsBlank(note: Note): boolean {
+	return (
+		!note.title.trim() &&
+		!(note.body ?? '').trim() &&
+		note.reminder == null &&
+		!noteAttachments(note).some((attachment) => attachment.dataUrl.length > 0)
+	);
+}
+
 export class NotesStore {
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
@@ -282,12 +292,7 @@ export class NotesStore {
 
 	discardIfEmpty(id: string): void {
 		const n = this.notes.find((x) => x.id === id);
-		if (!n) return;
-		const empty =
-			!n.title.trim() &&
-			!(n.body ?? '').trim() &&
-			!noteAttachments(n).some((attachment) => attachment.dataUrl.length > 0);
-		if (!empty) return;
+		if (!n || !noteIsBlank(n)) return;
 		this.deleteNoteForever(id);
 	}
 

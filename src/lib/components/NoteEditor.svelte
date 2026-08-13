@@ -13,6 +13,7 @@
 	import BodyEditor from './BodyEditor.svelte';
 	import LinkPreview from './LinkPreview.svelte';
 	import { extractHttpUrls } from '$lib/linkPreview';
+	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Bell, ChevronLeft, Pin } from '@lucide/svelte';
@@ -31,8 +32,10 @@
 
 	const note = $derived(noteId ? notesStore.notes.find((n) => n.id === noteId) : null);
 	const isOpen = $derived(noteId !== null && note !== null);
-	const reminderOverdue = $derived(note?.reminder != null && isReminderOverdue(note.reminder));
-	const reminderLabel = $derived(formatReminder(note?.reminder ?? null));
+	const reminderOverdue = $derived(
+		note?.reminder != null && isReminderOverdue(note.reminder, appClock.now)
+	);
+	const reminderLabel = $derived(formatReminder(note?.reminder ?? null, appClock.now));
 
 	let taskFocusLine = $state<number | null>(null);
 
