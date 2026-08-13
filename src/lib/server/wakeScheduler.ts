@@ -55,11 +55,11 @@ export class WakeScheduler {
 					continue;
 				}
 				if (result === 'gone') {
-					this.store().deletePushDevice(device.accountId, device.deviceId);
+					this.store().deletePushDevice(device.deviceId);
 					recordReminderWake('gone');
 					continue;
 				}
-				this.store().clearDueWakes(device.accountId, device.deviceId, now);
+				this.store().clearDueWakes(device.deviceId, now);
 				recordReminderWake('sent');
 				sent += 1;
 			}

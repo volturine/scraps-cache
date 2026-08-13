@@ -3,6 +3,7 @@
 	import WheelPicker from './WheelPicker.svelte';
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import { requestReminderPermission } from '$lib/reminderNotify';
+	import { ensurePushSubscription } from '$lib/reminderWake';
 
 	let {
 		reminder,
@@ -127,6 +128,7 @@
 
 	async function save() {
 		await requestReminderPermission();
+		await ensurePushSubscription();
 		apply(selected.getTime());
 	}
 	function clear() {
@@ -172,7 +174,7 @@
 			<span class="min-w-0 truncate">{willSaveLabel}</span>
 		</div>
 		<div class="mt-1 text-[11px] leading-snug text-[var(--gkc-text-muted)]">
-			Notifies on this device. Sync can wake it after Shard is closed.
+			Notifies on this device, including after Shard is closed.
 		</div>
 	</div>
 

@@ -10,6 +10,7 @@
 	import ReminderAlert from '$lib/components/ReminderAlert.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
+	import { preloadVapidPublicKey } from '$lib/reminderWake';
 	import { provideEditorActions } from '$lib/editorContext';
 	import { fade, fly } from 'svelte/transition';
 	import { onMount } from 'svelte';
@@ -46,12 +47,14 @@
 			if (syncStore.isLoggedIn) setTimeout(() => notesStore.syncWithCloud(), 3000);
 		});
 		const stopReminders = reminderStore.attach(openEditor);
+		void preloadVapidPublicKey();
 		if ('serviceWorker' in navigator) {
 			if (import.meta.env.PROD) {
 				// Version query forces browsers to re-fetch sw.js after deploys.
 				void navigator.serviceWorker
-					.register('/sw.js?v=4')
+					.register('/sw.js?v=5')
 					.then((reg) => reg.update())
+					.then(() => reminderStore.sync(notesStore.notes))
 					.catch(() => undefined);
 			} else {
 				void navigator.serviceWorker

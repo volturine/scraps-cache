@@ -5,6 +5,8 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { notificationPermission, requestReminderPermission } from '$lib/reminderNotify';
+	import { ensurePushSubscription } from '$lib/reminderWake';
+	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { AlarmClock } from '@lucide/svelte';
 
 	const { openNote: openEditor, startNewNote } = useEditorActions();
@@ -14,6 +16,8 @@
 
 	async function enableNotifications() {
 		permission = await requestReminderPermission();
+		await ensurePushSubscription();
+		reminderStore.sync(notesStore.notes);
 	}
 </script>
 
@@ -37,7 +41,7 @@
 					class="mb-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-3 py-2.5"
 				>
 					<p class="text-xs text-[var(--gkc-text-muted)]">
-						Allow notifications so sync can wake this device after Shard is closed.
+						Allow notifications so this device can alert you after Shard is closed.
 					</p>
 					<button
 						type="button"
