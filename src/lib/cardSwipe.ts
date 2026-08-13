@@ -41,7 +41,10 @@ export function createCardSwipe(opts: {
 	function onPointerDown(e: PointerEvent) {
 		if (tracking) return;
 		const target = e.target as HTMLElement;
-		if (target.closest('[data-checklist-toggle], [data-photo], [data-file], button, input, textarea')) return;
+		if (
+			target.closest('[data-checklist-toggle], [data-photo], [data-file], button, input, textarea')
+		)
+			return;
 
 		// Keep the pointer until we can identify its direction, but do not promote
 		// the card to a transformed layer yet. On iOS, transforming a card before

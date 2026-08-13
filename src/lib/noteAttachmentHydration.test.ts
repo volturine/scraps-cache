@@ -18,7 +18,11 @@ describe('mergeHydratedImages', () => {
 	});
 
 	it('does not resurrect an attachment removed while loading', () => {
-		expect(mergeHydratedImages([image('kept')], [image('removed', 'data:removed'), image('kept', 'data:kept')]))
-			.toEqual([image('kept', 'data:kept')]);
+		expect(
+			mergeHydratedImages(
+				[image('kept')],
+				[image('removed', 'data:removed'), image('kept', 'data:kept')]
+			)
+		).toEqual([image('kept', 'data:kept')]);
 	});
 });

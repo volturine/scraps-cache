@@ -19,7 +19,11 @@
 	let navigationFrame: number | null = null;
 	let navigationTimer: ReturnType<typeof setTimeout> | null = null;
 
-	const navItems: { view: View; label: string; icon: 'notes' | 'kanban' | 'reminders' | 'archive' | 'trash' }[] = [
+	const navItems: {
+		view: View;
+		label: string;
+		icon: 'notes' | 'kanban' | 'reminders' | 'archive' | 'trash';
+	}[] = [
 		{ view: 'notes', label: 'Notes', icon: 'notes' },
 		{ view: 'kanban', label: 'Kanban', icon: 'kanban' },
 		{ view: 'reminders', label: 'Reminders', icon: 'reminders' },
@@ -55,14 +59,16 @@
 		// first animation frame. Commit the selection, then begin navigation from a
 		// timer scheduled *after* the next rendering update. This is an actual paint
 		// boundary rather than merely queueing goto() beside the state change.
-		flushSync(() => { uiStore.pendingPath = target; });
+		flushSync(() => {
+			uiStore.pendingPath = target;
+		});
 		if (navigationFrame !== null) cancelAnimationFrame(navigationFrame);
 		if (navigationTimer !== null) clearTimeout(navigationTimer);
 		navigationFrame = requestAnimationFrame(() => {
 			navigationFrame = null;
 			navigationTimer = setTimeout(() => {
 				navigationTimer = null;
-					void goto(resolve(target)).finally(() => {
+				void goto(resolve(target)).finally(() => {
 					if (uiStore.pendingPath === target) uiStore.pendingPath = null;
 				});
 			}, 0);
@@ -155,32 +161,67 @@
 		<button
 			type="button"
 			onclick={() => navigate(item.view)}
-			class="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 {isActive(item.view)
+			class="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 {isActive(
+				item.view
+			)
 				? 'nav-active'
 				: 'text-[var(--gkc-text-muted)]'}"
 		>
-			<span class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text)]" aria-hidden="true">
+			<span
+				class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text)]"
+				aria-hidden="true"
+			>
 				{#if item.icon === 'notes'}
-					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+					<svg
+						viewBox="0 0 24 24"
+						class="h-[18px] w-[18px] fill-none stroke-current"
+						stroke-width="1.75"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
 						<path d="M7 3.5h7.5L19 8v12.5a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1z" />
 						<path d="M14.5 3.5V8H19M9 12h6M9 15.5h6" />
 					</svg>
 				{:else if item.icon === 'kanban'}
-					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+					<svg
+						viewBox="0 0 24 24"
+						class="h-[18px] w-[18px] fill-none stroke-current"
+						stroke-width="1.75"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
 						<rect x="3.5" y="4" width="17" height="16" rx="1.5" />
 						<path d="M9 4v16M15 4v16M5.5 8h1M11 8h2M17 8h1M5.5 12h1M11 12h2M17 12h1" />
 					</svg>
 				{:else if item.icon === 'reminders'}
-					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+					<svg
+						viewBox="0 0 24 24"
+						class="h-[18px] w-[18px] fill-none stroke-current"
+						stroke-width="1.75"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
 						<circle cx="12" cy="13" r="7" />
 						<path d="M12 10v3.5l2 1.5M9 3.5h6" />
 					</svg>
 				{:else if item.icon === 'archive'}
-					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+					<svg
+						viewBox="0 0 24 24"
+						class="h-[18px] w-[18px] fill-none stroke-current"
+						stroke-width="1.75"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
 						<path d="M4 7h16v3H4zM6 10v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-8M10 14h4" />
 					</svg>
 				{:else}
-					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+					<svg
+						viewBox="0 0 24 24"
+						class="h-[18px] w-[18px] fill-none stroke-current"
+						stroke-width="1.75"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
 						<path d="M3 6h18M8 6V4h8v2m2 0v14H6V6m4 4v6m4-6v6" />
 					</svg>
 				{/if}
@@ -196,7 +237,10 @@
 
 	<section class="mt-5" data-labels-edit aria-label="Labels">
 		<div class="mb-1 flex h-8 items-center gap-2 pl-4 pr-2">
-			<span class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--gkc-text-muted)]">Labels</span>
+			<span
+				class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--gkc-text-muted)]"
+				>Labels</span
+			>
 			{#if labelsEditMode}
 				<button
 					type="button"
@@ -215,7 +259,14 @@
 					aria-label="Edit labels"
 					title="Edit labels"
 				>
-					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<svg
+						viewBox="0 0 24 24"
+						class="h-4 w-4 fill-none stroke-current"
+						stroke-width="1.75"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
 						<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
 					</svg>
 				</button>
@@ -223,12 +274,18 @@
 		</div>
 
 		{#if labelsEditMode}
-			<div
-				class="mb-1 flex items-center gap-3 rounded-xl px-4 py-2"
-				data-sidebar-stay-open
-			>
-				<span class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]" aria-hidden="true">
-					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+			<div class="mb-1 flex items-center gap-3 rounded-xl px-4 py-2" data-sidebar-stay-open>
+				<span
+					class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]"
+					aria-hidden="true"
+				>
+					<svg
+						viewBox="0 0 24 24"
+						class="h-4 w-4 fill-none stroke-current"
+						stroke-width="1.75"
+						stroke-linecap="round"
+						aria-hidden="true"
+					>
 						<path d="M12 5v14M5 12h14" />
 					</svg>
 				</span>
@@ -261,7 +318,13 @@
 				class="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 			>
 				<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+					<svg
+						viewBox="0 0 24 24"
+						class="h-4 w-4 fill-none stroke-current"
+						stroke-width="1.75"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
 						<path d="M20.5 12.5 12 21l-8.5-8.5V4.5H12z" />
 						<circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
 					</svg>
@@ -272,9 +335,21 @@
 			<div class="flex flex-col gap-0.5">
 				{#each notesStore.labels as label (label.id)}
 					{#if labelsEditMode && renamingId === label.id}
-						<div class="flex items-center gap-3 rounded-xl px-4 py-2 dark:bg-white/[0.04]" data-sidebar-stay-open>
-							<span class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]" aria-hidden="true">
-								<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+						<div
+							class="flex items-center gap-3 rounded-xl px-4 py-2 dark:bg-white/[0.04]"
+							data-sidebar-stay-open
+						>
+							<span
+								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]"
+								aria-hidden="true"
+							>
+								<svg
+									viewBox="0 0 24 24"
+									class="h-4 w-4 fill-none stroke-current"
+									stroke-width="1.75"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
 									<path d="M20.5 12.5 12 21l-8.5-8.5V4.5H12z" />
 									<circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
 								</svg>
@@ -293,8 +368,17 @@
 						</div>
 					{:else if labelsEditMode}
 						<div class="flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2">
-							<span class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]" aria-hidden="true">
-								<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+							<span
+								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]"
+								aria-hidden="true"
+							>
+								<svg
+									viewBox="0 0 24 24"
+									class="h-4 w-4 fill-none stroke-current"
+									stroke-width="1.75"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
 									<path d="M20.5 12.5 12 21l-8.5-8.5V4.5H12z" />
 									<circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
 								</svg>
@@ -316,7 +400,13 @@
 								aria-label={`Delete ${label.name}`}
 								title="Delete"
 							>
-								<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+								<svg
+									viewBox="0 0 24 24"
+									class="h-3.5 w-3.5 fill-none stroke-current"
+									stroke-width="1.75"
+									stroke-linecap="round"
+									aria-hidden="true"
+								>
 									<path d="M6 6l12 12M18 6 6 18" />
 								</svg>
 							</button>
@@ -325,19 +415,30 @@
 						<button
 							type="button"
 							onclick={() => navigate('label', label.id)}
-							class="flex w-full items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-left text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 {isActive('label', label.id)
+							class="flex w-full items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-left text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 {isActive(
+								'label',
+								label.id
+							)
 								? 'nav-active'
 								: 'text-[var(--gkc-text-muted)]'}"
 						>
 							<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-								<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+								<svg
+									viewBox="0 0 24 24"
+									class="h-4 w-4 fill-none stroke-current"
+									stroke-width="1.75"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
 									<path d="M20.5 12.5 12 21l-8.5-8.5V4.5H12z" />
 									<circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
 								</svg>
 							</span>
 							<span class="min-w-0 flex-1 truncate">{label.name}</span>
 							{#if (labelCounts.get(label.id) ?? 0) > 0}
-								<span class="shrink-0 text-xs tabular-nums opacity-70">{labelCounts.get(label.id)}</span>
+								<span class="shrink-0 text-xs tabular-nums opacity-70"
+									>{labelCounts.get(label.id)}</span
+								>
 							{/if}
 						</button>
 					{/if}
@@ -348,7 +449,7 @@
 </aside>
 
 {#if pendingDelete}
-		<div
+	<div
 		class="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center"
 		role="presentation"
 		data-sidebar-stay-open
@@ -356,20 +457,24 @@
 			if (event.target === event.currentTarget) cancelDelete();
 		}}
 	>
-			<div
-				class="w-full max-w-sm rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
-				role="dialog"
-				tabindex="-1"
-				aria-modal="true"
-				aria-labelledby="label-delete-title"
-				data-sidebar-stay-open
-			>
+		<div
+			class="w-full max-w-sm rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
+			role="dialog"
+			tabindex="-1"
+			aria-modal="true"
+			aria-labelledby="label-delete-title"
+			data-sidebar-stay-open
+		>
 			<h2 id="label-delete-title" class="text-base font-semibold text-[var(--gkc-text)]">
 				Delete “{pendingDelete.name}”?
 			</h2>
 			<p class="mt-1.5 text-sm leading-snug text-[var(--gkc-text-muted)]">
 				{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
-					This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(pendingDelete.id) ?? 0) === 1 ? '' : 's'}.
+					This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
+						pendingDelete.id
+					) ?? 0) === 1
+						? ''
+						: 's'}.
 				{:else}
 					No notes currently use this label.
 				{/if}

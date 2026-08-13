@@ -24,7 +24,12 @@ type StoredBoard = {
 function normalizeBoard(value: unknown): KanbanBoard | null {
 	if (!value || typeof value !== 'object') return null;
 	const board = value as StoredBoard;
-	if (typeof board.id !== 'string' || typeof board.name !== 'string' || !Array.isArray(board.columns)) return null;
+	if (
+		typeof board.id !== 'string' ||
+		typeof board.name !== 'string' ||
+		!Array.isArray(board.columns)
+	)
+		return null;
 
 	const usedLabels = new Set<string>();
 	let hasBacklog = false;
@@ -58,10 +63,12 @@ function normalizeBoard(value: unknown): KanbanBoard | null {
 }
 
 function normalizeBoards(value: unknown): KanbanBoard[] {
-	return Array.isArray(value) ? value.flatMap((board): KanbanBoard[] => {
-		const normalized = normalizeBoard(board);
-		return normalized ? [normalized] : [];
-	}) : [];
+	return Array.isArray(value)
+		? value.flatMap((board): KanbanBoard[] => {
+				const normalized = normalizeBoard(board);
+				return normalized ? [normalized] : [];
+			})
+		: [];
 }
 
 function readBoards(): KanbanBoard[] {
@@ -79,9 +86,11 @@ function readTombstones(): Record<string, number> {
 	try {
 		const value: unknown = JSON.parse(localStorage.getItem(BOARD_TOMBSTONES_KEY) || '{}');
 		if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-		return Object.fromEntries(Object.entries(value).flatMap(([id, updatedAt]) =>
-			typeof id === 'string' && Number(updatedAt) > 0 ? [[id, Number(updatedAt)]] : []
-		));
+		return Object.fromEntries(
+			Object.entries(value).flatMap(([id, updatedAt]) =>
+				typeof id === 'string' && Number(updatedAt) > 0 ? [[id, Number(updatedAt)]] : []
+			)
+		);
 	} catch {
 		return {};
 	}
@@ -95,7 +104,9 @@ export class KanbanStore {
 	constructor() {
 		if (typeof localStorage !== 'undefined') {
 			const storedId = localStorage.getItem(ACTIVE_BOARD_KEY);
-			this.activeBoardId = this.boards.some((board) => board.id === storedId) ? storedId! : this.boards[0].id;
+			this.activeBoardId = this.boards.some((board) => board.id === storedId)
+				? storedId!
+				: this.boards[0].id;
 		} else {
 			this.activeBoardId = this.boards[0].id;
 		}
@@ -139,13 +150,19 @@ export class KanbanStore {
 		const merged = mergeKanbanBoards(this.boards, remote, tombstones);
 		this.boardTombstones = tombstones;
 		this.boards = merged.length ? merged : [createKanbanBoard()];
-		if (!this.boards.some((board) => board.id === this.activeBoardId)) this.activeBoardId = this.boards[0].id;
+		if (!this.boards.some((board) => board.id === this.activeBoardId))
+			this.activeBoardId = this.boards[0].id;
 	}
 
 	/** Used for the explicit “discard local data” link flow. */
-	replaceWithCloud(remoteBoards: KanbanBoard[], remoteTombstones: Record<string, number> = {}): void {
+	replaceWithCloud(
+		remoteBoards: KanbanBoard[],
+		remoteTombstones: Record<string, number> = {}
+	): void {
 		this.boardTombstones = { ...remoteTombstones };
-		const boards = normalizeBoards(remoteBoards).filter((board) => (this.boardTombstones[board.id] || 0) < board.updatedAt);
+		const boards = normalizeBoards(remoteBoards).filter(
+			(board) => (this.boardTombstones[board.id] || 0) < board.updatedAt
+		);
 		this.boards = boards.length ? boards : [createKanbanBoard()];
 		this.activeBoardId = this.boards[0].id;
 	}
@@ -197,7 +214,8 @@ export class KanbanStore {
 
 	addTagColumn(boardId: string, labelId: string): KanbanColumn | null {
 		const board = this.boards.find((candidate) => candidate.id === boardId);
-		if (!board || !labelId || board.columns.some((column) => column.labelId === labelId)) return null;
+		if (!board || !labelId || board.columns.some((column) => column.labelId === labelId))
+			return null;
 		const column: KanbanColumn = { id: uid(), labelId };
 		this.changeBoard(boardId, (candidate) => ({
 			...candidate,
@@ -233,7 +251,12 @@ export class KanbanStore {
 		this.changeBoard(boardId, (candidate) => ({ ...candidate, backlogFilter: next }));
 	}
 
-	private changeBoard(boardId: string, change: (board: KanbanBoard) => Omit<KanbanBoard, 'updatedAt'> & Partial<Pick<KanbanBoard, 'updatedAt'>>): void {
+	private changeBoard(
+		boardId: string,
+		change: (
+			board: KanbanBoard
+		) => Omit<KanbanBoard, 'updatedAt'> & Partial<Pick<KanbanBoard, 'updatedAt'>>
+	): void {
 		let changed = false;
 		const updatedAt = Date.now();
 		this.boards = this.boards.map((board) => {

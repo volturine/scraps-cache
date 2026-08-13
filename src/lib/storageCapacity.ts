@@ -9,15 +9,25 @@ export function dataUrlByteLength(dataUrl: string): number {
 	const payload = dataUrl.slice(comma + 1);
 	if (/;base64/i.test(header)) {
 		const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
-		return Math.max(0, Math.floor(payload.length * 3 / 4) - padding);
+		return Math.max(0, Math.floor((payload.length * 3) / 4) - padding);
 	}
-	try { return new TextEncoder().encode(decodeURIComponent(payload)).byteLength; } catch { return payload.length; }
+	try {
+		return new TextEncoder().encode(decodeURIComponent(payload)).byteLength;
+	} catch {
+		return payload.length;
+	}
 }
 
 export function attachmentStorageBytes(notes: Note[]): number {
-	return notes.reduce((total, note) => total + (note.images ?? []).reduce(
-		(noteTotal, image) => noteTotal + dataUrlByteLength(image.dataUrl), 0
-	), 0);
+	return notes.reduce(
+		(total, note) =>
+			total +
+			(note.images ?? []).reduce(
+				(noteTotal, image) => noteTotal + dataUrlByteLength(image.dataUrl),
+				0
+			),
+		0
+	);
 }
 
 export type StorageEstimate = { usage?: number; quota?: number };

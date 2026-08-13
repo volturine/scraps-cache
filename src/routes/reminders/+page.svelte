@@ -11,13 +11,17 @@
 
 <div class="pt-4 pb-8">
 	{#if reminders.length === 0}
-		<div class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]">
+		<div
+			class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]"
+		>
 			<div class="mb-2 text-5xl">⏰</div>
 			<div class="text-sm">No reminders yet. Add one from a note (⏰).</div>
 		</div>
 	{:else}
 		<div class={shell}>
-			<h2 class="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+			<h2
+				class="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]"
+			>
 				Reminders
 			</h2>
 		</div>

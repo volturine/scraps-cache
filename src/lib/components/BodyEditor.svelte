@@ -26,7 +26,13 @@
 
 	let lineIdCounter = 0;
 	function newLine(text = '', isCheck = false, checked = false, indent = 0): Line {
-		return { id: lineIdCounter++, text, isCheck, checked, indent: Math.max(0, Math.min(MAX_TASK_INDENT, indent)) };
+		return {
+			id: lineIdCounter++,
+			text,
+			isCheck,
+			checked,
+			indent: Math.max(0, Math.min(MAX_TASK_INDENT, indent))
+		};
 	}
 
 	function parseBodyToLines(raw: string): Line[] {
@@ -128,7 +134,10 @@
 	}
 
 	function plainRunText(start: number): string {
-		return lines.slice(start, plainRunEnd(start) + 1).map((line) => line.text).join('\n');
+		return lines
+			.slice(start, plainRunEnd(start) + 1)
+			.map((line) => line.text)
+			.join('\n');
 	}
 
 	function onPlainRunInput(start: number, e: Event) {
@@ -169,7 +178,9 @@
 		const runStart = start;
 		void tick().then(() => {
 			requestAnimationFrame(() => {
-				const el = container?.querySelector(`[data-plain-run="${runStart}"]`) as HTMLTextAreaElement | null;
+				const el = container?.querySelector(
+					`[data-plain-run="${runStart}"]`
+				) as HTMLTextAreaElement | null;
 				if (!el) return;
 				const max = el.value.length;
 				el.setSelectionRange(Math.min(selectionStart, max), Math.min(selectionEnd, max));
@@ -255,8 +266,7 @@
 					handoffFocusToExisting(prevIndex, caret, prevId);
 					lines.splice(i, 1);
 					draftTaskId = null;
-					const focusIndex =
-						prevId != null ? lines.findIndex((row) => row.id === prevId) : -1;
+					const focusIndex = prevId != null ? lines.findIndex((row) => row.id === prevId) : -1;
 					const idx = focusIndex >= 0 ? focusIndex : Math.max(0, i - 1);
 					handoffFocusToExisting(idx, caret, prevId);
 					return;
@@ -379,7 +389,10 @@
 			draftTaskId = null;
 		}
 		let insertAt = rootIndex + 1;
-		while (insertAt < lines.length && (!lines[insertAt].isCheck || lines[insertAt].indent > root.indent)) {
+		while (
+			insertAt < lines.length &&
+			(!lines[insertAt].isCheck || lines[insertAt].indent > root.indent)
+		) {
 			insertAt += 1;
 		}
 		const draft = newLine('', true, false, 1);
@@ -400,7 +413,7 @@
 			const byId = lines.findIndex((line) => line.id === lineId);
 			if (byId >= 0) resolvedIndex = byId;
 		}
-		let caret = cursor ?? (lines[resolvedIndex]?.text.length ?? 0);
+		let caret = cursor ?? lines[resolvedIndex]?.text.length ?? 0;
 		// Prefer stable line id so inserts/deletes cannot point at the wrong row.
 		let el =
 			(lineId != null
@@ -505,7 +518,11 @@
 		});
 	}
 
-	async function focusLineAfterRender(idx: number, cursor: number | null, lineId: number | null = null) {
+	async function focusLineAfterRender(
+		idx: number,
+		cursor: number | null,
+		lineId: number | null = null
+	) {
 		const requestId = ++focusRequestSeq;
 		await tick();
 		if (requestId !== focusRequestSeq) return;
@@ -539,7 +556,10 @@
 			lines = lines.filter((line) => line.id !== draftTaskId);
 			draftTaskId = null;
 		}
-		selectedLine = Math.max(0, lines.findIndex((line) => line.id === selectedId));
+		selectedLine = Math.max(
+			0,
+			lines.findIndex((line) => line.id === selectedId)
+		);
 		const rootLine = parentTaskIndex(selectedLine);
 		focusedRootId = lines[rootLine]?.isCheck ? lines[rootLine].id : null;
 		// Preserve the exact task the user tapped; the root only controls which
@@ -587,7 +607,6 @@
 	});
 
 	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
-
 </script>
 
 {#snippet taskRow(line: Line, i: number)}
@@ -625,12 +644,14 @@
 			placeholder={line.indent > 0 ? 'Sub-task' : 'Task'}
 			class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked
 				? 'line-through opacity-50'
-				: ''} {line.indent > 0 ? 'text-[13px]' : ''}"
-		></textarea>
+				: ''} {line.indent > 0 ? 'text-[13px]' : ''}"></textarea>
 	</div>
 {/snippet}
 
-<div bind:this={container} class="block w-full min-w-0 text-sm leading-relaxed text-[var(--gkc-text)]">
+<div
+	bind:this={container}
+	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--gkc-text)]"
+>
 	{#each lines as line, i (line.id)}
 		{#if line.isCheck}
 			{#if focusedRootId !== null && line.id === focusedRootId}

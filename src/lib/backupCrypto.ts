@@ -50,8 +50,8 @@ function bytesToBase64Url(bytes: Uint8Array): string {
 
 function base64UrlToBytes(value: string): Uint8Array {
 	if (!/^[A-Za-z0-9_-]*$/.test(value)) throw new Error('Backup contains invalid encoded data');
-	const padded = value.replaceAll('-', '+').replaceAll('_', '/')
-		+ '='.repeat((4 - value.length % 4) % 4);
+	const padded =
+		value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4);
 	return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
 }
 
@@ -60,9 +60,17 @@ function validateKdf(kdf: BackupKdf): void {
 	if (kdf.name !== 'argon2id' || saltBytes.length < 16 || saltBytes.length > 64) {
 		throw new Error('Backup has invalid key settings');
 	}
-	if (!Number.isInteger(kdf.memoryKiB) || kdf.memoryKiB < 8 || kdf.memoryKiB > 262_144
-		|| !Number.isInteger(kdf.iterations) || kdf.iterations < 1 || kdf.iterations > 10
-		|| !Number.isInteger(kdf.parallelism) || kdf.parallelism < 1 || kdf.parallelism > 4) {
+	if (
+		!Number.isInteger(kdf.memoryKiB) ||
+		kdf.memoryKiB < 8 ||
+		kdf.memoryKiB > 262_144 ||
+		!Number.isInteger(kdf.iterations) ||
+		kdf.iterations < 1 ||
+		kdf.iterations > 10 ||
+		!Number.isInteger(kdf.parallelism) ||
+		kdf.parallelism < 1 ||
+		kdf.parallelism > 4
+	) {
 		throw new Error('Backup has unsafe key settings');
 	}
 }
@@ -81,25 +89,29 @@ async function deriveKey(passphrase: string, kdf: BackupKdf): Promise<Uint8Array
 }
 
 function chunkAad(kdf: BackupKdf, index: number, count: number): Uint8Array {
-	return encoder.encode(JSON.stringify({
-		format: FORMAT,
-		version: FORMAT_VERSION,
-		kdf,
-		index,
-		count
-	}));
+	return encoder.encode(
+		JSON.stringify({
+			format: FORMAT,
+			version: FORMAT_VERSION,
+			kdf,
+			index,
+			count
+		})
+	);
 }
 
 export function isEncryptedShardBackup(value: unknown): value is EncryptedShardBackup {
 	if (!value || typeof value !== 'object') return false;
 	const candidate = value as Partial<EncryptedShardBackup>;
-	return candidate.format === FORMAT
-		&& candidate.version === FORMAT_VERSION
-		&& !!candidate.kdf
-		&& candidate.kdf.name === 'argon2id'
-		&& Number.isInteger(candidate.chunkBytes)
-		&& Number.isInteger(candidate.chunkCount)
-		&& Array.isArray(candidate.chunks);
+	return (
+		candidate.format === FORMAT &&
+		candidate.version === FORMAT_VERSION &&
+		!!candidate.kdf &&
+		candidate.kdf.name === 'argon2id' &&
+		Number.isInteger(candidate.chunkBytes) &&
+		Number.isInteger(candidate.chunkCount) &&
+		Array.isArray(candidate.chunks)
+	);
 }
 
 export async function encryptBackup(
@@ -127,7 +139,9 @@ export async function encryptBackup(
 		const nonce = randomBytes(24);
 		const start = index * chunkBytes;
 		const part = plaintext.slice(start, Math.min(plaintext.length, start + chunkBytes));
-		const ciphertext = xchacha20poly1305(key, nonce, chunkAad(kdf, index, chunkCount)).encrypt(part);
+		const ciphertext = xchacha20poly1305(key, nonce, chunkAad(kdf, index, chunkCount)).encrypt(
+			part
+		);
 		chunks.push({
 			nonce: bytesToBase64Url(nonce),
 			ciphertext: bytesToBase64Url(ciphertext)
@@ -143,9 +157,13 @@ export async function decryptBackup(
 ): Promise<unknown> {
 	if (!isEncryptedShardBackup(backup)) throw new Error('Not an encrypted Shard backup');
 	validateKdf(backup.kdf);
-	if (backup.chunkCount < 1 || backup.chunkCount > 100_000
-		|| backup.chunks.length !== backup.chunkCount
-		|| backup.chunkBytes < 1024 || backup.chunkBytes > 8 * 1024 * 1024) {
+	if (
+		backup.chunkCount < 1 ||
+		backup.chunkCount > 100_000 ||
+		backup.chunks.length !== backup.chunkCount ||
+		backup.chunkBytes < 1024 ||
+		backup.chunkBytes > 8 * 1024 * 1024
+	) {
 		throw new Error('Backup is incomplete');
 	}
 	const key = await deriveKey(passphrase, backup.kdf);

@@ -4,7 +4,14 @@ import { mergeLabels, mergeNotes } from './syncMerge';
 describe('sync conflict rules', () => {
 	it('keeps the newer note and its attached image payload', () => {
 		const stored = [{ id: 'n1', updatedAt: 10, title: 'old' }];
-		const incoming = [{ id: 'n1', updatedAt: 20, title: 'new', images: [{ id: 'image', dataUrl: 'data:image/png;base64,AA==' }] }];
+		const incoming = [
+			{
+				id: 'n1',
+				updatedAt: 20,
+				title: 'new',
+				images: [{ id: 'image', dataUrl: 'data:image/png;base64,AA==' }]
+			}
+		];
 		expect(mergeNotes(incoming, stored)).toEqual(incoming);
 	});
 

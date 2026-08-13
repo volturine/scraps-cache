@@ -50,7 +50,9 @@ export function extractHttpUrls(text: string): string[] {
 }
 
 /** Legacy validation used only while normalizing older backup data. */
-export function isUsableLinkPreview(preview: LinkPreview | null | undefined): preview is LinkPreview {
+export function isUsableLinkPreview(
+	preview: LinkPreview | null | undefined
+): preview is LinkPreview {
 	if (!preview?.title) return false;
 	const host = preview.hostname?.toLowerCase?.() ?? '';
 	const title = preview.title.trim().toLowerCase();

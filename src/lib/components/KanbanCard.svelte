@@ -28,7 +28,14 @@
 	}
 
 	function interactiveTarget(target: EventTarget | null): boolean {
-		return target instanceof Element && Boolean(target.closest('button, a, input, textarea, select, [data-checklist-toggle], [data-photo], [data-file], [data-link]'));
+		return (
+			target instanceof Element &&
+			Boolean(
+				target.closest(
+					'button, a, input, textarea, select, [data-checklist-toggle], [data-photo], [data-file], [data-link]'
+				)
+			)
+		);
 	}
 
 	let pointerId: number | null = null;
@@ -70,9 +77,14 @@
 		if (touchDragging) {
 			suppressOpen = true;
 			const target = document.elementFromPoint(event.clientX, event.clientY);
-			const destination = target instanceof Element ? target.closest<HTMLElement>('[data-kanban-column]')?.dataset.kanbanColumn : undefined;
+			const destination =
+				target instanceof Element
+					? target.closest<HTMLElement>('[data-kanban-column]')?.dataset.kanbanColumn
+					: undefined;
 			if (destination) onMove(note.id, sourceColumnId, destination);
-			setTimeout(() => { suppressOpen = false; }, 0);
+			setTimeout(() => {
+				suppressOpen = false;
+			}, 0);
 		}
 		resetTouchDrag();
 	}
@@ -84,12 +96,16 @@
 
 	function solidColumnBackground(element: HTMLElement): string {
 		const layers: HTMLElement[] = [];
-		for (let current: HTMLElement | null = element; current; current = current.parentElement) layers.push(current);
+		for (let current: HTMLElement | null = element; current; current = current.parentElement)
+			layers.push(current);
 		let red = 255;
 		let green = 255;
 		let blue = 255;
 		for (const layer of layers.reverse()) {
-			const parts = getComputedStyle(layer).backgroundColor.match(/rgba?\(([^)]+)\)/)?.[1].split(',').map(Number);
+			const parts = getComputedStyle(layer)
+				.backgroundColor.match(/rgba?\(([^)]+)\)/)?.[1]
+				.split(',')
+				.map(Number);
 			if (!parts || parts.length < 3) continue;
 			const alpha = parts[3] ?? 1;
 			red = parts[0] * alpha + red * (1 - alpha);
@@ -136,14 +152,19 @@
 	function onNativeDragStart(event: DragEvent) {
 		if (!event.dataTransfer) return;
 		event.dataTransfer.effectAllowed = 'move';
-		event.dataTransfer.setData('application/x-shard-kanban', JSON.stringify({ noteId: note.id, sourceColumnId }));
+		event.dataTransfer.setData(
+			'application/x-shard-kanban',
+			JSON.stringify({ noteId: note.id, sourceColumnId })
+		);
 		setNativeDragGhost(event);
 		suppressOpen = true;
 	}
 
 	function onNativeDragEnd() {
 		clearNativeDragGhost();
-		setTimeout(() => { suppressOpen = false; }, 0);
+		setTimeout(() => {
+			suppressOpen = false;
+		}, 0);
 	}
 
 	function open(event: MouseEvent) {
@@ -156,8 +177,14 @@
 	role="button"
 	tabindex="0"
 	draggable="true"
-	class="kanban-card relative cursor-grab overflow-hidden rounded-xl border border-black/5 shadow-sm active:cursor-grabbing dark:border-white/10 {touchDragging ? 'z-20 opacity-65 shadow-lg' : ''}"
-	style="background-color: {background(note.color)}; left: {touchDragging ? dragX : 0}px; top: {touchDragging ? dragY : 0}px; transition: {touchDragging ? 'none' : 'left 120ms ease, top 120ms ease, box-shadow 120ms ease'};"
+	class="kanban-card relative cursor-grab overflow-hidden rounded-xl border border-black/5 shadow-sm active:cursor-grabbing dark:border-white/10 {touchDragging
+		? 'z-20 opacity-65 shadow-lg'
+		: ''}"
+	style="background-color: {background(note.color)}; left: {touchDragging
+		? dragX
+		: 0}px; top: {touchDragging ? dragY : 0}px; transition: {touchDragging
+		? 'none'
+		: 'left 120ms ease, top 120ms ease, box-shadow 120ms ease'};"
 	onpointerdown={onPointerDown}
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}
@@ -170,10 +197,14 @@
 >
 	<div class="scrollable max-h-[220px] overflow-x-hidden overflow-y-auto p-3">
 		{#if note.reminder != null}
-			<div class="mb-1 flex items-center gap-1 text-xs text-[var(--gkc-text-muted)]"><span>⏰</span>{formatReminder(note.reminder)}</div>
+			<div class="mb-1 flex items-center gap-1 text-xs text-[var(--gkc-text-muted)]">
+				<span>⏰</span>{formatReminder(note.reminder)}
+			</div>
 		{/if}
 		{#if note.title}
-			<h3 class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--gkc-text)]">{note.title}</h3>
+			<h3 class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--gkc-text)]">
+				{note.title}
+			</h3>
 		{/if}
 		<NoteBodyDisplay {note} />
 	</div>
@@ -181,7 +212,10 @@
 	{#if labelsForNote.length}
 		<div class="flex flex-wrap gap-1 px-3 pb-3">
 			{#each labelsForNote as label (label.id)}
-				<span class="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-[var(--gkc-text-muted)] dark:bg-white/10">{label.name}</span>
+				<span
+					class="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-[var(--gkc-text-muted)] dark:bg-white/10"
+					>{label.name}</span
+				>
 			{/each}
 		</div>
 	{/if}

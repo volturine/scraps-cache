@@ -1,12 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-	copyFileSync,
-	existsSync,
-	mkdtempSync,
-	readdirSync,
-	rmSync,
-	writeFileSync
-} from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BackupManager } from './backupManager';
@@ -52,12 +45,7 @@ describe('BackupManager', () => {
 	it('writes a verified snapshot that restores into a fresh SyncStore', async () => {
 		const store = createStore();
 		store.createAccount('account', 'credential-hash');
-		store.sync(
-			'account',
-			0,
-			[{ id: 'env-1', slot: slot('a'), ciphertext: 'opaque-payload' }],
-			10
-		);
+		store.sync('account', 0, [{ id: 'env-1', slot: slot('a'), ciphertext: 'opaque-payload' }], 10);
 
 		const backupDirectory = tempDirectory('shard-backups-');
 		const manager = new BackupManager({

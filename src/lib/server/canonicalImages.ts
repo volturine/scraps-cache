@@ -12,9 +12,11 @@ type SyncImage = {
 };
 
 function isDng(image: SyncImage): boolean {
-	return image.mime?.toLowerCase() === 'image/dng' ||
+	return (
+		image.mime?.toLowerCase() === 'image/dng' ||
 		/\.dng$/i.test(image.name ?? '') ||
-		/^data:image\/(?:x-adobe-)?dng[;,]/i.test(image.dataUrl ?? '');
+		/^data:image\/(?:x-adobe-)?dng[;,]/i.test(image.dataUrl ?? '')
+	);
 }
 
 /** Enforce the cloud invariant that active note images are browser-renderable. */

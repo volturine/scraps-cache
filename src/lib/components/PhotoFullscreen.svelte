@@ -70,13 +70,13 @@
 <svelte:window onkeydown={handleKey} />
 
 {#if activeIndex !== null && images[activeIndex]}
-		<div {@attach portal}>
-	<button
-		type="button"
-		class="fixed inset-0 z-[80] cursor-zoom-out bg-black"
-		onclick={close}
-		aria-label="Close photo"
-	></button>
+	<div {@attach portal}>
+		<button
+			type="button"
+			class="fixed inset-0 z-[80] cursor-zoom-out bg-black"
+			onclick={close}
+			aria-label="Close photo"
+		></button>
 		<button
 			type="button"
 			class="pointer-events-none fixed inset-0 z-[81] flex items-center justify-center"
@@ -86,23 +86,50 @@
 			aria-label="Show photo controls"
 		>
 			<img
-			src={images[activeIndex].dataUrl}
-			alt={images[activeIndex].name ?? 'Photo'}
-			class="pointer-events-auto max-h-[100dvh] max-w-full select-none object-contain"
+				src={images[activeIndex].dataUrl}
+				alt={images[activeIndex].name ?? 'Photo'}
+				class="pointer-events-auto max-h-[100dvh] max-w-full select-none object-contain"
 				decoding="async"
 				draggable="false"
 			/>
 		</button>
-	{#if controlsVisible}
-		<button type="button" class="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-[90] grid h-9 w-9 place-items-center rounded-full bg-black/40 text-xl text-white backdrop-blur-sm touch-manipulation" onclick={close} aria-label="Close photo">×</button>
-		{#if images.length > 1}
-			<button type="button" class="fixed left-3 top-1/2 z-[90] grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation" onclick={previous} aria-label="Previous photo">
-				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-			</button>
-			<button type="button" class="fixed right-3 top-1/2 z-[90] grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation" onclick={next} aria-label="Next photo">
-				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-none stroke-current" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6" /></svg>
-			</button>
+		{#if controlsVisible}
+			<button
+				type="button"
+				class="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-[90] grid h-9 w-9 place-items-center rounded-full bg-black/40 text-xl text-white backdrop-blur-sm touch-manipulation"
+				onclick={close}
+				aria-label="Close photo">×</button
+			>
+			{#if images.length > 1}
+				<button
+					type="button"
+					class="fixed left-3 top-1/2 z-[90] grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation"
+					onclick={previous}
+					aria-label="Previous photo"
+				>
+					<svg
+						viewBox="0 0 24 24"
+						class="h-5 w-5 fill-none stroke-current"
+						stroke-width="2.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"><path d="m15 18-6-6 6-6" /></svg
+					>
+				</button>
+				<button
+					type="button"
+					class="fixed right-3 top-1/2 z-[90] grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation"
+					onclick={next}
+					aria-label="Next photo"
+				>
+					<svg
+						viewBox="0 0 24 24"
+						class="h-5 w-5 fill-none stroke-current"
+						stroke-width="2.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"><path d="m9 18 6-6-6-6" /></svg
+					>
+				</button>
+			{/if}
 		{/if}
-	{/if}
 	</div>
 {/if}

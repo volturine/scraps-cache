@@ -3,12 +3,29 @@ import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
 
 function jpeg(width: number, height: number): Uint8Array {
 	return Uint8Array.from([
-		0xff, 0xd8,
-		0xff, 0xc0, 0x00, 0x11, 0x08,
-		(height >> 8) & 0xff, height & 0xff,
-		(width >> 8) & 0xff, width & 0xff,
-		0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
-		0xff, 0xd9
+		0xff,
+		0xd8,
+		0xff,
+		0xc0,
+		0x00,
+		0x11,
+		0x08,
+		(height >> 8) & 0xff,
+		height & 0xff,
+		(width >> 8) & 0xff,
+		width & 0xff,
+		0x03,
+		0x01,
+		0x11,
+		0x00,
+		0x02,
+		0x11,
+		0x00,
+		0x03,
+		0x11,
+		0x00,
+		0xff,
+		0xd9
 	]);
 }
 
@@ -44,11 +61,14 @@ function dng(littleEndian: boolean, previews: Uint8Array[]): Uint8Array {
 }
 
 describe('extractDngJpeg', () => {
-	it.each([true, false])('extracts the largest declared preview (littleEndian=%s)', (littleEndian) => {
-		const small = jpeg(320, 240);
-		const large = jpeg(4032, 3024);
-		expect(extractDngJpeg(dng(littleEndian, [small, large]))).toEqual(large);
-	});
+	it.each([true, false])(
+		'extracts the largest declared preview (littleEndian=%s)',
+		(littleEndian) => {
+			const small = jpeg(320, 240);
+			const large = jpeg(4032, 3024);
+			expect(extractDngJpeg(dng(littleEndian, [small, large]))).toEqual(large);
+		}
+	);
 
 	it('rejects a TIFF without a declared JPEG', () => {
 		expect(() => extractDngJpeg(dng(true, []))).toThrow(/JPEG/);

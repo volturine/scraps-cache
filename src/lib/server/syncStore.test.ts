@@ -37,11 +37,16 @@ describe('SQLite sync store', () => {
 	it('paginates existing data without skipping simultaneous uploads', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
-		store.sync('account', 0, [
-			{ id: 'a', slot: slot('a'), ciphertext: 'a' },
-			{ id: 'b', slot: slot('b'), ciphertext: 'b' },
-			{ id: 'c', slot: slot('c'), ciphertext: 'c' }
-		], 10);
+		store.sync(
+			'account',
+			0,
+			[
+				{ id: 'a', slot: slot('a'), ciphertext: 'a' },
+				{ id: 'b', slot: slot('b'), ciphertext: 'b' },
+				{ id: 'c', slot: slot('c'), ciphertext: 'c' }
+			],
+			10
+		);
 
 		const first = store.sync(
 			'account',
@@ -62,18 +67,8 @@ describe('SQLite sync store', () => {
 	it('keeps only the newest ciphertext in an opaque slot', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
-		store.sync(
-			'account',
-			0,
-			[{ id: 'old', slot: slot('a'), ciphertext: 'first' }],
-			10
-		);
-		store.sync(
-			'account',
-			1,
-			[{ id: 'new', slot: slot('a'), ciphertext: 'replacement' }],
-			10
-		);
+		store.sync('account', 0, [{ id: 'old', slot: slot('a'), ciphertext: 'first' }], 10);
+		store.sync('account', 1, [{ id: 'new', slot: slot('a'), ciphertext: 'replacement' }], 10);
 
 		const result = store.sync('account', 1, [], 10);
 		expect(result.envelopes).toEqual([
@@ -84,10 +79,17 @@ describe('SQLite sync store', () => {
 	it('rolls back the entire upload batch when an account quota is exceeded', () => {
 		const { store } = createStore({ maxAccountBytes: 5 });
 		store.createAccount('account', 'credential');
-		expect(() => store.sync('account', 0, [
-			{ id: 'a', slot: slot('a'), ciphertext: '123' },
-			{ id: 'b', slot: slot('b'), ciphertext: '456' }
-		], 10)).toThrow(SyncQuotaExceededError);
+		expect(() =>
+			store.sync(
+				'account',
+				0,
+				[
+					{ id: 'a', slot: slot('a'), ciphertext: '123' },
+					{ id: 'b', slot: slot('b'), ciphertext: '456' }
+				],
+				10
+			)
+		).toThrow(SyncQuotaExceededError);
 
 		expect(store.sync('account', 0, [], 10)).toMatchObject({
 			cursor: 0,
@@ -136,12 +138,7 @@ describe('SQLite sync store', () => {
 	it('deletes an account and all of its opaque envelopes', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
-		store.sync(
-			'account',
-			0,
-			[{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }],
-			10
-		);
+		store.sync('account', 0, [{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }], 10);
 		expect(store.deleteAccount('account')).toBe(true);
 		expect(store.getCredentialHash('account')).toBeNull();
 		expect(store.aggregateUsage()).toEqual({
@@ -196,12 +193,7 @@ describe('SQLite sync store', () => {
 		await store.backup(snapshotPath);
 
 		// Later live writes must not appear in the already-taken snapshot.
-		store.sync(
-			'account',
-			2,
-			[{ id: 'note-3', slot: slot('c'), ciphertext: 'cipher-c' }],
-			10
-		);
+		store.sync('account', 2, [{ id: 'note-3', slot: slot('c'), ciphertext: 'cipher-c' }], 10);
 
 		const restoredDirectory = mkdtempSync(join(tmpdir(), 'shard-restored-'));
 		directories.push(restoredDirectory);

@@ -22,10 +22,9 @@
 	let pageIndex = $state(0);
 	const pageCount = $derived(Math.max(1, Math.ceil(notes.length / PAGE_SIZE)));
 	const safePageIndex = $derived(Math.min(pageIndex, pageCount - 1));
-	const visibleNotes = $derived(notes.slice(
-		safePageIndex * PAGE_SIZE,
-		(safePageIndex + 1) * PAGE_SIZE
-	));
+	const visibleNotes = $derived(
+		notes.slice(safePageIndex * PAGE_SIZE, (safePageIndex + 1) * PAGE_SIZE)
+	);
 </script>
 
 <div class="notes-content {className}">
@@ -50,18 +49,24 @@
 			<button
 				type="button"
 				disabled={safePageIndex === 0}
-				onclick={() => { pageIndex = Math.max(0, safePageIndex - 1); }}
+				onclick={() => {
+					pageIndex = Math.max(0, safePageIndex - 1);
+				}}
 				class="rounded-lg border border-[var(--gkc-border)] px-3 py-1.5 text-sm text-[var(--gkc-text)] disabled:opacity-40"
-			>Previous</button>
+				>Previous</button
+			>
 			<span class="text-xs text-[var(--gkc-text-muted)]">
 				{safePageIndex * PAGE_SIZE + 1}–{Math.min(notes.length, (safePageIndex + 1) * PAGE_SIZE)} of {notes.length}
 			</span>
 			<button
 				type="button"
 				disabled={safePageIndex >= pageCount - 1}
-				onclick={() => { pageIndex = Math.min(pageCount - 1, safePageIndex + 1); }}
+				onclick={() => {
+					pageIndex = Math.min(pageCount - 1, safePageIndex + 1);
+				}}
 				class="rounded-lg border border-[var(--gkc-border)] px-3 py-1.5 text-sm text-[var(--gkc-text)] disabled:opacity-40"
-			>Next</button>
+				>Next</button
+			>
 		</nav>
 	{/if}
 </div>

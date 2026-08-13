@@ -16,8 +16,18 @@ function image(id: string, dataUrl: string): NoteImage {
 
 function note(id: string, updatedAt: number, body = '', images: NoteImage[] = []): Note {
 	return {
-		id, title: id, body, color: 'default', pinned: false, archived: false, trashed: false,
-		trashedAt: null, createdAt: 1, updatedAt, reminder: null, labels: [],
+		id,
+		title: id,
+		body,
+		color: 'default',
+		pinned: false,
+		archived: false,
+		trashed: false,
+		trashedAt: null,
+		createdAt: 1,
+		updatedAt,
+		reminder: null,
+		labels: [],
 		...(images.length ? { images } : {})
 	};
 }
@@ -31,7 +41,9 @@ describe('opaque per-record sync payloads', () => {
 	it('selects exactly the changed note rather than every note', async () => {
 		const before = await buildSyncRecords([note('one', 1), note('two', 1)], [], []);
 		const after = await buildSyncRecords([note('one', 2, 'edited'), note('two', 1)], [], []);
-		expect(changedRecords(after, fingerprintMap(before)).map((record) => record.key)).toEqual(['note:one']);
+		expect(changedRecords(after, fingerprintMap(before)).map((record) => record.key)).toEqual([
+			'note:one'
+		]);
 	});
 
 	it('sends a tombstone without re-sending its stale deleted record', async () => {
@@ -65,7 +77,9 @@ describe('opaque per-record sync payloads', () => {
 		const photo = image('pic', `data:image/jpeg;base64,${'C'.repeat(10_000)}`);
 		const before = await buildSyncRecords([note('n1', 1, 'plain')], [], []);
 		const after = await buildSyncRecords([note('n1', 2, 'plain', [photo])], [], []);
-		const changed = changedRecords(after, fingerprintMap(before)).map((record) => record.key).sort();
+		const changed = changedRecords(after, fingerprintMap(before))
+			.map((record) => record.key)
+			.sort();
 		expect(changed).toEqual(['attachment:pic', 'note:n1']);
 	});
 
@@ -101,9 +115,16 @@ describe('opaque per-record sync payloads', () => {
 	it('expands legacy inline-photo snapshots into note + attachment records', async () => {
 		const photo = image('pic', 'data:image/jpeg;base64,legacy');
 		const payloads = await legacySnapshotPayloads({
-			notes: [note('old', 10, 'body', [photo])], labels: [], boards: [], tombstones: { deleted: 20 }
+			notes: [note('old', 10, 'body', [photo])],
+			labels: [],
+			boards: [],
+			tombstones: { deleted: 20 }
 		});
-		expect(payloads?.map((payload) => payload.kind).sort()).toEqual(['attachment', 'note', 'note-tombstone']);
+		expect(payloads?.map((payload) => payload.kind).sort()).toEqual([
+			'attachment',
+			'note',
+			'note-tombstone'
+		]);
 	});
 
 	it('keeps a baseline after a no-op merge so the next sync uploads zero bytes', async () => {

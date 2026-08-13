@@ -12,7 +12,7 @@ export type BodySegment =
 /** Count nesting level from leading whitespace (tab = 1, every 2 spaces = 1). */
 export function indentLevelFromWhitespace(ws: string): number {
 	let indent = 0;
-	for (let i = 0; i < ws.length; ) {
+	for (let i = 0; i < ws.length;) {
 		if (ws[i] === '\t') {
 			indent += 1;
 			i += 1;
@@ -37,7 +37,9 @@ export function checkIndentPrefix(indent: number): string {
 	return '  '.repeat(n);
 }
 
-export function parseCheckLine(line: string): { indent: number; checked: boolean; text: string } | null {
+export function parseCheckLine(
+	line: string
+): { indent: number; checked: boolean; text: string } | null {
 	const m = line.match(CHECK_RE);
 	if (!m) return null;
 	return {
