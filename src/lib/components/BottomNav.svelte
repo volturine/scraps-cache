@@ -6,7 +6,9 @@
 </script>
 
 <!-- Floating + button — bottom right on every device -->
-<div class="fixed bottom-8 right-6 z-10">
+<div
+	class="fixed z-10 bottom-[max(2rem,calc(env(safe-area-inset-bottom,0px)+0.75rem))] right-[max(1.5rem,calc(env(safe-area-inset-right,0px)+0.75rem))]"
+>
 	<button
 		type="button"
 		onclick={startNewNote}
