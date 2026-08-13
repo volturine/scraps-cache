@@ -63,18 +63,13 @@ html.editor-open body {
 	overflow: hidden;
 	overscroll-behavior: none;
 }
-html.editor-open .app-shell {
+html.editor-open .app-shell,
+html.editor-open .new-note-fab {
+	filter: blur(16px);
 	pointer-events: none;
-	overflow: hidden;
 }
-
-/* Transparent blur only — no fill. color-scheme: light stops Safari from
- * adding its dark-mode material tint on top of backdrop-filter. */
-.note-backdrop {
-	background-color: transparent;
-	color-scheme: only light;
-	-webkit-backdrop-filter: blur(24px);
-	backdrop-filter: blur(24px);
+html.editor-open .app-shell {
+	overflow: hidden;
 }
 html.editor-open .app-shell .scrollable {
 	overflow: hidden;

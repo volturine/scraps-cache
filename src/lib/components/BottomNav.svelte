@@ -5,7 +5,7 @@
 </script>
 
 <!-- Floating + button — bottom right on every device -->
-<div class="fixed bottom-8 right-6 z-10">
+<div class="new-note-fab fixed bottom-8 right-6 z-10">
 	<button
 		type="button"
 		onclick={startNewNote}
