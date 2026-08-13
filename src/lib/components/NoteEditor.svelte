@@ -49,19 +49,17 @@
 	const keyboardVisible = $derived(
 		isOpen && visualViewportHeight > 0 && visualViewportHeight < layoutViewportHeight - 120
 	);
-	// Never shrink the dim — iOS visualViewport stops above the keyboard
-	// accessory, which left a hole where the feed showed through. Only the
-	// sheet is placed in the visual viewport.
+	// Dim stays 200lvh so it covers the keyboard accessory. The sheet always
+	// follows the visual viewport: keyboard open → sits above the keys;
+	// keyboard closed in Safari → stays above the toolbar instead of 72lvh
+	// overflowing behind it. In standalone, visual viewport ≈ lvh so 72lvh is unchanged.
 	const editorSheetFrameStyle = $derived(
-		keyboardVisible
+		visualViewportHeight > 0
 			? `top:${visualViewportTop}px;height:${visualViewportHeight}px;`
 			: ''
 	);
-	const editorDialogClass = $derived(
-		keyboardVisible
-			? 'flex h-full max-h-full min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl'
-			: 'flex h-[72lvh] max-h-[90lvh] min-h-[50lvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl'
-	);
+	const editorDialogClass =
+		'flex h-[min(72lvh,100%)] max-h-full min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl';
 	const editorDialogStyle = $derived(`background-color: ${note ? bgColor(note.color) : 'transparent'};`);
 
 	let syncedId: string | null = null;
@@ -305,9 +303,7 @@
 		}}
 	>
 		<div
-			class="flex items-center justify-center p-4 {keyboardVisible
-				? 'absolute left-0 right-0'
-				: 'h-[100lvh]'}"
+			class="absolute left-0 right-0 flex h-[100lvh] items-center justify-center p-4"
 			style={editorSheetFrameStyle}
 			role="presentation"
 		>
