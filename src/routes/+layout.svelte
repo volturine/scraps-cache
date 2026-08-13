@@ -44,6 +44,8 @@
 		const dark = uiStore.effectiveDark;
 		const bg = dark ? '#1a1a1a' : '#ffffff';
 		document.documentElement.classList.toggle('dark', dark);
+		// Document canvas, not the note overlay. Safari paints overscroll /
+		// toolbar gutters from this color; without it light mode shows black strips.
 		document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
 		document.documentElement.style.backgroundColor = bg;
 		document.body.style.backgroundColor = bg;

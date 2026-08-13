@@ -307,18 +307,18 @@
 			style={editorSheetFrameStyle}
 			role="presentation"
 		>
-		<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="note-sheet-shadow h-[min(72lvh,100%)] max-h-full min-h-0 w-full max-w-2xl rounded-2xl">
-		<div
-			bind:this={editorDialog}
-			class={editorDialogClass}
-			style={editorDialogStyle}
-			role="dialog"
-			tabindex="-1"
-			aria-modal="true"
-			onclick={focusBodyFromPage}
-		>
+			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="note-sheet-shadow h-[min(72lvh,100%)] max-h-full min-h-0 w-full max-w-2xl rounded-2xl">
+				<div
+					bind:this={editorDialog}
+					class={editorDialogClass}
+					style={editorDialogStyle}
+					role="dialog"
+					tabindex="-1"
+					aria-modal="true"
+					onclick={focusBodyFromPage}
+				>
 			<!-- Header -->
 			<header
 				class="flex shrink-0 items-center gap-2 border-b border-black/5 px-2 py-2 dark:border-white/10"
@@ -411,8 +411,8 @@
 				onDelete={() => { notesStore.trashNote(note.id); close(); }}
 				onImagesChange={(imgs) => commitNow(imgs)}
 			/>
-		</div>
-		</div>
+				</div>
+			</div>
 		</div>
 	</div>
 
