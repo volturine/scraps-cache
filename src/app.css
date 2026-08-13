@@ -65,7 +65,6 @@ html.editor-open body {
 }
 html.editor-open .app-shell,
 html.editor-open .new-note-fab {
-	filter: blur(16px);
 	pointer-events: none;
 }
 html.editor-open .app-shell {
