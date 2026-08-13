@@ -109,6 +109,7 @@ counts per account for quotas (default 1 GB / 50k envelopes).
 | Dev | `npm run dev` | Vite + HMR; sync data under `sync-data/` by default |
 | Local prod build | `npm run build && npm start` | Node adapter; same env vars as Docker |
 | Dev Compose | `docker/compose.yaml` | Build local image, loose admin token default |
+| PR preview Compose | `docker/compose.dev.yaml` | Pull GHCR `dev-*` image on port 3000, isolated volumes |
 | Prod Compose | `docker/compose.production.yaml` | Pull GHCR image, require admin token + image pin |
 | Backup overlay | `docker/compose.backup.yaml` | Restic local and/or S3 encrypted repos |
 

@@ -64,6 +64,9 @@ docker compose --project-directory . -f docker/compose.production.yaml up -d
 
 App: `http://localhost:3000` (or the origin you configured).
 
+To preview a published PR image (`dev-<n>`) beside production, use
+`docker/compose.dev.yaml` on port **3000** — see [self-hosting](docs/self-hosting.md#preview-a-pull-request-image).
+
 Full operator guide — reverse proxy, backups, restore drill, env reference:
 
 **→ [docs/self-hosting.md](docs/self-hosting.md)**
@@ -76,7 +79,7 @@ Published images:
 | `master` | Same as above |
 | `sha-<commit>` | Non-PR publishes (immutable) |
 | `<version>` / `<major>.<minor>` | Git tags like `v1.2.3` |
-| `dev-pr-<n>` / `dev-sha-<commit>` | Pull requests only (never overwrites `latest`) |
+| `dev-<n>` / `dev-sha-<commit>` | Pull requests only (never overwrites `latest`) |
 
 Prefer a **pinned release tag or digest**, not floating `latest`, for production.
 
