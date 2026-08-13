@@ -7,7 +7,11 @@ function equalTimestampWinner<T>(left: T, right: T): T {
 	return stableStringify(left) >= stableStringify(right) ? left : right;
 }
 
-function mergeImages(preferred: NoteImage[] = [], fallback: NoteImage[] = [], includeMissing = false): NoteImage[] {
+function mergeImages(
+	preferred: NoteImage[] = [],
+	fallback: NoteImage[] = [],
+	includeMissing = false
+): NoteImage[] {
 	const fallbackById = new Map(fallback.map((image) => [image.id, image]));
 	const merged = preferred.map((image) => {
 		if (image.dataUrl?.length) return image;
@@ -20,9 +24,12 @@ function mergeImages(preferred: NoteImage[] = [], fallback: NoteImage[] = [], in
 }
 
 export function mergeTwoNotes(primary: Note, secondary: Note): Note {
-	const newer = primary.updatedAt === secondary.updatedAt
-		? equalTimestampWinner(primary, secondary)
-		: primary.updatedAt > secondary.updatedAt ? primary : secondary;
+	const newer =
+		primary.updatedAt === secondary.updatedAt
+			? equalTimestampWinner(primary, secondary)
+			: primary.updatedAt > secondary.updatedAt
+				? primary
+				: secondary;
 	const older = newer === primary ? secondary : primary;
 	const images = mergeImages(newer.images, older.images, primary.updatedAt === secondary.updatedAt);
 	return { ...newer, images, updatedAt: Math.max(primary.updatedAt, secondary.updatedAt) };
@@ -45,7 +52,9 @@ function labelTime(label: Label): number {
 export function mergeTwoLabels(primary: Label, secondary: Label): Label {
 	return labelTime(primary) === labelTime(secondary)
 		? equalTimestampWinner(primary, secondary)
-		: labelTime(primary) > labelTime(secondary) ? primary : secondary;
+		: labelTime(primary) > labelTime(secondary)
+			? primary
+			: secondary;
 }
 
 export function mergeLabelLists(primary: Label[], secondary: Label[]): Label[] {

@@ -6,11 +6,13 @@ import { backupManager } from '$lib/server/backupManager';
 export const GET: RequestHandler = () => {
 	const database = getSyncStore().isReady();
 	const backup = backupManager.getStatus();
-	const backupStuck = backup.running
-		&& backup.lastAttemptAt > 0
-		&& Date.now() - backup.lastAttemptAt > 60 * 60 * 1000;
-	const backupHealthy = !backup.enabled
-		|| (!backupStuck && (backup.lastError === null || backup.lastSuccessAt >= backup.lastAttemptAt));
+	const backupStuck =
+		backup.running &&
+		backup.lastAttemptAt > 0 &&
+		Date.now() - backup.lastAttemptAt > 60 * 60 * 1000;
+	const backupHealthy =
+		!backup.enabled ||
+		(!backupStuck && (backup.lastError === null || backup.lastSuccessAt >= backup.lastAttemptAt));
 	const ready = database && backupHealthy;
 	return json(
 		{ ready, database, backup: { enabled: backup.enabled, healthy: backupHealthy } },

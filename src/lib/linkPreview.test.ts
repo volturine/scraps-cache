@@ -3,10 +3,11 @@ import { extractHttpUrls, localLinkCard, normalizePreviewUrl } from './linkPrevi
 
 describe('extractHttpUrls', () => {
 	it('returns distinct HTTP(S) links in their note order', () => {
-		expect(extractHttpUrls('Read https://example.com/a then http://example.org/b. Again: https://example.com/a')).toEqual([
-			'https://example.com/a',
-			'http://example.org/b'
-		]);
+		expect(
+			extractHttpUrls(
+				'Read https://example.com/a then http://example.org/b. Again: https://example.com/a'
+			)
+		).toEqual(['https://example.com/a', 'http://example.org/b']);
 	});
 
 	it('does not treat checklist syntax or bare domains as previews', () => {
@@ -23,8 +24,12 @@ describe('extractHttpUrls', () => {
 
 describe('normalizePreviewUrl', () => {
 	it('strips hash but keeps path so pages stay distinct', () => {
-		expect(normalizePreviewUrl('https://github.com/org/repo#readme')).toBe('https://github.com/org/repo');
-		expect(normalizePreviewUrl('https://github.com/org/other')).toBe('https://github.com/org/other');
+		expect(normalizePreviewUrl('https://github.com/org/repo#readme')).toBe(
+			'https://github.com/org/repo'
+		);
+		expect(normalizePreviewUrl('https://github.com/org/other')).toBe(
+			'https://github.com/org/other'
+		);
 	});
 });
 

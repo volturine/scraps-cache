@@ -39,22 +39,26 @@ export function recordSqliteBusy(): void {
 }
 
 export function recordSqliteError(error: unknown): void {
-	if (error instanceof Error && (
-		error.message.includes('SQLITE_BUSY')
-		|| error.message.includes('database is locked')
-	)) recordSqliteBusy();
+	if (
+		error instanceof Error &&
+		(error.message.includes('SQLITE_BUSY') || error.message.includes('database is locked'))
+	)
+		recordSqliteBusy();
 }
 
 function line(name: string, value: number, labels = ''): string {
 	return `${name}${labels ? `{${labels}}` : ''} ${Number.isFinite(value) ? value : 0}`;
 }
 
-export function renderMetrics(backup: {
-	lastAttemptAt: number;
-	lastSuccessAt: number;
-	failures: number;
-	durationMs: number;
-}, usage: { accounts: number; envelopeCount: number; ciphertextBytes: number }): string {
+export function renderMetrics(
+	backup: {
+		lastAttemptAt: number;
+		lastSuccessAt: number;
+		failures: number;
+		durationMs: number;
+	},
+	usage: { accounts: number; envelopeCount: number; ciphertextBytes: number }
+): string {
 	const lines = [
 		'# TYPE shard_http_requests_total counter',
 		'# TYPE shard_http_request_duration_milliseconds_sum counter'

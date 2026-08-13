@@ -5,8 +5,18 @@ import type { Label, Note, NoteImage } from '$lib/types';
 import { cloneNote } from '$lib/utils';
 
 const NOTE_COLORS = new Set<Note['color']>([
-	'default', 'red', 'orange', 'yellow', 'green', 'teal',
-	'blue', 'darkblue', 'purple', 'pink', 'brown', 'gray'
+	'default',
+	'red',
+	'orange',
+	'yellow',
+	'green',
+	'teal',
+	'blue',
+	'darkblue',
+	'purple',
+	'pink',
+	'brown',
+	'gray'
 ]);
 const VIEWS = new Set<View>(['notes', 'kanban', 'reminders', 'archive', 'trash', 'label']);
 
@@ -45,9 +55,7 @@ function asTombstoneMap(value: unknown): Record<string, number> {
 	return Object.fromEntries(
 		Object.entries(value).flatMap(([id, timestamp]) => {
 			const parsed = Number(timestamp);
-			return typeof id === 'string' && Number.isFinite(parsed) && parsed > 0
-				? [[id, parsed]]
-				: [];
+			return typeof id === 'string' && Number.isFinite(parsed) && parsed > 0 ? [[id, parsed]] : [];
 		})
 	);
 }
@@ -69,16 +77,20 @@ function normalizeImage(value: unknown): NoteImage | null {
 		...(typeof image.contentHash === 'string' && image.contentHash
 			? { contentHash: image.contentHash }
 			: {}),
-		...(Number.isFinite(image.encodingVersion) ? { encodingVersion: Number(image.encodingVersion) } : {})
+		...(Number.isFinite(image.encodingVersion)
+			? { encodingVersion: Number(image.encodingVersion) }
+			: {})
 	};
 }
 
 function normalizeLinkPreview(value: unknown): LinkPreview | null {
 	if (!value || typeof value !== 'object') return null;
 	const preview = value as Partial<LinkPreview>;
-	if (typeof preview.url !== 'string'
-		|| typeof preview.hostname !== 'string'
-		|| typeof preview.title !== 'string') {
+	if (
+		typeof preview.url !== 'string' ||
+		typeof preview.hostname !== 'string' ||
+		typeof preview.title !== 'string'
+	) {
 		return null;
 	}
 	return {
@@ -120,7 +132,7 @@ export function normalizeBackup(data: unknown): ShardBackup | null {
 		const note = item as Partial<Note>;
 		if (typeof note.id !== 'string') return [];
 		const color = NOTE_COLORS.has(note.color as Note['color'])
-			? note.color as Note['color']
+			? (note.color as Note['color'])
 			: 'default';
 		const images = Array.isArray(note.images)
 			? note.images.flatMap((image) => {
@@ -128,43 +140,44 @@ export function normalizeBackup(data: unknown): ShardBackup | null {
 					return normalized ? [normalized] : [];
 				})
 			: [];
-		return [cloneNote({
-			id: note.id,
-			title: String(note.title ?? ''),
-			body: String(note.body ?? ''),
-			color,
-			pinned: Boolean(note.pinned),
-			archived: Boolean(note.archived),
-			trashed: Boolean(note.trashed),
-			trashedAt: note.trashedAt == null ? null : Number(note.trashedAt),
-			createdAt: Number(note.createdAt) || 0,
-			updatedAt: Number(note.updatedAt) || 0,
-			reminder: note.reminder == null ? null : Number(note.reminder),
-			labels: Array.isArray(note.labels) ? note.labels.map(String) : [],
-			images,
-			linkPreviews: Array.isArray(note.linkPreviews)
-				? note.linkPreviews.flatMap((preview) => {
-						const normalized = normalizeLinkPreview(preview);
-						return normalized ? [normalized] : [];
-					})
-				: []
-		})];
+		return [
+			cloneNote({
+				id: note.id,
+				title: String(note.title ?? ''),
+				body: String(note.body ?? ''),
+				color,
+				pinned: Boolean(note.pinned),
+				archived: Boolean(note.archived),
+				trashed: Boolean(note.trashed),
+				trashedAt: note.trashedAt == null ? null : Number(note.trashedAt),
+				createdAt: Number(note.createdAt) || 0,
+				updatedAt: Number(note.updatedAt) || 0,
+				reminder: note.reminder == null ? null : Number(note.reminder),
+				labels: Array.isArray(note.labels) ? note.labels.map(String) : [],
+				images,
+				linkPreviews: Array.isArray(note.linkPreviews)
+					? note.linkPreviews.flatMap((preview) => {
+							const normalized = normalizeLinkPreview(preview);
+							return normalized ? [normalized] : [];
+						})
+					: []
+			})
+		];
 	});
 	const labels = (raw.labels as Label[]).flatMap((label): Label[] => {
 		if (!label || typeof label !== 'object' || typeof label.id !== 'string') return [];
-		return [{
-			id: String(label.id),
-			name: String(label.name ?? ''),
-			createdAt: Number(label.createdAt) || 0,
-			updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
-		}];
+		return [
+			{
+				id: String(label.id),
+				name: String(label.name ?? ''),
+				createdAt: Number(label.createdAt) || 0,
+				updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+			}
+		];
 	});
-	const uiRaw = raw.ui && typeof raw.ui === 'object'
-		? raw.ui as Record<string, unknown>
-		: {};
-	const syncRaw = raw.sync && typeof raw.sync === 'object'
-		? raw.sync as Record<string, unknown>
-		: null;
+	const uiRaw = raw.ui && typeof raw.ui === 'object' ? (raw.ui as Record<string, unknown>) : {};
+	const syncRaw =
+		raw.sync && typeof raw.sync === 'object' ? (raw.sync as Record<string, unknown>) : null;
 	return {
 		version: 4,
 		exportedAt: Number(raw.exportedAt) || Date.now(),
@@ -182,15 +195,17 @@ export function normalizeBackup(data: unknown): ShardBackup | null {
 		boardTombstones: asTombstoneMap(raw.boardTombstones),
 		ui: {
 			sidebarOpen: typeof uiRaw.sidebarOpen === 'boolean' ? uiRaw.sidebarOpen : true,
-			dark: typeof uiRaw.dark === 'boolean' || uiRaw.dark === null
-				? uiRaw.dark as boolean | null
-				: null,
+			dark:
+				typeof uiRaw.dark === 'boolean' || uiRaw.dark === null
+					? (uiRaw.dark as boolean | null)
+					: null,
 			layout: uiRaw.layout === 'list' ? 'list' : 'grid',
-			view: VIEWS.has(uiRaw.view as View) ? uiRaw.view as View : 'notes'
+			view: VIEWS.has(uiRaw.view as View) ? (uiRaw.view as View) : 'notes'
 		},
-		sync: syncRaw && typeof syncRaw.syncKey === 'string'
-			? { syncKey: syncRaw.syncKey, lastSync: Number(syncRaw.lastSync) || 0 }
-			: null,
+		sync:
+			syncRaw && typeof syncRaw.syncKey === 'string'
+				? { syncKey: syncRaw.syncKey, lastSync: Number(syncRaw.lastSync) || 0 }
+				: null,
 		linkPreviews: Array.isArray(raw.linkPreviews)
 			? raw.linkPreviews.flatMap((preview) => {
 					const normalized = normalizeLinkPreview(preview);

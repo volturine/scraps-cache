@@ -31,9 +31,12 @@
 					.then((reg) => reg.update())
 					.catch(() => undefined);
 			} else {
-				void navigator.serviceWorker.getRegistrations().then((registrations) => {
-					for (const registration of registrations) void registration.unregister();
-				}).catch(() => undefined);
+				void navigator.serviceWorker
+					.getRegistrations()
+					.then((registrations) => {
+						for (const registration of registrations) void registration.unregister();
+					})
+					.catch(() => undefined);
 			}
 		}
 	});
@@ -58,7 +61,8 @@
 	function startNewNote() {
 		const routeLabelId = page.params.label;
 		const labels =
-			typeof routeLabelId === 'string' && notesStore.labels.some((label) => label.id === routeLabelId)
+			typeof routeLabelId === 'string' &&
+			notesStore.labels.some((label) => label.id === routeLabelId)
 				? [routeLabelId]
 				: [];
 		const n = notesStore.createNote({
@@ -90,14 +94,19 @@
 	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
-<div class="app-shell flex w-screen overflow-hidden bg-[var(--gkc-bg)] text-[var(--gkc-text)]" style="height: 100dvh;">
+<div
+	class="app-shell flex w-screen overflow-hidden bg-[var(--gkc-bg)] text-[var(--gkc-text)]"
+	style="height: 100dvh;"
+>
 	{#if mobile.current}
 		{#if uiStore.sidebarOpen}
 			<button
 				type="button"
 				aria-label="Close sidebar"
 				class="fixed inset-0 z-20 bg-black/30"
-				onclick={() => { uiStore.sidebarOpen = false; }}
+				onclick={() => {
+					uiStore.sidebarOpen = false;
+				}}
 				transition:fade={{ duration: 150 }}
 			></button>
 			<div

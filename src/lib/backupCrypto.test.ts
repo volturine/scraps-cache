@@ -24,11 +24,15 @@ describe('encrypted Shard backups', () => {
 
 	it('rejects an incorrect passphrase and modified ciphertext', async () => {
 		const encrypted = await encryptBackup({ notes: [], labels: [] }, 'correct passphrase', fast);
-		await expect(decryptBackup(encrypted, 'wrong passphrase')).rejects.toThrow('incorrect or the file is damaged');
+		await expect(decryptBackup(encrypted, 'wrong passphrase')).rejects.toThrow(
+			'incorrect or the file is damaged'
+		);
 
 		const ciphertext = encrypted.chunks[0].ciphertext;
 		encrypted.chunks[0].ciphertext = `${ciphertext[0] === 'A' ? 'B' : 'A'}${ciphertext.slice(1)}`;
-		await expect(decryptBackup(encrypted, 'correct passphrase')).rejects.toThrow('incorrect or the file is damaged');
+		await expect(decryptBackup(encrypted, 'correct passphrase')).rejects.toThrow(
+			'incorrect or the file is damaged'
+		);
 	});
 
 	it('rejects missing or reordered chunks', async () => {
@@ -37,7 +41,9 @@ describe('encrypted Shard backups', () => {
 		await expect(decryptBackup(missing, 'correct passphrase')).rejects.toThrow('incomplete');
 
 		const reordered = { ...encrypted, chunks: [...encrypted.chunks].reverse() };
-		await expect(decryptBackup(reordered, 'correct passphrase')).rejects.toThrow('incorrect or the file is damaged');
+		await expect(decryptBackup(reordered, 'correct passphrase')).rejects.toThrow(
+			'incorrect or the file is damaged'
+		);
 	});
 
 	it('authenticates key settings in the backup header', async () => {

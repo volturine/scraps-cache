@@ -38,7 +38,8 @@ export function fileIconLabel(mime: string, name?: string): string {
 	if (m.includes('zip') || m.includes('compressed') || ext === 'zip' || ext === 'rar') return 'ZIP';
 	if (m.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'aac'].includes(ext)) return 'AUD';
 	if (m.startsWith('video/') || ['mp4', 'mov', 'webm'].includes(ext)) return 'VID';
-	if (m.includes('sheet') || m.includes('excel') || ['xls', 'xlsx', 'csv'].includes(ext)) return 'XLS';
+	if (m.includes('sheet') || m.includes('excel') || ['xls', 'xlsx', 'csv'].includes(ext))
+		return 'XLS';
 	if (m.includes('word') || ['doc', 'docx'].includes(ext)) return 'DOC';
 	if (m.includes('text') || ['txt', 'md', 'json'].includes(ext)) return 'TXT';
 	return (ext || 'FILE').slice(0, 4).toUpperCase();
@@ -78,11 +79,10 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 			mp3: 'audio/mpeg',
 			mp4: 'video/mp4'
 		};
-			if (ext && byExt[ext]) mime = byExt[ext];
+		if (ext && byExt[ext]) mime = byExt[ext];
 	}
 	let optimized:
-		| { width: number; height: number; byteSize: number; encodingVersion: number }
-		| undefined;
+		{ width: number; height: number; byteSize: number; encodingVersion: number } | undefined;
 	if (isImageMime(mime)) {
 		try {
 			const result = await optimizeImageBlob(image);
@@ -102,7 +102,9 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 	}
 	const dataUrl = await readBlobAsDataUrl(image);
 	const contentHash = await sha256(dataUrl);
-	const thumbUrl = isImageMime(mime) ? (await makeImageThumbDataUrl(dataUrl)) ?? undefined : undefined;
+	const thumbUrl = isImageMime(mime)
+		? ((await makeImageThumbDataUrl(dataUrl)) ?? undefined)
+		: undefined;
 	return {
 		id: uid(),
 		mime,
@@ -124,7 +126,15 @@ export function stripFullImageBytes(image: NoteImage): NoteImage {
 
 export function isInlinePreviewable(att: Pick<NoteImage, 'mime'>): boolean {
 	const mime = att.mime.toLowerCase();
-	return mime === 'application/pdf' || mime.startsWith('text/') || mime === 'application/json' || mime === 'application/yaml' || mime === 'application/x-yaml' || mime.startsWith('audio/') || mime.startsWith('video/');
+	return (
+		mime === 'application/pdf' ||
+		mime.startsWith('text/') ||
+		mime === 'application/json' ||
+		mime === 'application/yaml' ||
+		mime === 'application/x-yaml' ||
+		mime.startsWith('audio/') ||
+		mime.startsWith('video/')
+	);
 }
 
 /** Open an unsupported attachment through the platform save/share flow. */

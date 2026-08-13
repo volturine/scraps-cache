@@ -62,11 +62,13 @@ function positiveInteger(value: string | undefined, fallback: number): number {
 function isLegacyEnvelope(value: unknown): value is EncryptedEnvelope {
 	if (!value || typeof value !== 'object') return false;
 	const envelope = value as Partial<EncryptedEnvelope>;
-	return Number.isSafeInteger(envelope.seq)
-		&& Number(envelope.seq) > 0
-		&& typeof envelope.id === 'string'
-		&& typeof envelope.slot === 'string'
-		&& typeof envelope.ciphertext === 'string';
+	return (
+		Number.isSafeInteger(envelope.seq) &&
+		Number(envelope.seq) > 0 &&
+		typeof envelope.id === 'string' &&
+		typeof envelope.slot === 'string' &&
+		typeof envelope.ciphertext === 'string'
+	);
 }
 
 export class SyncStore {
@@ -125,19 +127,23 @@ export class SyncStore {
 	}
 
 	getCredentialHash(accountId: string): string | null {
-		const row = this.database.prepare(
-			'SELECT credential_hash FROM accounts WHERE account_id = ?'
-		).get(accountId) as Pick<AccountRow, 'credential_hash'> | undefined;
+		const row = this.database
+			.prepare('SELECT credential_hash FROM accounts WHERE account_id = ?')
+			.get(accountId) as Pick<AccountRow, 'credential_hash'> | undefined;
 		return row?.credential_hash ?? null;
 	}
 
 	createAccount(accountId: string, credentialHash: string, updatedAt = Date.now()): boolean {
-		const result = this.database.prepare(`
+		const result = this.database
+			.prepare(
+				`
 			INSERT OR IGNORE INTO accounts(
 				account_id, credential_hash, next_seq, envelope_count, ciphertext_bytes, updated_at
 			)
 			VALUES (?, ?, 0, 0, 0, ?)
-		`).run(accountId, credentialHash, updatedAt);
+		`
+			)
+			.run(accountId, credentialHash, updatedAt);
 		return result.changes === 1;
 	}
 
@@ -153,11 +159,15 @@ export class SyncStore {
 			? (requestedDownloadLimit ?? 12)
 			: deletionsOrLimit;
 		return this.database.transaction(() => {
-			const account = this.database.prepare(`
+			const account = this.database
+				.prepare(
+					`
 				SELECT credential_hash, next_seq, envelope_count, ciphertext_bytes
 				FROM accounts
 				WHERE account_id = ?
-			`).get(accountId) as AccountRow | undefined;
+			`
+				)
+				.get(accountId) as AccountRow | undefined;
 			if (!account) throw new Error('Sync account does not exist');
 
 			let envelopeCount = account.envelope_count;
@@ -169,20 +179,23 @@ export class SyncStore {
 			`);
 			for (const deletion of deletions) {
 				const removed = remove.get(accountId, deletion.slot, deletion.id) as
-					| { ciphertext_bytes: number }
-					| undefined;
+					{ ciphertext_bytes: number } | undefined;
 				if (!removed) continue;
 				envelopeCount -= 1;
 				ciphertextBytes -= removed.ciphertext_bytes;
 			}
 
-			const page = this.database.prepare(`
+			const page = this.database
+				.prepare(
+					`
 				SELECT seq, id, ciphertext, slot
 				FROM envelopes
 				WHERE account_id = ? AND seq > ?
 				ORDER BY seq ASC
 				LIMIT ?
-			`).all(accountId, cursor, downloadLimit + 1) as EncryptedEnvelope[];
+			`
+				)
+				.all(accountId, cursor, downloadLimit + 1) as EncryptedEnvelope[];
 			const hasMore = page.length > downloadLimit;
 			const remote = hasMore ? page.slice(0, downloadLimit) : page;
 			let sequence = account.next_seq;
@@ -206,13 +219,11 @@ export class SyncStore {
 			for (const upload of uploads) {
 				if (hasId.get(accountId, upload.id)) continue;
 				const prior = priorSlot.get(accountId, upload.slot) as
-					| { ciphertext_bytes: number }
-					| undefined;
+					{ ciphertext_bytes: number } | undefined;
 				const projectedCount = envelopeCount + (prior ? 0 : 1);
-				const projectedBytes = ciphertextBytes + upload.ciphertext.length
-					- (prior?.ciphertext_bytes ?? 0);
-				if (projectedCount > this.maxAccountEnvelopes
-					|| projectedBytes > this.maxAccountBytes) {
+				const projectedBytes =
+					ciphertextBytes + upload.ciphertext.length - (prior?.ciphertext_bytes ?? 0);
+				if (projectedCount > this.maxAccountEnvelopes || projectedBytes > this.maxAccountBytes) {
 					throw new SyncQuotaExceededError();
 				}
 				sequence += 1;
@@ -223,11 +234,15 @@ export class SyncStore {
 			}
 
 			if (added || deletions.length > 0) {
-				this.database.prepare(`
+				this.database
+					.prepare(
+						`
 					UPDATE accounts
 					SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?, updated_at = ?
 					WHERE account_id = ?
-				`).run(sequence, envelopeCount, ciphertextBytes, Date.now(), accountId);
+				`
+					)
+					.run(sequence, envelopeCount, ciphertextBytes, Date.now(), accountId);
 			}
 
 			const afterRemote = remote.at(-1)?.seq ?? cursor;
@@ -252,42 +267,56 @@ export class SyncStore {
 	}
 
 	deleteAccount(accountId: string): boolean {
-		return this.database.prepare('DELETE FROM accounts WHERE account_id = ?').run(accountId).changes === 1;
+		return (
+			this.database.prepare('DELETE FROM accounts WHERE account_id = ?').run(accountId).changes ===
+			1
+		);
 	}
 
 	isReady(): boolean {
 		try {
 			accessSync(this.dataDirectory, constants.W_OK);
-			const migrations = this.database.prepare(
-				'SELECT COUNT(*) AS count FROM meta WHERE key IN (?, ?)'
-			).get(LEGACY_MIGRATION_KEY, USAGE_MIGRATION_KEY) as { count: number };
-			return (this.database.prepare('SELECT 1 AS ready').get() as { ready: number }).ready === 1
-				&& migrations.count === 2;
+			const migrations = this.database
+				.prepare('SELECT COUNT(*) AS count FROM meta WHERE key IN (?, ?)')
+				.get(LEGACY_MIGRATION_KEY, USAGE_MIGRATION_KEY) as { count: number };
+			return (
+				(this.database.prepare('SELECT 1 AS ready').get() as { ready: number }).ready === 1 &&
+				migrations.count === 2
+			);
 		} catch {
 			return false;
 		}
 	}
 
 	aggregateUsage(): UsageRow & { accounts: number } {
-		return this.database.prepare(`
+		return this.database
+			.prepare(
+				`
 			SELECT
 				COUNT(*) AS accounts,
 				COALESCE(SUM(envelope_count), 0) AS envelopeCount,
 				COALESCE(SUM(ciphertext_bytes), 0) AS ciphertextBytes
 			FROM accounts
-		`).get() as UsageRow & { accounts: number };
+		`
+			)
+			.get() as UsageRow & { accounts: number };
 	}
 
 	private ensureUsageColumns(): void {
 		const columns = new Set(
-			(this.database.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>)
-				.map((column) => column.name)
+			(this.database.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>).map(
+				(column) => column.name
+			)
 		);
 		if (!columns.has('envelope_count')) {
-			this.database.exec('ALTER TABLE accounts ADD COLUMN envelope_count INTEGER NOT NULL DEFAULT 0');
+			this.database.exec(
+				'ALTER TABLE accounts ADD COLUMN envelope_count INTEGER NOT NULL DEFAULT 0'
+			);
 		}
 		if (!columns.has('ciphertext_bytes')) {
-			this.database.exec('ALTER TABLE accounts ADD COLUMN ciphertext_bytes INTEGER NOT NULL DEFAULT 0');
+			this.database.exec(
+				'ALTER TABLE accounts ADD COLUMN ciphertext_bytes INTEGER NOT NULL DEFAULT 0'
+			);
 		}
 	}
 
@@ -305,15 +334,16 @@ export class SyncStore {
 					WHERE envelopes.account_id = accounts.account_id
 				)
 			`);
-			this.database.prepare('INSERT INTO meta(key, value) VALUES (?, ?)').run(
-				USAGE_MIGRATION_KEY,
-				String(Date.now())
-			);
+			this.database
+				.prepare('INSERT INTO meta(key, value) VALUES (?, ?)')
+				.run(USAGE_MIGRATION_KEY, String(Date.now()));
 		})();
 	}
 
 	private migrateLegacyJson(file: string): void {
-		const migrated = this.database.prepare('SELECT 1 FROM meta WHERE key = ?').get(LEGACY_MIGRATION_KEY);
+		const migrated = this.database
+			.prepare('SELECT 1 FROM meta WHERE key = ?')
+			.get(LEGACY_MIGRATION_KEY);
 		if (migrated) return;
 
 		this.database.transaction(() => {
@@ -361,10 +391,9 @@ export class SyncStore {
 					}
 				}
 			}
-			this.database.prepare('INSERT INTO meta(key, value) VALUES (?, ?)').run(
-				LEGACY_MIGRATION_KEY,
-				String(Date.now())
-			);
+			this.database
+				.prepare('INSERT INTO meta(key, value) VALUES (?, ?)')
+				.run(LEGACY_MIGRATION_KEY, String(Date.now()));
 		})();
 	}
 }
@@ -373,10 +402,7 @@ let singleton: SyncStore | undefined;
 
 export function getSyncStore(): SyncStore {
 	singleton ??= new SyncStore(env.SHARD_SYNC_DATA_DIR || 'sync-data', {
-		maxAccountBytes: positiveInteger(
-			env.SHARD_SYNC_MAX_ACCOUNT_BYTES,
-			DEFAULT_MAX_ACCOUNT_BYTES
-		),
+		maxAccountBytes: positiveInteger(env.SHARD_SYNC_MAX_ACCOUNT_BYTES, DEFAULT_MAX_ACCOUNT_BYTES),
 		maxAccountEnvelopes: positiveInteger(
 			env.SHARD_SYNC_MAX_ACCOUNT_ENVELOPES,
 			DEFAULT_MAX_ACCOUNT_ENVELOPES

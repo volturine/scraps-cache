@@ -15,7 +15,9 @@
 	</div>
 
 	{#if archived.length === 0}
-		<div class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]">
+		<div
+			class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]"
+		>
 			<div class="mb-2 text-5xl">📦</div>
 			<div class="text-sm">Your archived notes appear here.</div>
 		</div>

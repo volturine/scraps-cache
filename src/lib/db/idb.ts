@@ -29,7 +29,10 @@ function imageKey(noteId: string, imageId: string): string {
 
 function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
 	const run = deviceWriteChain.catch(() => undefined).then(operation);
-	deviceWriteChain = run.then(() => undefined, () => undefined);
+	deviceWriteChain = run.then(
+		() => undefined,
+		() => undefined
+	);
 	return run;
 }
 
@@ -69,14 +72,18 @@ function plainImage(image: NoteImage): NoteImage {
 		dataUrl: typeof image.dataUrl === 'string' ? image.dataUrl : '',
 		createdAt: Number(image.createdAt) || 0,
 		...(image.name != null && image.name !== '' ? { name: String(image.name) } : {}),
-		...(typeof image.thumbUrl === 'string' && image.thumbUrl ? { thumbUrl: String(image.thumbUrl) } : {}),
+		...(typeof image.thumbUrl === 'string' && image.thumbUrl
+			? { thumbUrl: String(image.thumbUrl) }
+			: {}),
 		...(Number.isFinite(image.width) ? { width: Number(image.width) } : {}),
 		...(Number.isFinite(image.height) ? { height: Number(image.height) } : {}),
 		...(Number.isFinite(image.byteSize) ? { byteSize: Number(image.byteSize) } : {}),
 		...(typeof image.contentHash === 'string' && image.contentHash
 			? { contentHash: String(image.contentHash) }
 			: {}),
-		...(Number.isFinite(image.encodingVersion) ? { encodingVersion: Number(image.encodingVersion) } : {})
+		...(Number.isFinite(image.encodingVersion)
+			? { encodingVersion: Number(image.encodingVersion) }
+			: {})
 	};
 }
 
@@ -145,7 +152,11 @@ async function imageFromStoredValue(
 		// Keep thumb-only metadata so cards still render while full bytes are missing.
 		return plainImage({ ...meta, dataUrl: '' });
 	}
-	return plainImage({ ...meta, mime: meta.mime || stored.type, dataUrl: await blobToDataUrl(stored) });
+	return plainImage({
+		...meta,
+		mime: meta.mime || stored.type,
+		dataUrl: await blobToDataUrl(stored)
+	});
 }
 
 async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
@@ -153,7 +164,10 @@ async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 	for (const meta of note.images ?? []) {
 		images.push(await imageFromStoredValue(db, note.id, meta));
 	}
-	return { ...plainNote(note), images: images.filter((image): image is NoteImage => image !== null) };
+	return {
+		...plainNote(note),
+		images: images.filter((image): image is NoteImage => image !== null)
+	};
 }
 
 async function prepareImageBlobs(note: Note): Promise<Array<{ key: string; blob: Blob }>> {
@@ -188,7 +202,10 @@ async function putNoteSnapshot(note: Note): Promise<void> {
 function enqueueNote<T>(noteId: string, operation: () => Promise<T>): Promise<T> {
 	const previous = noteChains.get(noteId) ?? Promise.resolve();
 	const run = previous.catch(() => undefined).then(operation);
-	const completion = run.then(() => undefined, () => undefined);
+	const completion = run.then(
+		() => undefined,
+		() => undefined
+	);
 	noteChains.set(noteId, completion);
 	return run.finally(() => {
 		if (noteChains.get(noteId) === completion) noteChains.delete(noteId);
@@ -218,11 +235,13 @@ export async function getAllNotes(): Promise<Note[]> {
 export function putNote(note: Note): Promise<void> {
 	const snapshot = snapshotNote(note);
 	const generation = writeGeneration;
-	return enqueueNote(snapshot.id, () => enqueueDeviceWrite(async () => {
-		// A replacement requested after this save owns the final device state.
-		if (generation !== writeGeneration) return;
-		await putNoteSnapshot(snapshot);
-	}));
+	return enqueueNote(snapshot.id, () =>
+		enqueueDeviceWrite(async () => {
+			// A replacement requested after this save owns the final device state.
+			if (generation !== writeGeneration) return;
+			await putNoteSnapshot(snapshot);
+		})
+	);
 }
 
 export function deleteNote(id: string): Promise<void> {
@@ -291,7 +310,7 @@ export async function bulkPutLabels(labels: Label[]): Promise<void> {
 			});
 		}
 		await tx.done;
-		});
+	});
 }
 
 export async function clearAllNotes(): Promise<void> {
@@ -356,7 +375,8 @@ export async function getCachedLinkPreview(url: string): Promise<LinkPreview | u
 	const row = await db.get(LINK_PREVIEWS_STORE, url);
 	if (!row || typeof row !== 'object') return undefined;
 	const { url: cachedUrl, hostname, title, description, image, icon } = row as LinkPreview;
-	if (typeof cachedUrl !== 'string' || typeof hostname !== 'string' || typeof title !== 'string') return undefined;
+	if (typeof cachedUrl !== 'string' || typeof hostname !== 'string' || typeof title !== 'string')
+		return undefined;
 	return plainLinkPreview({
 		url: cachedUrl,
 		hostname,
@@ -381,22 +401,25 @@ export async function getAllCachedLinkPreviews(): Promise<LinkPreview[]> {
 	return rows.flatMap((row) => {
 		if (!row || typeof row !== 'object') return [];
 		const { url, hostname, title, description, image, icon } = row as LinkPreview;
-		if (typeof url !== 'string' || typeof hostname !== 'string' || typeof title !== 'string') return [];
-		return [plainLinkPreview({
-			url,
-			hostname,
-			title,
-			...(typeof description === 'string' ? { description } : {}),
-			...(typeof image === 'string' ? { image } : {}),
-			...(typeof icon === 'string' ? { icon } : {})
-		})];
+		if (typeof url !== 'string' || typeof hostname !== 'string' || typeof title !== 'string')
+			return [];
+		return [
+			plainLinkPreview({
+				url,
+				hostname,
+				title,
+				...(typeof description === 'string' ? { description } : {}),
+				...(typeof image === 'string' ? { image } : {}),
+				...(typeof icon === 'string' ? { icon } : {})
+			})
+		];
 	});
 }
 
 /** Durable sync cursor/baseline state. Unlike localStorage, this is not size-limited. */
 export async function getSyncState<T>(key: string): Promise<T | undefined> {
 	const db = await getDB();
-	return await db.get(SYNC_STATE_STORE, key) as T | undefined;
+	return (await db.get(SYNC_STATE_STORE, key)) as T | undefined;
 }
 
 export async function setSyncState<T>(key: string, value: T): Promise<void> {
@@ -424,7 +447,10 @@ export async function getSyncOutboxKeys(): Promise<string[]> {
 	return (await db.getAllKeys(SYNC_OUTBOX_STORE)).map(String);
 }
 
-export async function clearSyncOutbox(keys: Iterable<string>, through = Number.POSITIVE_INFINITY): Promise<void> {
+export async function clearSyncOutbox(
+	keys: Iterable<string>,
+	through = Number.POSITIVE_INFINITY
+): Promise<void> {
 	const unique = [...new Set(keys)].filter(Boolean);
 	if (unique.length === 0) return;
 	const db = await getDB();

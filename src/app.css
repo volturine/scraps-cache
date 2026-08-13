@@ -295,7 +295,9 @@ body {
 	align-items: center;
 	justify-content: center;
 	border-radius: 9999px;
-	transition: background-color 120ms ease, color 120ms ease;
+	transition:
+		background-color 120ms ease,
+		color 120ms ease;
 	touch-action: manipulation;
 	-webkit-tap-highlight-color: transparent;
 	outline: none;
@@ -326,7 +328,9 @@ body {
 
 /* Hide elements on phone screens (under 640px) */
 @media (max-width: 639px) {
-	.mobile-hide { display: none !important; }
+	.mobile-hide {
+		display: none !important;
+	}
 }
 /* Sidebar active item */
 .nav-active {

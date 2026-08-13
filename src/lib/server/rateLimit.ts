@@ -5,9 +5,7 @@ export type RateLimitPolicy = {
 	refillWindowMs: number;
 };
 
-export type RateLimitResult =
-	| { allowed: true }
-	| { allowed: false; retryAfterSeconds: number };
+export type RateLimitResult = { allowed: true } | { allowed: false; retryAfterSeconds: number };
 
 type Bucket = {
 	tokens: number;

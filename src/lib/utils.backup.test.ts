@@ -16,20 +16,24 @@ function noteWithPhoto(): Note {
 		updatedAt: 20,
 		reminder: 30,
 		labels: ['work'],
-		images: [{
-			id: 'img1',
-			mime: 'image/jpeg',
-			dataUrl: 'data:image/jpeg;base64,' + 'A'.repeat(200),
-			thumbUrl: 'data:image/jpeg;base64,thumb',
-			name: 'shot.jpg',
-			createdAt: 11
-		}],
-		linkPreviews: [{
-			url: 'https://example.com',
-			hostname: 'example.com',
-			title: 'Example',
-			description: 'desc'
-		}]
+		images: [
+			{
+				id: 'img1',
+				mime: 'image/jpeg',
+				dataUrl: 'data:image/jpeg;base64,' + 'A'.repeat(200),
+				thumbUrl: 'data:image/jpeg;base64,thumb',
+				name: 'shot.jpg',
+				createdAt: 11
+			}
+		],
+		linkPreviews: [
+			{
+				url: 'https://example.com',
+				hostname: 'example.com',
+				title: 'Example',
+				description: 'desc'
+			}
+		]
 	};
 }
 

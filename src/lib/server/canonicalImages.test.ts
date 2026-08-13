@@ -4,10 +4,8 @@ import type { SyncNote } from './syncMerge';
 
 function dngDataUrl(): string {
 	const jpeg = Uint8Array.from([
-		0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08,
-		0x0b, 0xd0, 0x0f, 0xc0,
-		0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
-		0xff, 0xd9
+		0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x0b, 0xd0, 0x0f, 0xc0, 0x03, 0x01, 0x11, 0x00, 0x02,
+		0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9
 	]);
 	const jpegOffset = 38;
 	const bytes = new Uint8Array(jpegOffset + jpeg.length);
@@ -30,9 +28,18 @@ function dngDataUrl(): string {
 
 function note(dataUrl: string, mime: string, name: string): SyncNote {
 	return {
-		id: 'note-1', title: '', body: '', color: 'default',
-		pinned: false, archived: false, trashed: false, trashedAt: null,
-		createdAt: 1, updatedAt: 10, reminder: null, labels: [],
+		id: 'note-1',
+		title: '',
+		body: '',
+		color: 'default',
+		pinned: false,
+		archived: false,
+		trashed: false,
+		trashedAt: null,
+		createdAt: 1,
+		updatedAt: 10,
+		reminder: null,
+		labels: [],
 		images: [{ id: 'image-1', mime, name, createdAt: 1, dataUrl }]
 	} as SyncNote;
 }

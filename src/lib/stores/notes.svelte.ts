@@ -23,18 +23,24 @@ import { kanbanStore } from '$lib/stores/kanban.svelte';
 import { uiStore } from '$lib/stores/ui.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
-import { readLabelsMirror, readNotesMirror, writeLabelsMirror, writeNotesMirror } from '$lib/noteStorage';
-import { readLabelTombstones, readTombstones, writeLabelTombstones, writeTombstones } from '$lib/syncTombstones';
+import {
+	readLabelsMirror,
+	readNotesMirror,
+	writeLabelsMirror,
+	writeNotesMirror
+} from '$lib/noteStorage';
+import {
+	readLabelTombstones,
+	readTombstones,
+	writeLabelTombstones,
+	writeTombstones
+} from '$lib/syncTombstones';
 import { stripFullImageBytes } from '$lib/noteImages';
 import { makeImageThumbDataUrl } from '$lib/imageThumb';
 import { replacementFitsStorage } from '$lib/storageCapacity';
 import { formatStorageError } from '$lib/imageBlob';
 import type { NoteImage } from '$lib/types';
-import {
-	normalizeBackup,
-	type BackupImportProgress,
-	type ShardBackup
-} from '$lib/backup';
+import { normalizeBackup, type BackupImportProgress, type ShardBackup } from '$lib/backup';
 
 export class NotesStore {
 	notes = $state<Note[]>([]);
@@ -46,7 +52,9 @@ export class NotesStore {
 	deletedLabelIds = $state<Record<string, number>>(readLabelTombstones());
 	private attachmentLoads = new Map<string, Promise<void>>();
 	private attachmentPass: Promise<void> | null = null;
-	private visibleAttachmentQueue = new AttachmentHydrationQueue((noteId) => this.ensureNoteAttachments(noteId));
+	private visibleAttachmentQueue = new AttachmentHydrationQueue((noteId) =>
+		this.ensureNoteAttachments(noteId)
+	);
 
 	constructor() {
 		this.notes = readNotesMirror();
@@ -95,8 +103,11 @@ export class NotesStore {
 		}
 
 		const notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
-		const labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) => a.name.localeCompare(b.name));
-		const seededFlag = typeof localStorage !== 'undefined' ? localStorage.getItem('gkc-seeded') : null;
+		const labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) =>
+			a.name.localeCompare(b.name)
+		);
+		const seededFlag =
+			typeof localStorage !== 'undefined' ? localStorage.getItem('gkc-seeded') : null;
 
 		if (notes.length === 0 && labels.length === 0 && !seededFlag) {
 			localStorage?.setItem('gkc-seeded', '1');
@@ -130,7 +141,9 @@ export class NotesStore {
 		try {
 			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
 			this.notes = mergeNoteLists(this.notes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
-			this.labels = mergeLabelLists(this.labels, dbLabels).sort((a, b) => a.name.localeCompare(b.name));
+			this.labels = mergeLabelLists(this.labels, dbLabels).sort((a, b) =>
+				a.name.localeCompare(b.name)
+			);
 			this.mirrorToLS();
 		} catch (err) {
 			this.recordPersistenceError('Could not rehydrate from IndexedDB', err);
@@ -155,7 +168,9 @@ export class NotesStore {
 					this.notes[index] = { ...current, images };
 				}
 			})
-			.catch((err) => this.recordPersistenceError(`Could not load attachments for note ${noteId}`, err));
+			.catch((err) =>
+				this.recordPersistenceError(`Could not load attachments for note ${noteId}`, err)
+			);
 		this.attachmentLoads.set(noteId, load);
 		return load.finally(() => {
 			if (this.attachmentLoads.get(noteId) === load) this.attachmentLoads.delete(noteId);
@@ -179,16 +194,19 @@ export class NotesStore {
 		};
 		this.attachmentPass = Promise.all(Array.from({ length: Math.min(2, ids.length) }, worker))
 			.then(() => undefined)
-			.finally(() => { this.attachmentPass = null; });
+			.finally(() => {
+				this.attachmentPass = null;
+			});
 		return this.attachmentPass;
 	}
 
 	/** Only hydrate a few notes per sync so photo-heavy accounts transfer in fractions. */
 	private async hydrateAttachmentsForSync(): Promise<void> {
 		const dirtyKeys = new Set(await getSyncOutboxKeys().catch(() => []));
-		const prioritized = this.notes.filter((note) =>
-			dirtyKeys.has(`note:${note.id}`)
-			|| (note.images ?? []).some((image) => dirtyKeys.has(`attachment:${image.id}`))
+		const prioritized = this.notes.filter(
+			(note) =>
+				dirtyKeys.has(`note:${note.id}`) ||
+				(note.images ?? []).some((image) => dirtyKeys.has(`attachment:${image.id}`))
 		);
 		const prioritizedIds = new Set(prioritized.map((note) => note.id));
 		const ids = [...prioritized, ...this.notes.filter((note) => !prioritizedIds.has(note.id))]
@@ -225,9 +243,7 @@ export class NotesStore {
 				...patch,
 				updatedAt: Date.now(),
 				labels: patch.labels ? [...patch.labels] : current.labels,
-				images: patch.images
-					? patch.images.map((image) => ({ ...image }))
-					: current.images,
+				images: patch.images ? patch.images.map((image) => ({ ...image })) : current.images,
 				linkPreviews: patch.linkPreviews
 					? patch.linkPreviews.map((preview) => ({ ...preview }))
 					: current.linkPreviews
@@ -307,9 +323,7 @@ export class NotesStore {
 			...patch,
 			updatedAt: Date.now(),
 			labels: patch.labels ? [...patch.labels] : current.labels,
-			images: patch.images
-				? patch.images.map((image) => ({ ...image }))
-				: current.images,
+			images: patch.images ? patch.images.map((image) => ({ ...image })) : current.images,
 			linkPreviews: patch.linkPreviews
 				? patch.linkPreviews.map((preview) => ({ ...preview }))
 				: current.linkPreviews
@@ -418,7 +432,11 @@ export class NotesStore {
 			this.notes = this.notes.map((note) => {
 				if (!note.labels.includes(id)) return note;
 				if (note.trashed) {
-					return { ...note, labels: note.labels.filter((labelId) => labelId !== id), updatedAt: deletedAt };
+					return {
+						...note,
+						labels: note.labels.filter((labelId) => labelId !== id),
+						updatedAt: deletedAt
+					};
 				}
 				return {
 					...note,
@@ -442,7 +460,11 @@ export class NotesStore {
 		this.notes = this.notes.map((note) => {
 			if (!note.labels.includes(id)) return note;
 			affectedNoteIds.push(note.id);
-			return { ...note, labels: note.labels.filter((labelId) => labelId !== id), updatedAt: deletedAt };
+			return {
+				...note,
+				labels: note.labels.filter((labelId) => labelId !== id),
+				updatedAt: deletedAt
+			};
 		});
 		this.mirrorToLS();
 		deleteLabel(id).catch((err) => this.recordPersistenceError('Could not delete label', err));
@@ -463,7 +485,10 @@ export class NotesStore {
 			const inTitle = n.title.toLowerCase().includes(q);
 			const inBody = n.body.toLowerCase().includes(q);
 			const inLabels = n.labels.some((lid) =>
-				this.labels.find((l) => l.id === lid)?.name.toLowerCase().includes(q)
+				this.labels
+					.find((l) => l.id === lid)
+					?.name.toLowerCase()
+					.includes(q)
 			);
 			return inTitle || inBody || inLabels;
 		});
@@ -518,14 +543,18 @@ export class NotesStore {
 	}
 
 	async importBackup(data: unknown): Promise<{ success: boolean; error?: string }> {
-		if (this.backupImportProgress) return { success: false, error: 'A backup import is already running.' };
+		if (this.backupImportProgress)
+			return { success: false, error: 'A backup import is already running.' };
 		const backup = normalizeBackup(data);
 		if (!backup) return { success: false, error: 'That file is not a valid Shard full backup.' };
 		try {
 			if (navigator.storage?.estimate) {
 				const estimate = await navigator.storage.estimate();
 				if (!replacementFitsStorage(backup.notes, estimate)) {
-					return { success: false, error: 'Storage full on this device — free space or remove old notes/attachments.' };
+					return {
+						success: false,
+						error: 'Storage full on this device — free space or remove old notes/attachments.'
+					};
 				}
 			}
 			this.backupImportProgress = { phase: 'writing', completed: 0, total: backup.notes.length };
@@ -534,7 +563,11 @@ export class NotesStore {
 				if (this.backupImportProgress) this.backupImportProgress.completed += 1;
 			});
 
-			this.backupImportProgress = { phase: 'finishing', completed: backup.notes.length, total: backup.notes.length };
+			this.backupImportProgress = {
+				phase: 'finishing',
+				completed: backup.notes.length,
+				total: backup.notes.length
+			};
 			this.notes = backup.notes.sort((a, b) => b.updatedAt - a.updatedAt);
 			this.labels = [...backup.labels].sort((a, b) => a.name.localeCompare(b.name));
 			this.deletedNoteIds = { ...backup.tombstones };
@@ -542,7 +575,10 @@ export class NotesStore {
 			writeTombstones(this.deletedNoteIds);
 			writeLabelTombstones(this.deletedLabelIds);
 			kanbanStore.replaceWithCloud(backup.boards, backup.boardTombstones);
-			if (backup.activeBoardId && kanbanStore.boards.some((board) => board.id === backup.activeBoardId)) {
+			if (
+				backup.activeBoardId &&
+				kanbanStore.boards.some((board) => board.id === backup.activeBoardId)
+			) {
 				kanbanStore.selectBoard(backup.activeBoardId);
 			}
 			uiStore.restoreState(backup.ui);
@@ -567,7 +603,9 @@ export class NotesStore {
 		try {
 			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
 			this.notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
-			this.labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) => a.name.localeCompare(b.name));
+			this.labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) =>
+				a.name.localeCompare(b.name)
+			);
 			this.mirrorToLS();
 		} catch (err) {
 			this.recordPersistenceError('Could not refresh from IndexedDB', err);
@@ -656,14 +694,16 @@ export class NotesStore {
 				const idx = this.notes.findIndex((item) => item.id === id);
 				if (idx < 0) return;
 				const current = this.notes[idx];
-				const images = await Promise.all((current.images ?? []).map(async (image) => {
-					let next = image;
-					if (image.dataUrl && !image.thumbUrl && (image.mime || '').startsWith('image/')) {
-						const thumbUrl = await makeImageThumbDataUrl(image.dataUrl);
-						if (thumbUrl) next = { ...image, thumbUrl };
-					}
-					return stripFullImageBytes(next);
-				}));
+				const images = await Promise.all(
+					(current.images ?? []).map(async (image) => {
+						let next = image;
+						if (image.dataUrl && !image.thumbUrl && (image.mime || '').startsWith('image/')) {
+							const thumbUrl = await makeImageThumbDataUrl(image.dataUrl);
+							if (thumbUrl) next = { ...image, thumbUrl };
+						}
+						return stripFullImageBytes(next);
+					})
+				);
 				if (images.some((image, i) => image !== current.images?.[i])) {
 					this.notes[idx] = { ...current, images };
 					this.mirrorToLS();
@@ -714,11 +754,14 @@ export class NotesStore {
 			if (navigator.storage?.estimate) {
 				const estimate = await navigator.storage.estimate();
 				if (!replacementFitsStorage(cloudNotes, estimate)) {
-					this.lastPersistError = 'Storage full on this device — free space or remove old notes/attachments.';
+					this.lastPersistError =
+						'Storage full on this device — free space or remove old notes/attachments.';
 					return false;
 				}
 			}
-			await replaceAllDeviceData(cloudNotes, cloudLabels, (note) => this.compactPersistedNoteImages(note));
+			await replaceAllDeviceData(cloudNotes, cloudLabels, (note) =>
+				this.compactPersistedNoteImages(note)
+			);
 			this.notes = cloudNotes;
 			this.labels = cloudLabels;
 			this.deletedNoteIds = { ...tombstones };
@@ -797,34 +840,42 @@ export class NotesStore {
 
 			const incomingTombstones = result.tombstones ?? {};
 			for (const [id, deletedAt] of Object.entries(incomingTombstones)) {
-				if ((Number(deletedAt) || 0) > (this.deletedNoteIds[id] || 0)) this.deletedNoteIds[id] = Number(deletedAt);
+				if ((Number(deletedAt) || 0) > (this.deletedNoteIds[id] || 0))
+					this.deletedNoteIds[id] = Number(deletedAt);
 			}
 			writeTombstones(this.deletedNoteIds);
 			const incomingLabelTombstones = result.labelTombstones ?? {};
 			for (const [id, deletedAt] of Object.entries(incomingLabelTombstones)) {
-				if ((Number(deletedAt) || 0) > (this.deletedLabelIds[id] || 0)) this.deletedLabelIds[id] = Number(deletedAt);
+				if ((Number(deletedAt) || 0) > (this.deletedLabelIds[id] || 0))
+					this.deletedLabelIds[id] = Number(deletedAt);
 			}
 			writeLabelTombstones(this.deletedLabelIds);
-			const remoteNotes = (result.notes as Note[])
-				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt);
+			const remoteNotes = (result.notes as Note[]).filter(
+				(note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt
+			);
 			const localById = new Map(this.notes.map((note) => [note.id, note]));
 			let mergedNotes = mergeNoteLists(this.notes, remoteNotes)
 				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt)
 				.sort((a, b) => b.updatedAt - a.updatedAt);
 			// Build thumbs for any newly received full photos, then drop full bytes from memory.
-			mergedNotes = await Promise.all(mergedNotes.map(async (note) => {
-				const images = await Promise.all((note.images ?? []).map(async (image) => {
-					let next = image;
-					if (image.dataUrl && !image.thumbUrl && (image.mime || '').startsWith('image/')) {
-						const thumbUrl = await makeImageThumbDataUrl(image.dataUrl);
-						if (thumbUrl) next = { ...image, thumbUrl };
-					}
-					return stripFullImageBytes(next);
-				}));
-				return { ...note, images };
-			}));
-			const remoteLabels = ((result.labels ?? []) as Label[])
-				.filter((label) => (this.deletedLabelIds[label.id] || 0) < label.updatedAt);
+			mergedNotes = await Promise.all(
+				mergedNotes.map(async (note) => {
+					const images = await Promise.all(
+						(note.images ?? []).map(async (image) => {
+							let next = image;
+							if (image.dataUrl && !image.thumbUrl && (image.mime || '').startsWith('image/')) {
+								const thumbUrl = await makeImageThumbDataUrl(image.dataUrl);
+								if (thumbUrl) next = { ...image, thumbUrl };
+							}
+							return stripFullImageBytes(next);
+						})
+					);
+					return { ...note, images };
+				})
+			);
+			const remoteLabels = ((result.labels ?? []) as Label[]).filter(
+				(label) => (this.deletedLabelIds[label.id] || 0) < label.updatedAt
+			);
 			const mergedLabels = mergeLabelLists(this.labels, remoteLabels)
 				.filter((label) => (this.deletedLabelIds[label.id] || 0) < label.updatedAt)
 				.sort((a, b) => a.name.localeCompare(b.name));
@@ -838,7 +889,10 @@ export class NotesStore {
 				const localImages = new Map((local.images ?? []).map((image) => [image.id, image]));
 				return (remote.images ?? []).some((image) => {
 					const previous = localImages.get(image.id);
-					return !previous || (!previous.dataUrl.length && !previous.thumbUrl && image.dataUrl.length > 0);
+					return (
+						!previous ||
+						(!previous.dataUrl.length && !previous.thumbUrl && image.dataUrl.length > 0)
+					);
 				});
 			});
 
