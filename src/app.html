@@ -7,7 +7,8 @@
 
 		<!-- PWA / iOS standalone -->
 		<meta name="apple-mobile-web-app-capable" content="yes" />
-		<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<meta name="theme-color" content="#ffffff" />
 		<meta name="apple-mobile-web-app-title" content="Shard" />
 		<meta name="mobile-web-app-capable" content="yes" />
 		<link rel="manifest" href="/manifest.json" />
@@ -40,9 +41,12 @@
 						el.style.backgroundColor = '#ffffff';
 						el.style.colorScheme = 'light';
 					}
+					var theme = document.querySelector('meta[name="theme-color"]');
+					if (theme) theme.setAttribute('content', dark ? '#1a1a1a' : '#ffffff');
 				} catch (e) {
 					// Default to dark if anything fails (user prefers dark).
 					document.documentElement.style.backgroundColor = '#1a1a1a';
+					document.documentElement.style.colorScheme = 'dark';
 				}
 			})();
 		</script>

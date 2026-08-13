@@ -41,7 +41,12 @@
 	let editingId = $state<string | null>(null);
 
 	$effect(() => {
-		document.documentElement.classList.toggle('dark', uiStore.effectiveDark);
+		const dark = uiStore.effectiveDark;
+		const bg = dark ? '#1a1a1a' : '#ffffff';
+		document.documentElement.classList.toggle('dark', dark);
+		document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+		document.documentElement.style.backgroundColor = bg;
+		document.body.style.backgroundColor = bg;
 	});
 
 	function openEditor(id: string) {
@@ -80,6 +85,7 @@
 
 <svelte:head>
 	<title>Shard</title>
+	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
 <div class="app-shell flex w-screen overflow-hidden bg-[var(--gkc-bg)] text-[var(--gkc-text)]" style="height: 100dvh;">

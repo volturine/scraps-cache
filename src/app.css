@@ -47,6 +47,10 @@
 
 html {
 	background-color: var(--gkc-bg);
+	color-scheme: light;
+}
+html.dark {
+	color-scheme: dark;
 }
 
 /* Note editor open: freeze the document and feed. iOS Safari otherwise pans the
@@ -72,10 +76,12 @@ html.editor-open .app-shell .scrollable {
 
 html,
 body {
+	min-height: 100lvh;
 	height: 100%;
 	margin: 0;
 	overflow: hidden;
 	overscroll-behavior: none;
+	background-color: var(--gkc-bg);
 }
 
 body {
