@@ -59,7 +59,7 @@
 			: ''
 	);
 	const editorDialogClass =
-		'flex h-[min(72lvh,100%)] max-h-full min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl';
+		'flex h-[min(72lvh,100%)] max-h-full min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-2xl';
 	const editorDialogStyle = $derived(`background-color: ${note ? bgColor(note.color) : 'transparent'};`);
 
 	let syncedId: string | null = null;
