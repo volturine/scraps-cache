@@ -67,7 +67,10 @@ App: `http://localhost:3000` (or the origin you configured).
 To preview a published PR image (`dev-<n>`) beside production, use
 `docker/compose.dev.yaml` on port **3000** — see [self-hosting](docs/self-hosting.md#preview-a-pull-request-image).
 
-Full operator guide — reverse proxy, backups, restore drill, env reference:
+Private HTTPS on your tailnet (no public ports): add
+`docker/compose.tailscale.yaml` — see [self-hosting](docs/self-hosting.md#tailscale-serve).
+
+Full operator guide — reverse proxy, Tailscale Serve, backups, restore drill, env reference:
 
 **→ [docs/self-hosting.md](docs/self-hosting.md)**
 

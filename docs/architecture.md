@@ -111,6 +111,7 @@ counts per account for quotas (default 1 GB / 50k envelopes).
 | Dev Compose        | `docker/compose.yaml`            | Build local image, loose admin token default           |
 | PR preview Compose | `docker/compose.dev.yaml`        | Pull GHCR `dev-*` image on port 3000, isolated volumes |
 | Prod Compose       | `docker/compose.production.yaml` | Pull GHCR image, require admin token + image pin       |
+| Tailscale overlay  | `docker/compose.tailscale.yaml`  | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)       |
 | Backup overlay     | `docker/compose.backup.yaml`     | Restic local and/or S3 encrypted repos                 |
 
 ## Related docs

@@ -110,7 +110,7 @@
 				transition:fade={{ duration: 150 }}
 			></button>
 			<div
-				class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--gkc-border)] bg-[var(--gkc-surface)]"
+				class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--gkc-border)] bg-[var(--gkc-surface)] pt-[env(safe-area-inset-top,0px)] pl-[env(safe-area-inset-left,0px)]"
 				transition:fly={{ x: -288, duration: 200 }}
 				role="navigation"
 				aria-label="Sidebar"

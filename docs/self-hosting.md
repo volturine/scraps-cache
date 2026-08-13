@@ -64,6 +64,54 @@ Defaults: host port **3000**, project name `shard-notes-dev`, isolated volumes.
 Change the tag in `.env.dev` and run `pull` + `up -d` again to switch PRs.
 Do not point this stack at the production volumes or admin token.
 
+## Tailscale Serve
+
+Optional overlay: `docker/compose.tailscale.yaml`. A sidecar joins your tailnet
+as `TS_HOSTNAME` and [Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)
+terminates HTTPS with a MagicDNS certificate, proxying to the `app` container.
+No public ports or extra reverse proxy.
+
+In the Tailscale admin console:
+
+1. Enable **MagicDNS** and **HTTPS Certificates** (DNS page).
+2. Create an [auth key](https://login.tailscale.com/admin/settings/keys) or
+   [OAuth client](https://login.tailscale.com/admin/settings/oauth) (`auth_keys`
+   write). OAuth nodes need a tag in ACLs and
+   `TS_EXTRA_ARGS=--advertise-tags=tag:container`. Append `?ephemeral=false` to
+   an OAuth secret so the machine survives restarts.
+3. Do **not** enable Funnel. Serve is tailnet-only.
+
+Set in `.env`:
+
+```sh
+TS_HOSTNAME=shard
+TS_AUTHKEY=tskey-auth-…   # or tskey-client-…?ephemeral=false
+SHARD_ORIGIN=https://shard.your-tailnet.ts.net
+```
+
+```sh
+docker compose --project-directory . \
+  -f docker/compose.production.yaml -f docker/compose.tailscale.yaml \
+  up -d
+docker compose --project-directory . \
+  -f docker/compose.production.yaml -f docker/compose.tailscale.yaml \
+  exec tailscale tailscale serve status
+```
+
+The app is then `https://shard.your-tailnet.ts.net` from any device on the
+tailnet. The first HTTPS request can take a few seconds while the certificate is
+issued. Host ports stay published for local health checks; use the `*.ts.net`
+origin in the browser.
+
+The sidecar uses userspace networking (works on Docker Desktop / macOS) and
+persists identity in the `tailscale-state` volume. Serve config lives in
+`docker/tailscale/serve.json` (`${TS_CERT_DOMAIN}` is substituted at runtime).
+Mount that path as a **directory**, not a single file.
+
+Same overlay works with `docker/compose.dev.yaml` for PR previews. Give that
+stack its own hostname (`dev-shard` in `.env.dev.example`) and auth key so it
+cannot collide with production.
+
 ## Reverse proxy and TLS
 
 Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
@@ -106,6 +154,9 @@ Compose maps `SHARD_ADDRESS_HEADER` → `ADDRESS_HEADER` and
 | `SHARD_IMAGE`           |         required (prod) | Pinned image tag or digest                                  |
 | `SHARD_ORIGIN`          | `http://localhost:3000` | Exact public origin used by SvelteKit                       |
 | `SHARD_BODY_SIZE_LIMIT` |                  `110M` | Node adapter request limit; must exceed the 101 MB sync cap |
+| `TS_HOSTNAME`           |                 `shard` | Tailnet machine name (`https://<name>.<tailnet>.ts.net`)    |
+| `TS_AUTHKEY`            |                       — | Auth key or OAuth secret; required with the Tailscale overlay |
+| `TS_EXTRA_ARGS`         |                       — | Extra `tailscale up` flags (OAuth tag advertisement)        |
 
 Inside Compose, `HOST`, `PORT`, and `SHARD_SYNC_DATA_DIR` are fixed to
 `0.0.0.0`, `3000`, and `/data`. Direct `docker run` may override them.

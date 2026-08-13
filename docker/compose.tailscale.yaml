@@ -1,0 +1,35 @@
+# Optional overlay: join the tailnet as TS_HOSTNAME and Serve HTTPS to `app`.
+#
+# Prerequisites: MagicDNS + HTTPS Certificates in the Tailscale admin console.
+# Do not enable Funnel — Serve is tailnet-only.
+#
+#   docker compose --project-directory . \
+#     -f docker/compose.production.yaml -f docker/compose.tailscale.yaml \
+#     up -d
+#
+# Preview stack: swap in docker/compose.dev.yaml and --env-file .env.dev.
+# Host ports stay published; use the https://<TS_HOSTNAME>.<tailnet>.ts.net origin.
+
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    hostname: ${TS_HOSTNAME:-shard}
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?Set TS_AUTHKEY in .env}
+      TS_AUTH_ONCE: "true"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_HOSTNAME: ${TS_HOSTNAME:-shard}
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:-}
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./docker/tailscale:/config
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  tailscale-state:
