@@ -148,15 +148,15 @@ Compose maps `SHARD_ADDRESS_HEADER` → `ADDRESS_HEADER` and
 
 ### Docker Compose helpers
 
-| Variable                |                 Default | Purpose                                                     |
-| ----------------------- | ----------------------: | ----------------------------------------------------------- |
-| `SHARD_PORT`            |                  `3000` | Host port published by Compose                              |
-| `SHARD_IMAGE`           |         required (prod) | Pinned image tag or digest                                  |
-| `SHARD_ORIGIN`          | `http://localhost:3000` | Exact public origin used by SvelteKit                       |
-| `SHARD_BODY_SIZE_LIMIT` |                  `110M` | Node adapter request limit; must exceed the 101 MB sync cap |
-| `TS_HOSTNAME`           |                 `shard` | Tailnet machine name (`https://<name>.<tailnet>.ts.net`)    |
+| Variable                |                 Default | Purpose                                                       |
+| ----------------------- | ----------------------: | ------------------------------------------------------------- |
+| `SHARD_PORT`            |                  `3000` | Host port published by Compose                                |
+| `SHARD_IMAGE`           |         required (prod) | Pinned image tag or digest                                    |
+| `SHARD_ORIGIN`          | `http://localhost:3000` | Exact public origin used by SvelteKit                         |
+| `SHARD_BODY_SIZE_LIMIT` |                  `110M` | Node adapter request limit; must exceed the 101 MB sync cap   |
+| `TS_HOSTNAME`           |                 `shard` | Tailnet machine name (`https://<name>.<tailnet>.ts.net`)      |
 | `TS_AUTHKEY`            |                       — | Auth key or OAuth secret; required with the Tailscale overlay |
-| `TS_EXTRA_ARGS`         |                       — | Extra `tailscale up` flags (OAuth tag advertisement)        |
+| `TS_EXTRA_ARGS`         |                       — | Extra `tailscale up` flags (OAuth tag advertisement)          |
 
 Inside Compose, `HOST`, `PORT`, and `SHARD_SYNC_DATA_DIR` are fixed to
 `0.0.0.0`, `3000`, and `/data`. Direct `docker run` may override them.
