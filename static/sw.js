@@ -91,6 +91,116 @@ self.addEventListener('fetch', (event) => {
 	);
 });
 
+const NOTES_DB = 'google-keep-clone';
+const NOTES_STORE = 'notes';
+const SYNC_STATE_STORE = 'sync-state';
+const FIRED_KEY = 'gkc-fired-reminders';
+
+function openNotesDb() {
+	return new Promise((resolve, reject) => {
+		const request = indexedDB.open(NOTES_DB);
+		request.onerror = () => reject(request.error);
+		request.onsuccess = () => resolve(request.result);
+	});
+}
+
+function idbRequest(request) {
+	return new Promise((resolve, reject) => {
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	});
+}
+
+function reminderPreview(note) {
+	const title = String(note.title || '').trim();
+	if (title) return title;
+	for (const raw of String(note.body || '').split('\n')) {
+		const line = raw.replace(/^(?:\s*(?:[-*•]\s+)?)?\[[ xX]?\]\s*/, '').trim();
+		if (line) return line.slice(0, 80);
+	}
+	return 'Untitled note';
+}
+
+function formatWhen(ts) {
+	return new Date(ts).toLocaleString([], {
+		month: 'short',
+		day: 'numeric',
+		hour: 'numeric',
+		minute: '2-digit'
+	});
+}
+
+async function showDueRemindersFromDevice() {
+	const now = Date.now();
+	let notes = [];
+	let fired = [];
+	try {
+		const db = await openNotesDb();
+		try {
+			if (db.objectStoreNames.contains(NOTES_STORE)) {
+				notes = await idbRequest(db.transaction(NOTES_STORE).objectStore(NOTES_STORE).getAll());
+			}
+			if (db.objectStoreNames.contains(SYNC_STATE_STORE)) {
+				const stored = await idbRequest(
+					db.transaction(SYNC_STATE_STORE).objectStore(SYNC_STATE_STORE).get(FIRED_KEY)
+				);
+				if (Array.isArray(stored)) fired = stored.filter((item) => typeof item === 'string');
+			}
+		} finally {
+			db.close();
+		}
+	} catch {
+		notes = [];
+	}
+
+	const seen = new Set(fired);
+	const due = (Array.isArray(notes) ? notes : []).filter((note) => {
+		if (!note || note.archived || note.trashed || note.reminder == null) return false;
+		if (Number(note.reminder) > now) return false;
+		return !seen.has(`${note.id}:${note.reminder}`);
+	});
+
+	if (due.length === 0) {
+		await self.registration.showNotification('Shard', {
+			body: 'Open Shard',
+			tag: 'shard-reminder-tick',
+			icon: '/icon-192.png',
+			data: { type: 'reminder' }
+		});
+		return;
+	}
+
+	for (const note of due) {
+		const key = `${note.id}:${note.reminder}`;
+		seen.add(key);
+		await self.registration.showNotification(reminderPreview(note), {
+			body: formatWhen(Number(note.reminder)),
+			tag: 'shard-reminder:' + note.id,
+			icon: '/icon-192.png',
+			data: { type: 'reminder', noteId: note.id }
+		});
+	}
+
+	try {
+		const db = await openNotesDb();
+		try {
+			if (db.objectStoreNames.contains(SYNC_STATE_STORE)) {
+				await idbRequest(
+					db.transaction(SYNC_STATE_STORE, 'readwrite').objectStore(SYNC_STATE_STORE).put([...seen], FIRED_KEY)
+				);
+			}
+		} finally {
+			db.close();
+		}
+	} catch {
+		/* keep notifications even if fired-set persist fails */
+	}
+}
+
+self.addEventListener('push', (event) => {
+	event.waitUntil(showDueRemindersFromDevice());
+});
+
 self.addEventListener('notificationclick', (event) => {
 	event.notification.close();
 	const noteId = event.notification.data && event.notification.data.noteId;
