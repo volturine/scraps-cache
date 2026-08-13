@@ -48,6 +48,22 @@ docker compose --project-directory . -f docker/compose.yaml up -d --build
 Uses `docker/compose.yaml` (development-oriented defaults). Prefer
 `docker/compose.production.yaml` + a pinned GHCR image for real deployments.
 
+## Preview a pull-request image
+
+CI publishes each same-repo PR as `dev-<n>` / `dev-sha-<commit>` (amd64 only).
+Run that image beside production with a separate Compose project and port:
+
+```sh
+cp .env.dev.example .env.dev
+# Set SHARD_IMAGE=ghcr.io/volturine/shard-notes:dev-<pr>
+docker compose --project-directory . -f docker/compose.dev.yaml --env-file .env.dev pull
+docker compose --project-directory . -f docker/compose.dev.yaml --env-file .env.dev up -d
+```
+
+Defaults: host port **3000**, project name `shard-notes-dev`, isolated volumes.
+Change the tag in `.env.dev` and run `pull` + `up -d` again to switch PRs.
+Do not point this stack at the production volumes or admin token.
+
 ## Reverse proxy and TLS
 
 Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
@@ -178,7 +194,7 @@ path used here (`SyncStore.backup` + `BackupManager` verified snapshots).
 [`.github/workflows/ci-cd.yaml`](../.github/workflows/ci-cd.yaml):
 
 - Every PR: typecheck + Vitest + production build, then an `amd64` image build
-  published as **`dev-pr-<n>`** / **`dev-sha-<commit>`** (never `latest`)
+  published as **`dev-<n>`** / **`dev-sha-<commit>`** (never `latest`)
 - Push/merge to `master`: multi-arch (`amd64`/`arm64`) publish with **`latest`**,
   **`master`**, and **`sha-<commit>`**, plus SBOM and provenance
 - Tags `v*`: semantic version tags (e.g. `v1.2.3` → `1.2.3`, `1.2`)

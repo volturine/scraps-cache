@@ -83,7 +83,7 @@ Production-style deployment is documented in
 | `src/routes/api/sync/`  | HTTP sync and pairing endpoints           |
 | `src/routes/api/admin/` | Admin-only backup trigger                 |
 | `docs/`                 | Architecture, security, self-hosting      |
-| `compose*.yaml`         | Docker Compose templates                  |
+| `docker/`               | Docker Compose templates and image        |
 
 Deeper orientation: [docs/architecture.md](docs/architecture.md) and
 [docs/development.md](docs/development.md).
@@ -111,7 +111,7 @@ Deeper orientation: [docs/architecture.md](docs/architecture.md) and
 5. Link related issues when applicable.
 
 CI (`.github/workflows/ci-cd.yaml`) runs the full validation suite and an
-`amd64` image build on every pull request (published as `dev-pr-*` / `dev-sha-*`,
+`amd64` image build on every pull request (published as `dev-*` / `dev-sha-*`,
 never `latest`).
 
 ### Commit messages
