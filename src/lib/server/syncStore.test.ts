@@ -182,9 +182,10 @@ describe('SQLite sync store', () => {
 				auth: 'a'.repeat(16)
 			}
 		]);
-		store.clearDueWakes('account', 1_000);
-		expect(store.listWakeTimes('account')).toEqual([5_000, 9_000]);
-		expect(store.nextWakeAt()).toBe(5_000);
+		store.markWakesDelivered('account', 'device-aaaaaaaaaaaa', 1_000);
+		expect(store.duePushDevices(1_000)).toEqual([]);
+		expect(store.listWakeTimes('account')).toEqual([1_000, 5_000, 9_000]);
+		expect(store.nextWakeAt(1_000)).toBe(5_000);
 	});
 
 	it('fans a source device wake out to every other device on the account', () => {
@@ -218,6 +219,10 @@ describe('SQLite sync store', () => {
 				.map((device) => device.deviceId)
 				.sort()
 		).toEqual(['device-phone000000', 'device-tablet00000']);
+		store.markWakesDelivered('account', 'device-phone000000', 1_000);
+		expect(store.duePushDevices(1_000).map((device) => device.deviceId)).toEqual([
+			'device-tablet00000'
+		]);
 	});
 
 	it('does not let one device wipe another device wake times', () => {

@@ -41,20 +41,26 @@ export class ReminderStore {
 		}, 15_000);
 		void this.hydrateFired();
 		const onWake = () => {
-			if (document.visibilityState === 'hidden') return;
+			if (document.visibilityState === 'hidden') {
+				this.flushWakes();
+				return;
+			}
 			void this.hydrateFired().then(() => {
 				tickAppClock();
 				this.scan();
 				this.arm();
 			});
 		};
+		const onHide = () => this.flushWakes();
 		document.addEventListener('visibilitychange', onWake);
 		window.addEventListener('focus', onWake);
+		window.addEventListener('pagehide', onHide);
 		this.listenForNotificationClicks();
 		this.queueWakeSync();
 		return () => {
 			document.removeEventListener('visibilitychange', onWake);
 			window.removeEventListener('focus', onWake);
+			window.removeEventListener('pagehide', onHide);
 			this.detach();
 		};
 	}
@@ -122,6 +128,14 @@ export class ReminderStore {
 			this.scan();
 			this.arm();
 		}, delay);
+	}
+
+	flushWakes(): void {
+		if (this.wakeTimer != null) {
+			clearTimeout(this.wakeTimer);
+			this.wakeTimer = null;
+		}
+		void syncReminderWakes(this.notes);
 	}
 
 	private queueWakeSync(): void {

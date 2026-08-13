@@ -34,6 +34,14 @@ export class WakeScheduler {
 		this.schedule(MIN_DELAY_MS);
 	}
 
+	nudge(): void {
+		if (!this.started) {
+			this.start();
+			return;
+		}
+		this.schedule(MIN_DELAY_MS);
+	}
+
 	stop(): void {
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = null;
@@ -48,7 +56,6 @@ export class WakeScheduler {
 		try {
 			const now = this.now();
 			const due = this.store().duePushDevices(now);
-			const accounts = new Set(due.map((device) => device.accountId));
 			for (const device of due) {
 				const result = await this.send(device);
 				if (result === 'failed') {
@@ -60,12 +67,11 @@ export class WakeScheduler {
 					recordReminderWake('gone');
 					continue;
 				}
+				this.store().markWakesDelivered(device.accountId, device.deviceId, now);
 				recordReminderWake('sent');
 				sent += 1;
 			}
-			if (!failed) {
-				for (const accountId of accounts) this.store().clearDueWakes(accountId, now);
-			}
+			this.store().pruneStaleWakes(now);
 		} finally {
 			this.running = false;
 			if (this.started) this.arm(failed);
@@ -78,7 +84,7 @@ export class WakeScheduler {
 			this.schedule(FAILED_RETRY_MS);
 			return;
 		}
-		const next = this.store().nextWakeAt();
+		const next = this.store().nextWakeAt(this.now());
 		const now = this.now();
 		const delay = next == null ? IDLE_MS : Math.min(IDLE_MS, Math.max(MIN_DELAY_MS, next - now));
 		this.schedule(delay);

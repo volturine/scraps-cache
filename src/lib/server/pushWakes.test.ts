@@ -15,7 +15,7 @@ describe('blind wake request validation', () => {
 	});
 
 	it('keeps only future wake timestamps and rejects oversized batches', () => {
-		expect(parseFireAt([50, 150, 150], 100)).toEqual([150, 150]);
+		expect(parseFireAt([50, 150, 150], 100)).toEqual([50, 150, 150]);
 		expect(parseFireAt(['150'], 100)).toBeNull();
 		expect(
 			parseFireAt(

@@ -46,6 +46,7 @@ const DEFAULT_MAX_ACCOUNT_BYTES = 1_000_000_000;
 const DEFAULT_MAX_ACCOUNT_ENVELOPES = 50_000;
 export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_DEVICE = 50;
+export const WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
 
 export type PushDeviceInput = {
 	deviceId: string;
@@ -149,6 +150,13 @@ export class SyncStore {
 				FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
 			);
 			CREATE INDEX IF NOT EXISTS account_wakes_due ON account_wakes(fire_at);
+			CREATE TABLE IF NOT EXISTS wake_deliveries (
+				account_id TEXT NOT NULL,
+				device_id TEXT NOT NULL,
+				fire_at INTEGER NOT NULL,
+				PRIMARY KEY (account_id, device_id, fire_at),
+				FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+			);
 		`);
 		this.database.exec(`
 			DROP TABLE IF EXISTS push_wakes;
@@ -355,8 +363,12 @@ export class SyncStore {
 					const removeWakes = this.database.prepare(
 						'DELETE FROM account_wakes WHERE source_device_id = ?'
 					);
+					const removeDeliveries = this.database.prepare(
+						'DELETE FROM wake_deliveries WHERE device_id = ?'
+					);
 					for (const row of extras.slice(0, overflow)) {
 						removeWakes.run(row.device_id);
+						removeDeliveries.run(row.device_id);
 						removeDevice.run(row.device_id);
 					}
 				}
@@ -418,11 +430,39 @@ export class SyncStore {
 			FROM account_wakes w
 			INNER JOIN push_devices d ON d.account_id = w.account_id
 			WHERE w.fire_at <= ? AND d.account_id IS NOT NULL
+				AND NOT EXISTS (
+					SELECT 1 FROM wake_deliveries x
+					WHERE x.account_id = d.account_id
+						AND x.device_id = d.device_id
+						AND x.fire_at = w.fire_at
+				)
 			ORDER BY w.fire_at ASC
 			LIMIT ?
 		`
 			)
 			.all(now, limit) as DueWake[];
+	}
+
+	markWakesDelivered(accountId: string, deviceId: string, now: number): void {
+		this.database
+			.prepare(
+				`
+			INSERT OR IGNORE INTO wake_deliveries(account_id, device_id, fire_at)
+			SELECT ?, ?, fire_at FROM (
+				SELECT DISTINCT fire_at FROM account_wakes
+				WHERE account_id = ? AND fire_at <= ?
+			)
+		`
+			)
+			.run(accountId, deviceId, accountId, now);
+	}
+
+	pruneStaleWakes(now: number, retainMs = WAKE_RETAIN_MS): void {
+		const cutoff = now - retainMs;
+		this.database.transaction(() => {
+			this.database.prepare('DELETE FROM account_wakes WHERE fire_at < ?').run(cutoff);
+			this.database.prepare('DELETE FROM wake_deliveries WHERE fire_at < ?').run(cutoff);
+		})();
 	}
 
 	clearDueWakes(accountId: string, now: number): void {
@@ -434,13 +474,16 @@ export class SyncStore {
 	deletePushDevice(deviceId: string): void {
 		this.database.transaction(() => {
 			this.database.prepare('DELETE FROM account_wakes WHERE source_device_id = ?').run(deviceId);
+			this.database.prepare('DELETE FROM wake_deliveries WHERE device_id = ?').run(deviceId);
 			this.database.prepare('DELETE FROM push_devices WHERE device_id = ?').run(deviceId);
 		})();
 	}
 
-	nextWakeAt(): number | null {
-		const row = this.database.prepare('SELECT MIN(fire_at) AS fireAt FROM account_wakes').get() as
-			{ fireAt: number | null } | undefined;
+	nextWakeAt(now = Date.now()): number | null {
+		if (this.duePushDevices(now, 1).length > 0) return now;
+		const row = this.database
+			.prepare('SELECT MIN(fire_at) AS fireAt FROM account_wakes WHERE fire_at > ?')
+			.get(now) as { fireAt: number | null } | undefined;
 		return row?.fireAt ?? null;
 	}
 

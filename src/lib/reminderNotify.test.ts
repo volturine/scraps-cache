@@ -3,6 +3,8 @@ import {
 	dueReminderNotes,
 	futureWakeTimes,
 	nextReminderAt,
+	relayWakeTimes,
+	RELAY_WAKE_RETAIN_MS,
 	pruneFiredReminders,
 	readFiredReminders,
 	reminderNotifyKey,
@@ -84,6 +86,20 @@ describe('due and upcoming reminders', () => {
 				now
 			)
 		).toEqual([now + 10, now + 20]);
+	});
+
+	it('uploads due reminder times so other devices can still be woken', () => {
+		expect(
+			relayWakeTimes(
+				[
+					note({ id: 'due', reminder: now }),
+					note({ id: 'soon', reminder: now + 10 }),
+					note({ id: 'old', reminder: now - RELAY_WAKE_RETAIN_MS }),
+					note({ id: 'arch', reminder: now, archived: true })
+				],
+				now
+			)
+		).toEqual([now, now + 10]);
 	});
 
 	it('finds the soonest future reminder', () => {

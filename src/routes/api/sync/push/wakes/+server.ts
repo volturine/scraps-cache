@@ -76,7 +76,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			},
 			fireAt
 		);
-		wakeScheduler.start();
+		wakeScheduler.nudge();
 		return json({ ok: true, wakes: fireAt.length });
 	} catch (error) {
 		recordSqliteError(error);

@@ -40,6 +40,7 @@
 
 	onMount(() => {
 		attachSyncCloudIndicator(syncStore);
+		notesStore.onAfterSync = () => reminderStore.sync(notesStore.notes);
 		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(() => {
 			openNoteFromQuery();

@@ -1,4 +1,4 @@
-import { MAX_WAKES_PER_DEVICE } from '$lib/server/syncStore';
+import { MAX_WAKES_PER_DEVICE, WAKE_RETAIN_MS } from '$lib/server/syncStore';
 
 const TWENTY_YEARS_MS = 20 * 365 * 24 * 60 * 60 * 1000;
 export const DEVICE_ID_RE = /^[A-Za-z0-9_-]{16,128}$/;
@@ -44,7 +44,7 @@ export function parseFireAt(value: unknown, now: number): number[] | null {
 	const times: number[] = [];
 	for (const item of value) {
 		if (typeof item !== 'number' || !Number.isSafeInteger(item)) return null;
-		if (item <= now || item > now + TWENTY_YEARS_MS) continue;
+		if (item <= now - WAKE_RETAIN_MS || item > now + TWENTY_YEARS_MS) continue;
 		times.push(item);
 	}
 	return times;

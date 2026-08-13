@@ -39,10 +39,24 @@ export function dueReminderNotes(notes: ReminderNote[], now: number): ReminderNo
 	);
 }
 
+export const RELAY_WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
+
 export function futureWakeTimes(notes: ReminderNote[], now: number, limit = 50): number[] {
 	const times = new Set<number>();
 	for (const note of notes) {
 		if (note.archived || note.trashed || note.reminder == null || note.reminder <= now) continue;
+		times.add(note.reminder);
+	}
+	return [...times].sort((left, right) => left - right).slice(0, limit);
+}
+
+/** Timestamps the relay may store: upcoming, plus due times still within the retain window. */
+export function relayWakeTimes(notes: ReminderNote[], now: number, limit = 50): number[] {
+	const earliest = now - RELAY_WAKE_RETAIN_MS;
+	const times = new Set<number>();
+	for (const note of notes) {
+		if (note.archived || note.trashed || note.reminder == null) continue;
+		if (note.reminder <= earliest) continue;
 		times.add(note.reminder);
 	}
 	return [...times].sort((left, right) => left - right).slice(0, limit);

@@ -502,6 +502,7 @@
 					onApply={(r) => {
 						commit({ reminder: r });
 						reminderStore.sync(notesStore.notes);
+						reminderStore.flushWakes();
 					}}
 					onClose={() => {
 						reminderOpen = false;

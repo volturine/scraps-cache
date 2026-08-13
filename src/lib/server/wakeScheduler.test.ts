@@ -46,7 +46,9 @@ describe('WakeScheduler', () => {
 		});
 		expect(await scheduler.tick()).toBe(1);
 		expect(send).toHaveBeenCalledOnce();
-		expect(store.listWakeTimes('account', 'device-aaaaaaaaaaaa')).toEqual([1_500]);
+		expect(store.listWakeTimes('account', 'device-aaaaaaaaaaaa')).toEqual([500, 1_500]);
+		expect(store.duePushDevices(1_000)).toEqual([]);
+		expect(store.nextWakeAt(1_000)).toBe(1_500);
 	});
 
 	it('wakes every device on the account even if only one uploaded the time', async () => {
@@ -62,7 +64,25 @@ describe('WakeScheduler', () => {
 		});
 		expect(await scheduler.tick()).toBe(2);
 		expect(send).toHaveBeenCalledTimes(2);
-		expect(store.listWakeTimes('account')).toEqual([]);
+		expect(store.duePushDevices(200)).toEqual([]);
+		expect(store.listWakeTimes('account')).toEqual([100]);
+	});
+
+	it('still wakes a device that registers after the time already fired', async () => {
+		const store = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice(device('device-phone000000', 'https://push.example/phone'), [100]);
+		const send = vi.fn().mockResolvedValue('sent');
+		const scheduler = new WakeScheduler({
+			store: () => store,
+			send,
+			now: () => 200
+		});
+		expect(await scheduler.tick()).toBe(1);
+		store.savePushDevice(device('device-tablet00000', 'https://push.example/tablet'), []);
+		expect(await scheduler.tick()).toBe(1);
+		expect(send).toHaveBeenCalledTimes(2);
+		expect(send.mock.calls[1]?.[0].deviceId).toBe('device-tablet00000');
 	});
 
 	it('drops a gone subscription and retries a failed send later', async () => {

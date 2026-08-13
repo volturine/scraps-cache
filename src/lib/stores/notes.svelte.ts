@@ -71,6 +71,8 @@ export class NotesStore {
 	private visibleAttachmentQueue = new AttachmentHydrationQueue((noteId) =>
 		this.ensureNoteAttachments(noteId)
 	);
+	/** Called after cloud notes replace local state. Used to refresh reminder wakes. */
+	onAfterSync: (() => void) | null = null;
 
 	constructor() {
 		this.notes = readNotesMirror();
@@ -845,6 +847,7 @@ export class NotesStore {
 			this.mirrorToLS();
 			this.dirty = false;
 			this.lastPersistError = null;
+			this.onAfterSync?.();
 			return true;
 		} catch (err) {
 			this.recordPersistenceError('Could not replace this device with cloud notes', err);
@@ -998,6 +1001,7 @@ export class NotesStore {
 				...(labelsChanged ? [bulkPutLabels(mergedLabels)] : [])
 			]);
 			this.lastPersistError = null;
+			this.onAfterSync?.();
 			return true;
 		} catch (err) {
 			this.recordPersistenceError('Cloud sync reconciliation failed', err);

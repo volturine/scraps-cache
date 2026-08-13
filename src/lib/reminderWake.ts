@@ -1,4 +1,4 @@
-import { futureWakeTimes, type ReminderNote } from '$lib/reminderNotify';
+import { relayWakeTimes, type ReminderNote } from '$lib/reminderNotify';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { uid } from '$lib/utils';
 
@@ -95,7 +95,7 @@ export async function syncReminderWakes(notes: ReminderNote[]): Promise<boolean>
 					endpoint: json.endpoint,
 					keys: { p256dh: json.keys.p256dh, auth: json.keys.auth }
 				},
-				fireAt: futureWakeTimes(notes, Date.now())
+				fireAt: relayWakeTimes(notes, Date.now())
 			})
 		});
 		return response.ok;
