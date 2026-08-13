@@ -1,7 +1,7 @@
 name: Bug report
 description: Something is broken or behaves unexpectedly
-title: "bug: "
-labels: ["bug"]
+title: 'bug: '
+labels: ['bug']
 body:
   - type: markdown
     attributes:
@@ -61,13 +61,13 @@ body:
     attributes:
       label: Version
       description: Git tag, commit SHA, or image digest if known.
-      placeholder: "e.g. v0.0.1 or sha-abc1234"
+      placeholder: 'e.g. v0.0.1 or sha-abc1234'
   - type: input
     id: environment
     attributes:
       label: Environment
       description: Browser + OS, or Docker / Node setup.
-      placeholder: "e.g. Firefox 140 on macOS; or compose.production.yaml"
+      placeholder: 'e.g. Firefox 140 on macOS; or compose.production.yaml'
   - type: textarea
     id: logs
     attributes:

@@ -132,7 +132,9 @@
 	}
 </script>
 
-<div class="w-80 rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-5 shadow-2xl">
+<div
+	class="w-80 rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-5 shadow-2xl"
+>
 	<div class="mb-3 text-base font-medium text-[var(--gkc-text)]">Reminder</div>
 
 	<div
@@ -143,7 +145,9 @@
 				: 'border-blue-500/35 bg-blue-500/10 dark:bg-blue-500/15'}"
 	>
 		<div class="flex items-center justify-between gap-2">
-			<div class="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+			<div
+				class="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]"
+			>
 				Will remind you
 			</div>
 			{#if uiStatus === 'active'}
@@ -170,10 +174,17 @@
 	</div>
 
 	<div class="mb-4 border-t border-[var(--gkc-border)] pt-4">
-		<div class="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--gkc-text-muted)]">Pick date & time</div>
+		<div class="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--gkc-text-muted)]">
+			Pick date & time
+		</div>
 
 		<div class="mb-3 flex items-center">
-			<button type="button" class="icon-btn h-8 w-8 shrink-0 p-2" onclick={() => shiftDay(-1)} aria-label="Previous day">
+			<button
+				type="button"
+				class="icon-btn h-8 w-8 shrink-0 p-2"
+				onclick={() => shiftDay(-1)}
+				aria-label="Previous day"
+			>
 				<ChevronLeft class="h-5 w-5" aria-hidden="true" />
 			</button>
 			<button
@@ -187,13 +198,20 @@
 			>
 				<span class="truncate">{dateLabel}</span>
 			</button>
-			<button type="button" class="icon-btn h-8 w-8 shrink-0 p-2" onclick={() => shiftDay(1)} aria-label="Next day">
+			<button
+				type="button"
+				class="icon-btn h-8 w-8 shrink-0 p-2"
+				onclick={() => shiftDay(1)}
+				aria-label="Next day"
+			>
 				<ChevronRight class="h-5 w-5" aria-hidden="true" />
 			</button>
 		</div>
 
 		{#if monthYearOpen}
-			<div class="mb-1 flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]">
+			<div
+				class="mb-1 flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+			>
 				<WheelPicker
 					class="w-[9.5rem]"
 					items={MONTH_ITEMS}
@@ -210,7 +228,9 @@
 				/>
 			</div>
 		{:else}
-			<div class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]">
+			<div
+				class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+			>
 				<WheelPicker
 					class="w-16"
 					items={HOUR_ITEMS}
@@ -218,7 +238,10 @@
 					onChange={setHour}
 					ariaLabel="Hour"
 				/>
-				<div class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--gkc-text)]" aria-hidden="true">
+				<div
+					class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--gkc-text)]"
+					aria-hidden="true"
+				>
 					:
 				</div>
 				<WheelPicker

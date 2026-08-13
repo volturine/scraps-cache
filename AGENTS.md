@@ -10,9 +10,11 @@ Offline-first notes with end-to-end encrypted multi-device sync: local IndexedDB
 npm install                 # install dependencies
 npm run dev                 # start the Vite/SvelteKit development server
 npm run check               # Svelte and TypeScript diagnostics
+npm run format              # Prettier write
+npm run format:check        # Prettier check
 npm test                    # Vitest unit tests
 npm run build               # production build
-npm run validate            # check + tests + production build
+npm run validate            # check + format + tests + production build
 ```
 
 - Use npm commands for dependency changes; do not hand-edit `package.json` or the lockfile.

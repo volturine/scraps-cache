@@ -9,11 +9,11 @@ Security fixes are applied to the latest release on `master` and to the most
 recent tagged semantic version when practical. Older tags may not receive
 backports.
 
-| Version | Supported |
-| --- | --- |
-| Latest `master` | Yes |
-| Latest tagged release | Yes |
-| Older tags | Best effort only |
+| Version               | Supported        |
+| --------------------- | ---------------- |
+| Latest `master`       | Yes              |
+| Latest tagged release | Yes              |
+| Older tags            | Best effort only |
 
 ## What Shard protects
 

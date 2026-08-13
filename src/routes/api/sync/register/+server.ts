@@ -14,19 +14,24 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (!limited.allowed) return rateLimitResponse(limited);
 	let body: { accountId?: unknown; authSecret?: unknown };
 	try {
-		body = await readJsonBody(request, 16_384) as typeof body;
+		body = (await readJsonBody(request, 16_384)) as typeof body;
 	} catch {
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	if (typeof body.accountId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(body.accountId)) {
 		return json({ error: 'Invalid account identity' }, { status: 400 });
 	}
-	if (typeof body.authSecret !== 'string' || body.authSecret.length < 32 || body.authSecret.length > 256) {
+	if (
+		typeof body.authSecret !== 'string' ||
+		body.authSecret.length < 32 ||
+		body.authSecret.length > 256
+	) {
 		return json({ error: 'Invalid account credential' }, { status: 400 });
 	}
 	try {
 		const created = getSyncStore().createAccount(body.accountId, syncSecretHash(body.authSecret));
-		if (!created) return json({ error: 'This sync account already exists on this device.' }, { status: 409 });
+		if (!created)
+			return json({ error: 'This sync account already exists on this device.' }, { status: 409 });
 		return json({ accountId: body.accountId });
 	} catch (err) {
 		console.error('[sync] register failed:', err);

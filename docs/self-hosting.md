@@ -20,12 +20,12 @@ cp .env.example .env
 
 Edit `.env` at minimum:
 
-| Variable | Guidance |
-| --- | --- |
-| `SHARD_IMAGE` | Pin a release, e.g. `ghcr.io/volturine/shard-notes:1.2.3`, or an immutable digest |
-| `SHARD_ADMIN_TOKEN` | Long random secret (metrics + manual backup) |
-| `SHARD_ORIGIN` | Exact public origin, e.g. `https://notes.example.com` |
-| `SHARD_PORT` | Host port (default `3000`) |
+| Variable            | Guidance                                                                          |
+| ------------------- | --------------------------------------------------------------------------------- |
+| `SHARD_IMAGE`       | Pin a release, e.g. `ghcr.io/volturine/shard-notes:1.2.3`, or an immutable digest |
+| `SHARD_ADMIN_TOKEN` | Long random secret (metrics + manual backup)                                      |
+| `SHARD_ORIGIN`      | Exact public origin, e.g. `https://notes.example.com`                             |
+| `SHARD_PORT`        | Host port (default `3000`)                                                        |
 
 ```sh
 docker compose --project-directory . -f docker/compose.production.yaml pull
@@ -67,29 +67,29 @@ Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
 
 ### Application / Node
 
-| Variable | Default | Purpose |
-| --- | ---: | --- |
-| `SHARD_SYNC_DATA_DIR` | `sync-data` | Persistent sync-data directory (`/data` in Compose) |
-| `SHARD_SYNC_MAX_ACCOUNT_BYTES` | `1000000000` | Ciphertext quota per account |
-| `SHARD_SYNC_MAX_ACCOUNT_ENVELOPES` | `50000` | Record quota per account |
-| `SHARD_SYNC_MAX_CONCURRENT_REQUESTS` | `8` | Max sync requests in flight |
-| `SHARD_BACKUP_DIR` | disabled | Directory for consistent online SQLite snapshots |
-| `SHARD_BACKUP_INTERVAL_HOURS` | `24` | Snapshot interval |
-| `SHARD_BACKUP_RETAIN` | `2` | Raw verified staging snapshots retained locally |
-| `SHARD_ADMIN_TOKEN` | — | Protects metrics and manual backup (required in prod Compose) |
-| `ADDRESS_HEADER` / `XFF_DEPTH` | direct / `1` | Trusted proxy client-address configuration |
+| Variable                             |      Default | Purpose                                                       |
+| ------------------------------------ | -----------: | ------------------------------------------------------------- |
+| `SHARD_SYNC_DATA_DIR`                |  `sync-data` | Persistent sync-data directory (`/data` in Compose)           |
+| `SHARD_SYNC_MAX_ACCOUNT_BYTES`       | `1000000000` | Ciphertext quota per account                                  |
+| `SHARD_SYNC_MAX_ACCOUNT_ENVELOPES`   |      `50000` | Record quota per account                                      |
+| `SHARD_SYNC_MAX_CONCURRENT_REQUESTS` |          `8` | Max sync requests in flight                                   |
+| `SHARD_BACKUP_DIR`                   |     disabled | Directory for consistent online SQLite snapshots              |
+| `SHARD_BACKUP_INTERVAL_HOURS`        |         `24` | Snapshot interval                                             |
+| `SHARD_BACKUP_RETAIN`                |          `2` | Raw verified staging snapshots retained locally               |
+| `SHARD_ADMIN_TOKEN`                  |            — | Protects metrics and manual backup (required in prod Compose) |
+| `ADDRESS_HEADER` / `XFF_DEPTH`       | direct / `1` | Trusted proxy client-address configuration                    |
 
 Compose maps `SHARD_ADDRESS_HEADER` → `ADDRESS_HEADER` and
 `SHARD_XFF_DEPTH` → `XFF_DEPTH`.
 
 ### Docker Compose helpers
 
-| Variable | Default | Purpose |
-| --- | ---: | --- |
-| `SHARD_PORT` | `3000` | Host port published by Compose |
-| `SHARD_IMAGE` | required (prod) | Pinned image tag or digest |
-| `SHARD_ORIGIN` | `http://localhost:3000` | Exact public origin used by SvelteKit |
-| `SHARD_BODY_SIZE_LIMIT` | `110M` | Node adapter request limit; must exceed the 101 MB sync cap |
+| Variable                |                 Default | Purpose                                                     |
+| ----------------------- | ----------------------: | ----------------------------------------------------------- |
+| `SHARD_PORT`            |                  `3000` | Host port published by Compose                              |
+| `SHARD_IMAGE`           |         required (prod) | Pinned image tag or digest                                  |
+| `SHARD_ORIGIN`          | `http://localhost:3000` | Exact public origin used by SvelteKit                       |
+| `SHARD_BODY_SIZE_LIMIT` |                  `110M` | Node adapter request limit; must exceed the 101 MB sync cap |
 
 Inside Compose, `HOST`, `PORT`, and `SHARD_SYNC_DATA_DIR` are fixed to
 `0.0.0.0`, `3000`, and `/data`. Direct `docker run` may override them.
@@ -99,12 +99,12 @@ and left in place as a recovery copy.
 
 ## Health, metrics, and admin backup
 
-| Endpoint | Auth | Purpose |
-| --- | --- | --- |
-| `GET /health/live` | none | Process liveness |
-| `GET /health/ready` | none | SQLite + migrations + volume readiness |
-| `GET /metrics` | `Authorization: Bearer $SHARD_ADMIN_TOKEN` | Prometheus-style metrics |
-| `POST /api/admin/backup` | same bearer token | Trigger an online snapshot now |
+| Endpoint                 | Auth                                       | Purpose                                |
+| ------------------------ | ------------------------------------------ | -------------------------------------- |
+| `GET /health/live`       | none                                       | Process liveness                       |
+| `GET /health/ready`      | none                                       | SQLite + migrations + volume readiness |
+| `GET /metrics`           | `Authorization: Bearer $SHARD_ADMIN_TOKEN` | Prometheus-style metrics               |
+| `POST /api/admin/backup` | same bearer token                          | Trigger an online snapshot now         |
 
 Trigger a snapshot before upgrades:
 

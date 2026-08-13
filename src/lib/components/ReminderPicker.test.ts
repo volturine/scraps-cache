@@ -12,7 +12,9 @@ describe('ReminderPicker date and time controls', () => {
 	it('shows a 24-hour wheel and per-minute steps', () => {
 		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
 
-		const hourOptions = screen.getByRole('listbox', { name: 'Hour' }).querySelectorAll('[role="option"]');
+		const hourOptions = screen
+			.getByRole('listbox', { name: 'Hour' })
+			.querySelectorAll('[role="option"]');
 		expect(hourOptions).toHaveLength(24);
 		expect(hourOptions[0].textContent).toBe('00');
 		expect(hourOptions[23].textContent).toBe('23');
@@ -34,9 +36,13 @@ describe('ReminderPicker date and time controls', () => {
 		expect(screen.queryByRole('listbox', { name: 'Month' })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: 'Choose month and year' }));
 
-		const monthOptions = screen.getByRole('listbox', { name: 'Month' }).querySelectorAll('[role="option"]');
+		const monthOptions = screen
+			.getByRole('listbox', { name: 'Month' })
+			.querySelectorAll('[role="option"]');
 		expect(monthOptions).toHaveLength(12);
-		expect(screen.getByRole('option', { name: monthName(7) }).getAttribute('aria-selected')).toBe('true');
+		expect(screen.getByRole('option', { name: monthName(7) }).getAttribute('aria-selected')).toBe(
+			'true'
+		);
 		expect(screen.getByRole('listbox', { name: 'Year' })).toBeTruthy();
 		expect(screen.getByRole('option', { name: '2026' }).getAttribute('aria-selected')).toBe('true');
 		expect(screen.queryByRole('listbox', { name: 'Minute' })).toBeNull();
@@ -47,7 +53,9 @@ describe('ReminderPicker date and time controls', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Next day' }));
 
-		expect(screen.getByRole('button', { name: 'Choose month and year' }).textContent).toContain('13');
+		expect(screen.getByRole('button', { name: 'Choose month and year' }).textContent).toContain(
+			'13'
+		);
 		expect(screen.queryByRole('listbox', { name: 'Month' })).toBeNull();
 	});
 
@@ -58,7 +66,11 @@ describe('ReminderPicker date and time controls', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Choose month and year' }));
 		await fireEvent.click(screen.getByRole('option', { name: monthName(1) }));
 
-		expect(screen.getByRole('button', { name: 'Choose month and year' }).textContent).toContain('28');
-		expect(screen.getByRole('option', { name: monthName(1) }).getAttribute('aria-selected')).toBe('true');
+		expect(screen.getByRole('button', { name: 'Choose month and year' }).textContent).toContain(
+			'28'
+		);
+		expect(screen.getByRole('option', { name: monthName(1) }).getAttribute('aria-selected')).toBe(
+			'true'
+		);
 	});
 });

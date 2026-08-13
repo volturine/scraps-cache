@@ -47,20 +47,42 @@
 
 html {
 	background-color: var(--gkc-bg);
+	color-scheme: light;
+}
+html.dark {
+	color-scheme: dark;
 }
 
-/* Note editor open: promote app shell to its own layer so iOS does not repaint the whole page under the modal. */
+/* Note editor open: freeze the document and feed. iOS Safari otherwise pans the
+ * visual viewport under the keyboard and treats position:fixed as scrollable. */
+html.editor-open,
+html.editor-open body {
+	position: fixed;
+	inset: 0;
+	width: 100%;
+	overflow: hidden;
+	overscroll-behavior: none;
+}
+html.editor-open .app-shell,
+html.editor-open .new-note-fab {
+	pointer-events: none;
+}
 html.editor-open .app-shell {
-	transform: translateZ(0);
-	-webkit-transform: translateZ(0);
+	overflow: hidden;
+}
+html.editor-open .app-shell .scrollable {
+	overflow: hidden;
+	touch-action: none;
 }
 
 html,
 body {
+	min-height: 100lvh;
 	height: 100%;
 	margin: 0;
 	overflow: hidden;
 	overscroll-behavior: none;
+	background-color: var(--gkc-bg);
 }
 
 body {
@@ -259,13 +281,23 @@ body {
 	height: 0.55rem;
 }
 
+/* Even omnidirectional shadow — 0 offset so it is the same on every side. */
+.note-sheet-shadow {
+	box-shadow: 0 0 24px 2px rgba(0, 0, 0, 0.22);
+}
+.dark .note-sheet-shadow {
+	box-shadow: 0 0 24px 2px rgba(0, 0, 0, 0.55);
+}
+
 /* Icon buttons — hover only on fine pointers (touch never gets sticky :hover). */
 .icon-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	border-radius: 9999px;
-	transition: background-color 120ms ease, color 120ms ease;
+	transition:
+		background-color 120ms ease,
+		color 120ms ease;
 	touch-action: manipulation;
 	-webkit-tap-highlight-color: transparent;
 	outline: none;
@@ -296,7 +328,9 @@ body {
 
 /* Hide elements on phone screens (under 640px) */
 @media (max-width: 639px) {
-	.mobile-hide { display: none !important; }
+	.mobile-hide {
+		display: none !important;
+	}
 }
 /* Sidebar active item */
 .nav-active {

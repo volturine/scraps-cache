@@ -40,9 +40,16 @@ function note(id: string, labels: string[]): Note {
 
 describe('Kanban board tag mapping', () => {
 	it('puts notes without this board’s tags in the backlog, even when they use other labels', () => {
-		const notes = [note('unlabelled', []), note('personal', ['personal-label']), note('todo', ['todo-label'])];
+		const notes = [
+			note('unlabelled', []),
+			note('personal', ['personal-label']),
+			note('todo', ['todo-label'])
+		];
 
-		expect(columnNotes(board, board.columns[0], notes).map((item) => item.id)).toEqual(['unlabelled', 'personal']);
+		expect(columnNotes(board, board.columns[0], notes).map((item) => item.id)).toEqual([
+			'unlabelled',
+			'personal'
+		]);
 		expect(columnNotes(board, board.columns[1], notes).map((item) => item.id)).toEqual(['todo']);
 	});
 
@@ -80,7 +87,9 @@ describe('Kanban board tag mapping', () => {
 			}
 		};
 		const notes = [note('unlabelled', []), note('personal', ['personal-label'])];
-		expect(columnNotes(custom, custom.columns[0], notes).map((item) => item.id)).toEqual(['personal']);
+		expect(columnNotes(custom, custom.columns[0], notes).map((item) => item.id)).toEqual([
+			'personal'
+		]);
 	});
 
 	it('moves only the exact source column tag and retains unrelated labels', () => {
@@ -88,8 +97,13 @@ describe('Kanban board tag mapping', () => {
 			'personal-label',
 			'done-label'
 		]);
-		expect(moveNoteLabels(['personal-label', 'todo-label'], 'todo-label', null)).toEqual(['personal-label']);
-		expect(moveNoteLabels(['personal-label'], null, 'todo-label')).toEqual(['personal-label', 'todo-label']);
+		expect(moveNoteLabels(['personal-label', 'todo-label'], 'todo-label', null)).toEqual([
+			'personal-label'
+		]);
+		expect(moveNoteLabels(['personal-label'], null, 'todo-label')).toEqual([
+			'personal-label',
+			'todo-label'
+		]);
 	});
 
 	it('takes the newer board from sync and never revives a tombstoned board', () => {

@@ -53,7 +53,9 @@
 		aria-labelledby="backup-dialog-title"
 	>
 		<div class="border-b border-[var(--gkc-border)] px-5 py-4">
-			<p class="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--gkc-text-muted)]">
+			<p
+				class="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--gkc-text-muted)]"
+			>
 				Encrypted on this device
 			</p>
 			<h2 id="backup-dialog-title" class="text-lg font-semibold text-[var(--gkc-text)]">
@@ -68,7 +70,9 @@
 
 		<form class="space-y-4 px-5 py-5" onsubmit={submit}>
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium text-[var(--gkc-text-muted)]">Backup passphrase</span>
+				<span class="mb-1.5 block text-xs font-medium text-[var(--gkc-text-muted)]"
+					>Backup passphrase</span
+				>
 				<input
 					type="password"
 					autocomplete={exporting ? 'new-password' : 'current-password'}
@@ -80,7 +84,9 @@
 
 			{#if exporting}
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium text-[var(--gkc-text-muted)]">Confirm passphrase</span>
+					<span class="mb-1.5 block text-xs font-medium text-[var(--gkc-text-muted)]"
+						>Confirm passphrase</span
+					>
 					<input
 						type="password"
 						autocomplete="new-password"
@@ -101,12 +107,20 @@
 					onclick={onClose}
 					disabled={busy}
 					class="rounded-lg px-3 py-2 text-sm text-[var(--gkc-text-muted)] hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10"
-				>Cancel</button>
+					>Cancel</button
+				>
 				<button
 					type="submit"
 					disabled={busy}
 					class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-				>{busy ? (exporting ? 'Encrypting…' : 'Decrypting…') : (exporting ? 'Download backup' : 'Restore backup')}</button>
+					>{busy
+						? exporting
+							? 'Encrypting…'
+							: 'Decrypting…'
+						: exporting
+							? 'Download backup'
+							: 'Restore backup'}</button
+				>
 			</div>
 		</form>
 	</div>

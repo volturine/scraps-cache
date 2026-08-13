@@ -28,14 +28,18 @@
 
 	{#if filteredOthers.length > 0 && filteredPinned.length > 0}
 		<div class={shell}>
-			<h2 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+			<h2
+				class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]"
+			>
 				Others
 			</h2>
 		</div>
 	{/if}
 
 	{#if filteredOthers.length === 0 && filteredPinned.length === 0}
-		<div class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]">
+		<div
+			class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]"
+		>
 			<StickyNote class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
 			<div class="text-sm">No notes here yet.</div>
 		</div>

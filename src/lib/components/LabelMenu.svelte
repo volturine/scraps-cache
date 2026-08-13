@@ -28,7 +28,9 @@
 	}
 </script>
 
-<div class="w-80 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl">
+<div
+	class="w-80 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
+>
 	<div class="mb-3 text-sm font-medium text-[var(--gkc-text)]">Label as</div>
 
 	<!-- Create new label -->
@@ -67,7 +69,11 @@
 						class="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<span
-							class="h-5 w-5 shrink-0 rounded border-2 border-black/30 dark:border-white/30 flex items-center justify-center text-xs {note.labels.includes(label.id) ? 'bg-blue-500 border-blue-500 text-white' : ''}"
+							class="h-5 w-5 shrink-0 rounded border-2 border-black/30 dark:border-white/30 flex items-center justify-center text-xs {note.labels.includes(
+								label.id
+							)
+								? 'bg-blue-500 border-blue-500 text-white'
+								: ''}"
 						>
 							{#if note.labels.includes(label.id)}✓{/if}
 						</span>

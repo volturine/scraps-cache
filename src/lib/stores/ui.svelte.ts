@@ -94,7 +94,12 @@ export class UIStore {
 	}
 
 	/** Restore persisted UI preferences from a full device backup. */
-	restoreState(state: { sidebarOpen?: boolean; dark?: boolean | null; layout?: Layout; view?: View }): void {
+	restoreState(state: {
+		sidebarOpen?: boolean;
+		dark?: boolean | null;
+		layout?: Layout;
+		view?: View;
+	}): void {
 		if (typeof state.sidebarOpen === 'boolean') this.sidebarOpen = state.sidebarOpen;
 		if (typeof state.dark === 'boolean' || state.dark === null) this.dark = state.dark;
 		if (state.layout === 'grid' || state.layout === 'list') this.layout = state.layout;

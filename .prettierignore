@@ -1,0 +1,8 @@
+package-lock.json
+node_modules
+.svelte-kit
+build
+static
+docker
+sync-data
+test-results

@@ -29,8 +29,8 @@ describe('ReminderLabel', () => {
 		);
 
 		const inline = render(ReminderLabel, { props: { reminder: past, variant: 'inline' } });
-		expect(inline.container.querySelector('[aria-label^="Overdue reminder,"]')?.className).toContain(
-			'text-rose-700'
-		);
+		expect(
+			inline.container.querySelector('[aria-label^="Overdue reminder,"]')?.className
+		).toContain('text-rose-700');
 	});
 });

@@ -96,7 +96,8 @@ export function extractDngJpeg(source: ArrayBuffer | Uint8Array): Uint8Array {
 				offset + length > bytes.length ||
 				bytes[offset] !== 0xff ||
 				bytes[offset + 1] !== 0xd8
-			) continue;
+			)
+				continue;
 			const jpeg = bytes.slice(offset, offset + length);
 			const { width, height } = jpegDimensions(jpeg);
 			candidates.push({ bytes: jpeg, width, height });

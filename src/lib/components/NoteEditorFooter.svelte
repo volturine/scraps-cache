@@ -57,7 +57,9 @@
 
 	const imageAttachments = $derived(images.filter(isImageAttachment));
 	const photos = $derived(imageAttachments.filter((attachment) => !!displayImageSrc(attachment)));
-	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !displayImageSrc(attachment)));
+	const pendingPhotos = $derived(
+		imageAttachments.filter((attachment) => !displayImageSrc(attachment))
+	);
 	const files = $derived(images.filter((a) => !isImageAttachment(a)));
 	const photoIndexById = $derived(new Map(photos.map((p, i) => [p.id, i])));
 
@@ -131,12 +133,12 @@
 		attachError = '';
 		try {
 			const added = await Promise.all(picked.map(fileToNoteImage));
-			const knownHashes = new Set(await Promise.all(
-				images.map((image) => image.contentHash || sha256(image.dataUrl))
-			));
+			const knownHashes = new Set(
+				await Promise.all(images.map((image) => image.contentHash || sha256(image.dataUrl)))
+			);
 			const unique: NoteImage[] = [];
 			for (const att of added) {
-				const hash = att.contentHash || await sha256(att.dataUrl);
+				const hash = att.contentHash || (await sha256(att.dataUrl));
 				if (knownHashes.has(hash)) continue;
 				knownHashes.add(hash);
 				unique.push(att);
@@ -198,7 +200,13 @@
 					onclick={() => openPhoto(img.id)}
 					aria-label={`Open ${img.name ?? 'photo'}`}
 				>
-					<img src={displayImageSrc(img)} alt={img.name ?? 'Photo'} class="h-full w-full object-cover" loading="lazy" decoding="async" />
+					<img
+						src={displayImageSrc(img)}
+						alt={img.name ?? 'Photo'}
+						class="h-full w-full object-cover"
+						loading="lazy"
+						decoding="async"
+					/>
 				</button>
 				<button
 					type="button"
@@ -211,7 +219,11 @@
 			</div>
 		{/each}
 		{#each pendingPhotos as img (img.id)}
-			<div class="aspect-square animate-pulse rounded-lg bg-black/10 dark:bg-white/10" role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
+			<div
+				class="aspect-square animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
+				role="img"
+				aria-label={`Loading ${img.name ?? 'photo'}`}
+			></div>
 		{/each}
 	</div>
 	<p class="px-3 pb-2 text-[10px] text-[var(--gkc-text-muted)]">
@@ -222,11 +234,13 @@
 {#if files.length > 0}
 	<ul class="scrollable max-h-36 space-y-1.5 overflow-y-auto px-3 pb-2">
 		{#each files as file (file.id)}
-			<li class="flex items-center gap-2 rounded-lg border border-black/10 bg-black/5 px-2 py-1.5 dark:border-white/10 dark:bg-white/5">
+			<li
+				class="flex items-center gap-2 rounded-lg border border-black/10 bg-black/5 px-2 py-1.5 dark:border-white/10 dark:bg-white/5"
+			>
 				<span
 					class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-black/10 text-[10px] font-bold tracking-wide text-[var(--gkc-text)] dark:bg-white/10"
-					aria-hidden="true"
-				>{fileIconLabel(file.mime, file.name)}</span>
+					aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span
+				>
 				<button
 					type="button"
 					class="min-w-0 flex-1 text-left touch-manipulation"
@@ -237,7 +251,9 @@
 					aria-label={`Open ${file.name ?? 'file'}`}
 				>
 					<div class="truncate text-sm text-[var(--gkc-text)]">{file.name || 'Attachment'}</div>
-					<div class="text-[10px] text-[var(--gkc-text-muted)]">{formatBytes(dataUrlByteLength(file.dataUrl))}</div>
+					<div class="text-[10px] text-[var(--gkc-text-muted)]">
+						{formatBytes(dataUrlByteLength(file.dataUrl))}
+					</div>
 				</button>
 				<button
 					type="button"
@@ -253,24 +269,55 @@
 {/if}
 
 <PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />
-<AttachmentFullscreen attachment={focusedAttachment} onClose={() => { focusedAttachment = null; }} />
+<AttachmentFullscreen
+	attachment={focusedAttachment}
+	onClose={() => {
+		focusedAttachment = null;
+	}}
+/>
 
-<footer class="flex shrink-0 items-center justify-between gap-2 border-t border-black/5 px-3 py-2 dark:border-white/10">
+<footer
+	class="flex shrink-0 items-center justify-between gap-2 border-t border-black/5 px-3 py-2 dark:border-white/10"
+>
 	<div class="flex shrink-0 items-center gap-1">
-		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Attach" onclick={openAttach} aria-label="Attach">
+		<button
+			type="button"
+			class="icon-btn h-10 w-10 p-2 touch-manipulation"
+			title="Attach"
+			onclick={openAttach}
+			aria-label="Attach"
+		>
 			<Paperclip class="h-5 w-5" aria-hidden="true" />
 		</button>
-		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Tags" onclick={openTags} aria-label="Tags">
+		<button
+			type="button"
+			class="icon-btn h-10 w-10 p-2 touch-manipulation"
+			title="Tags"
+			onclick={openTags}
+			aria-label="Tags"
+		>
 			<Tag class="h-5 w-5" aria-hidden="true" />
 		</button>
 	</div>
 
 	<div class="flex max-w-[calc(100%-5.5rem)] flex-wrap items-center justify-end gap-1">
-		<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Color" aria-label="Color" onclick={() => onOpenColor?.()}>
+		<button
+			type="button"
+			class="icon-btn h-10 w-10 p-2 touch-manipulation"
+			title="Color"
+			aria-label="Color"
+			onclick={() => onOpenColor?.()}
+		>
 			<Palette class="h-5 w-5" aria-hidden="true" />
 		</button>
 		{#if showCopy}
-			<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Copy note" aria-label="Copy note" onclick={() => onCopy?.()}>
+			<button
+				type="button"
+				class="icon-btn h-10 w-10 p-2 touch-manipulation"
+				title="Copy note"
+				aria-label="Copy note"
+				onclick={() => onCopy?.()}
+			>
 				{#if copyFlash}
 					<Check class="h-5 w-5" aria-hidden="true" />
 				{:else}
@@ -279,17 +326,35 @@
 			</button>
 		{/if}
 		{#if showArchive}
-			<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title={archived ? 'Unarchive' : 'Archive'} aria-label={archived ? 'Unarchive' : 'Archive'} onclick={() => onArchive?.()}>
+			<button
+				type="button"
+				class="icon-btn h-10 w-10 p-2 touch-manipulation"
+				title={archived ? 'Unarchive' : 'Archive'}
+				aria-label={archived ? 'Unarchive' : 'Archive'}
+				onclick={() => onArchive?.()}
+			>
 				<Archive class="h-5 w-5" aria-hidden="true" />
 			</button>
 		{/if}
 		{#if showDelete}
-			<button type="button" class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400" title="Delete note" aria-label="Delete note" onclick={() => onDelete?.()}>
+			<button
+				type="button"
+				class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400"
+				title="Delete note"
+				aria-label="Delete note"
+				onclick={() => onDelete?.()}
+			>
 				<Trash2 class="h-5 w-5" aria-hidden="true" />
 			</button>
 		{/if}
 		{#if onClose}
-			<button type="button" class="icon-btn h-10 w-10 p-2 touch-manipulation" title="Done" aria-label="Done" onclick={() => onClose?.()}>
+			<button
+				type="button"
+				class="icon-btn h-10 w-10 p-2 touch-manipulation"
+				title="Done"
+				aria-label="Done"
+				onclick={() => onClose?.()}
+			>
 				<Check class="h-5 w-5" aria-hidden="true" />
 			</button>
 		{/if}

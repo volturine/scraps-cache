@@ -5,7 +5,12 @@
 	import { parseBody, noteAttachments } from '$lib/checklistBody';
 	import { extractHttpUrls } from '$lib/linkPreview';
 	import LinkPreview from './LinkPreview.svelte';
-	import { isImageAttachment, isInlinePreviewable, fileIconLabel, openAttachment } from '$lib/noteImages';
+	import {
+		isImageAttachment,
+		isInlinePreviewable,
+		fileIconLabel,
+		openAttachment
+	} from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { notesStore } from '$lib/stores/notes.svelte';
 
@@ -15,7 +20,9 @@
 	const attachments = $derived(noteAttachments(note));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
 	const photos = $derived(imageAttachments.filter((attachment) => !!displayImageSrc(attachment)));
-	const pendingPhotos = $derived(imageAttachments.filter((attachment) => !displayImageSrc(attachment)));
+	const pendingPhotos = $derived(
+		imageAttachments.filter((attachment) => !displayImageSrc(attachment))
+	);
 	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
 	const links = $derived(extractHttpUrls(note.body ?? ''));
 	let contentElement: HTMLDivElement;
@@ -88,7 +95,11 @@
 						</svg>
 					{/if}
 				</button>
-				<span class="flex-1 break-words {seg.checked ? 'line-through opacity-50' : ''} {seg.indent > 0 ? 'text-[13px]' : ''}">
+				<span
+					class="flex-1 break-words {seg.checked ? 'line-through opacity-50' : ''} {seg.indent > 0
+						? 'text-[13px]'
+						: ''}"
+				>
 					{seg.text || '\u00a0'}
 				</span>
 			</div>
@@ -128,7 +139,11 @@
 			</button>
 		{/each}
 		{#each pendingPhotos as img (img.id)}
-			<div class="h-24 w-24 animate-pulse rounded-lg bg-black/10 dark:bg-white/10" role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
+			<div
+				class="h-24 w-24 animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
+				role="img"
+				aria-label={`Loading ${img.name ?? 'photo'}`}
+			></div>
 		{/each}
 	</div>
 {/if}
@@ -147,12 +162,20 @@
 			>
 				<span
 					class="grid h-7 w-7 shrink-0 place-items-center rounded bg-black/10 text-[9px] font-bold text-[var(--gkc-text)] dark:bg-white/10"
-				>{fileIconLabel(file.mime, file.name)}</span>
-				<span class="min-w-0 flex-1 truncate text-xs text-[var(--gkc-text)]">{file.name || 'File'}</span>
+					>{fileIconLabel(file.mime, file.name)}</span
+				>
+				<span class="min-w-0 flex-1 truncate text-xs text-[var(--gkc-text)]"
+					>{file.name || 'File'}</span
+				>
 			</button>
 		{/each}
 	</div>
 {/if}
 
 <PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />
-<AttachmentFullscreen attachment={focusedAttachment} onClose={() => { focusedAttachment = null; }} />
+<AttachmentFullscreen
+	attachment={focusedAttachment}
+	onClose={() => {
+		focusedAttachment = null;
+	}}
+/>
