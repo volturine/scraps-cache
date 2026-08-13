@@ -49,11 +49,10 @@
 	const keyboardVisible = $derived(
 		isOpen && visualViewportHeight > 0 && visualViewportHeight < layoutViewportHeight - 120
 	);
-	// Pin the dim to the visual viewport while the keyboard is open. iOS turns
-	// position:fixed into a scrolling layer once the keyboard shows; following
-	// visualViewport keeps the veil over the feed. Without the keyboard the
-	// overlay stays the original 100lvh sheet.
-	const editorOverlayStyle = $derived(
+	// Never shrink the dim — iOS visualViewport stops above the keyboard
+	// accessory, which left a hole where the feed showed through. Only the
+	// sheet is placed in the visual viewport.
+	const editorSheetFrameStyle = $derived(
 		keyboardVisible
 			? `top:${visualViewportTop}px;height:${visualViewportHeight}px;`
 			: ''
@@ -294,17 +293,24 @@
 
 {#if isOpen && note}
 	<div
-		class="fixed left-0 top-0 z-50 flex h-[100lvh] w-screen items-center justify-center overflow-hidden bg-black/40 p-4"
-		style={editorOverlayStyle}
+		class="fixed left-0 top-0 z-50 h-[200lvh] w-screen overflow-hidden bg-black/40"
 		role="presentation"
 		onclick={(e) => {
 			// Backdrop click always dismisses, including while a task is focused.
-			if (e.target === e.currentTarget) void close();
+			if (editorDialog && e.target instanceof Node && editorDialog.contains(e.target)) return;
+			void close();
 		}}
 		onkeydown={(e) => {
 			if (e.key === 'Escape') void close();
 		}}
 	>
+		<div
+			class="flex items-center justify-center p-4 {keyboardVisible
+				? 'absolute left-0 right-0'
+				: 'h-[100lvh]'}"
+			style={editorSheetFrameStyle}
+			role="presentation"
+		>
 		<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
@@ -408,6 +414,7 @@
 				onDelete={() => { notesStore.trashNote(note.id); close(); }}
 				onImagesChange={(imgs) => commitNow(imgs)}
 			/>
+		</div>
 		</div>
 	</div>
 
