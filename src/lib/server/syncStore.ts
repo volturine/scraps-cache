@@ -49,7 +49,6 @@ export const MAX_WAKES_PER_DEVICE = 50;
 
 export type PushDeviceInput = {
 	deviceId: string;
-	secretHash: string;
 	endpoint: string;
 	p256dh: string;
 	auth: string;
@@ -63,12 +62,6 @@ export type DueWake = {
 	auth: string;
 };
 
-export class PushUnauthorizedError extends Error {
-	constructor() {
-		super('Push device credentials are invalid');
-		this.name = 'PushUnauthorizedError';
-	}
-}
 const LEGACY_MIGRATION_KEY = 'legacy-users-json-v1';
 const USAGE_MIGRATION_KEY = 'account-usage-counters-v1';
 
@@ -340,11 +333,8 @@ export class SyncStore {
 	savePushDevice(device: PushDeviceInput, fireAt: number[]): void {
 		this.database.transaction(() => {
 			const existing = this.database
-				.prepare('SELECT secret_hash AS secretHash FROM push_devices WHERE device_id = ?')
-				.get(device.deviceId) as { secretHash: string } | undefined;
-			if (existing && existing.secretHash !== device.secretHash) {
-				throw new PushUnauthorizedError();
-			}
+				.prepare('SELECT 1 AS present FROM push_devices WHERE device_id = ?')
+				.get(device.deviceId) as { present: number } | undefined;
 
 			this.database
 				.prepare('DELETE FROM push_devices WHERE endpoint = ? AND device_id != ?')
@@ -378,7 +368,7 @@ export class SyncStore {
 				)
 				.run(
 					device.deviceId,
-					device.secretHash,
+					'',
 					device.endpoint,
 					device.p256dh,
 					device.auth,

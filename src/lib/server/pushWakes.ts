@@ -3,7 +3,7 @@ import { MAX_WAKES_PER_DEVICE } from '$lib/server/syncStore';
 const TWENTY_YEARS_MS = 20 * 365 * 24 * 60 * 60 * 1000;
 export const DEVICE_ID_RE = /^[A-Za-z0-9_-]{16,128}$/;
 export const ACCOUNT_ID_RE = /^[A-Za-z0-9_-]{16,128}$/;
-export const DEVICE_SECRET_RE = /^[A-Za-z0-9+/=_-]{32,256}$/;
+
 const PUSH_KEY = /^[A-Za-z0-9_-]+={0,2}$/;
 
 export type PushKeys = { p256dh: string; auth: string };

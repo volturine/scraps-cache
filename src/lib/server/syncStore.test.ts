@@ -159,12 +159,11 @@ describe('SQLite sync store', () => {
 		expect(removed.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0 });
 	});
 
-	it('stores blind reminder wakes without an account or note identifiers', () => {
+	it('stores blind reminder wakes without note identifiers', () => {
 		const { store } = createStore();
 		store.savePushDevice(
 			{
 				deviceId: 'device-aaaaaaaaaaaa',
-				secretHash: 'hash-a',
 				endpoint: 'https://push.example/sub-a',
 				p256dh: 'p'.repeat(20),
 				auth: 'a'.repeat(16)
@@ -185,13 +184,12 @@ describe('SQLite sync store', () => {
 		expect(store.nextWakeAt()).toBe(5_000);
 	});
 
-	it('keeps at most 32 push devices and rejects a wrong device secret', () => {
+	it('keeps at most 32 push devices', () => {
 		const { store } = createStore();
 		for (let index = 0; index < 33; index++) {
 			store.savePushDevice(
 				{
 					deviceId: `device-${String(index).padStart(12, '0')}`,
-					secretHash: `hash-${index}`,
 					endpoint: `https://push.example/sub-${index}`,
 					p256dh: 'p'.repeat(20),
 					auth: 'a'.repeat(16)
@@ -200,18 +198,6 @@ describe('SQLite sync store', () => {
 			);
 		}
 		expect(store.countPushDevices()).toBe(32);
-		expect(() =>
-			store.savePushDevice(
-				{
-					deviceId: 'device-000000000032',
-					secretHash: 'wrong',
-					endpoint: 'https://push.example/sub-32',
-					p256dh: 'p'.repeat(20),
-					auth: 'a'.repeat(16)
-				},
-				[2_000]
-			)
-		).toThrow(/invalid/i);
 	});
 
 	it('deletes an account and all of its opaque envelopes', () => {

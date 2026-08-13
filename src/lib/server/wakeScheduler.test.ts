@@ -11,7 +11,6 @@ const directories: string[] = [];
 function device(id: string, endpoint: string) {
 	return {
 		deviceId: id,
-		secretHash: `hash-${id}`,
 		endpoint,
 		p256dh: 'p'.repeat(20),
 		auth: 'a'.repeat(16)

@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getSyncStore, PushUnauthorizedError } from '$lib/server/syncStore';
-import { pushDeviceSecretHash, sameSyncSecret } from '$lib/server/syncAuth';
+import { getSyncStore } from '$lib/server/syncStore';
+import { sameSyncSecret } from '$lib/server/syncAuth';
 import { readJsonBody } from '$lib/server/request';
 import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 import { recordSqliteError } from '$lib/server/metrics';
@@ -9,7 +9,6 @@ import { wakeScheduler } from '$lib/server/wakeScheduler';
 import {
 	ACCOUNT_ID_RE,
 	DEVICE_ID_RE,
-	DEVICE_SECRET_RE,
 	isPushSubscription,
 	parseFireAt
 } from '$lib/server/pushWakes';
@@ -28,7 +27,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		accountId?: unknown;
 		authSecret?: unknown;
 		deviceId?: unknown;
-		deviceSecret?: unknown;
 		subscription?: unknown;
 		fireAt?: unknown;
 	};
@@ -40,9 +38,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 
 	if (typeof body.deviceId !== 'string' || !DEVICE_ID_RE.test(body.deviceId)) {
 		return json({ error: 'A device id is required' }, { status: 400 });
-	}
-	if (typeof body.deviceSecret !== 'string' || !DEVICE_SECRET_RE.test(body.deviceSecret)) {
-		return json({ error: 'A device secret is required' }, { status: 400 });
 	}
 	if (
 		typeof body.accountId !== 'string' ||
@@ -74,7 +69,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		store.savePushDevice(
 			{
 				deviceId: body.deviceId,
-				secretHash: pushDeviceSecretHash(body.deviceSecret),
 				endpoint: body.subscription.endpoint,
 				p256dh: body.subscription.keys.p256dh,
 				auth: body.subscription.keys.auth,
@@ -85,9 +79,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		wakeScheduler.start();
 		return json({ ok: true, wakes: fireAt.length });
 	} catch (error) {
-		if (error instanceof PushUnauthorizedError) {
-			return json({ error: 'Invalid device credentials' }, { status: 403 });
-		}
 		recordSqliteError(error);
 		return json({ error: 'Push registration is temporarily unavailable' }, { status: 503 });
 	}

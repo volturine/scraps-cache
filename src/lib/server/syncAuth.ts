@@ -12,14 +12,3 @@ export function sameSyncSecret(expectedHash: string, secret: string): boolean {
 	const received = Buffer.from(actual, 'utf8');
 	return expected.length === received.length && timingSafeEqual(expected, received);
 }
-
-export function pushDeviceSecretHash(secret: string): string {
-	return bytesToHex(sha256Bytes(new TextEncoder().encode(`shard-push-device:v1:${secret}`)));
-}
-
-export function samePushDeviceSecret(expectedHash: string, secret: string): boolean {
-	const actual = pushDeviceSecretHash(secret);
-	const expected = Buffer.from(expectedHash, 'utf8');
-	const received = Buffer.from(actual, 'utf8');
-	return expected.length === received.length && timingSafeEqual(expected, received);
-}

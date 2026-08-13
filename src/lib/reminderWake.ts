@@ -3,39 +3,18 @@ import { syncStore } from '$lib/stores/sync.svelte';
 import { uid } from '$lib/utils';
 
 const DEVICE_KEY = 'gkc-push-device';
-const SECRET_KEY = 'gkc-push-device-secret';
 
 let cachedVapidKey: string | null = null;
 
-function randomSecret(): string {
-	if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-		const bytes = new Uint8Array(32);
-		crypto.getRandomValues(bytes);
-		return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-	}
-	return uid()
-		.repeat(3)
-		.replace(/[^A-Za-z0-9]/g, 'x')
-		.slice(0, 64);
-}
-
-function deviceCredentials(): { deviceId: string; deviceSecret: string } {
-	if (typeof localStorage === 'undefined') {
-		return { deviceId: uid().padEnd(16, 'x'), deviceSecret: randomSecret() };
-	}
-	let deviceId = localStorage.getItem(DEVICE_KEY);
-	if (!deviceId || !/^[A-Za-z0-9_-]{16,128}$/.test(deviceId)) {
-		deviceId = uid()
-			.replace(/[^A-Za-z0-9_-]/g, 'x')
-			.padEnd(16, 'x');
-		localStorage.setItem(DEVICE_KEY, deviceId);
-	}
-	let deviceSecret = localStorage.getItem(SECRET_KEY);
-	if (!deviceSecret || deviceSecret.length < 32) {
-		deviceSecret = randomSecret();
-		localStorage.setItem(SECRET_KEY, deviceSecret);
-	}
-	return { deviceId, deviceSecret };
+function deviceId(): string {
+	if (typeof localStorage === 'undefined') return uid().padEnd(16, 'x');
+	const existing = localStorage.getItem(DEVICE_KEY);
+	if (existing && /^[A-Za-z0-9_-]{16,128}$/.test(existing)) return existing;
+	const next = uid()
+		.replace(/[^A-Za-z0-9_-]/g, 'x')
+		.padEnd(16, 'x');
+	localStorage.setItem(DEVICE_KEY, next);
+	return next;
 }
 
 function applicationServerKey(publicKey: string): BufferSource {
@@ -116,16 +95,15 @@ export async function syncReminderWakes(notes: ReminderNote[]): Promise<boolean>
 	const json = subscription?.toJSON();
 	if (!json?.endpoint || !json.keys?.p256dh || !json.keys.auth) return false;
 
-	const { deviceId, deviceSecret } = deviceCredentials();
 	const account = syncStore.account;
 	try {
 		const response = await fetch('/api/sync/push/wakes', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				deviceId,
-				deviceSecret,
-				...(account ? { accountId: account.accountId, authSecret: account.authSecret } : {}),
+				deviceId: deviceId(),
+				accountId: account.accountId,
+				authSecret: account.authSecret,
 				subscription: {
 					endpoint: json.endpoint,
 					keys: { p256dh: json.keys.p256dh, auth: json.keys.auth }
