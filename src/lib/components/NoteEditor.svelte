@@ -15,6 +15,7 @@
 	import { extractHttpUrls } from '$lib/linkPreview';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
+	import { Bell, ChevronLeft, Pin } from '@lucide/svelte';
 
 	let {
 		noteId = $bindable(),
@@ -274,9 +275,7 @@
 					onclick={handleBack}
 					aria-label="Close note"
 				>
-					<svg viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M15 18l-6-6 6-6" />
-					</svg>
+					<ChevronLeft class="h-6 w-6" aria-hidden="true" />
 				</button>
 
 				<div class="flex-1" aria-hidden="true"></div>
@@ -304,7 +303,7 @@
 						onclick={openReminder}
 						aria-label="Reminder"
 					>
-						<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10.5 3.17 10.5 4v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+						<Bell class="h-5 w-5" aria-hidden="true" />
 					</button>
 					<button
 						type="button"
@@ -313,9 +312,7 @@
 						onclick={() => commit({ pinned: !note.pinned })}
 						aria-label="Pin"
 					>
-						<svg viewBox="0 0 24 24" class="h-5 w-5 {note.pinned ? 'fill-current' : 'fill-none stroke-current'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M14 2l8 8-4 1-3 7-3-3-4 4-1-1 4-4-3-3 7-3z" fill="{note.pinned ? 'currentColor' : 'none'}" stroke="{note.pinned ? 'none' : 'currentColor'}"/>
-						</svg>
+						<Pin class="h-5 w-5" fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
 					</button>
 				</div>
 			</header>

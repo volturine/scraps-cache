@@ -41,7 +41,7 @@ describe('NoteEditor header reminder controls', () => {
 		});
 
 		expect(headerButtons(container)).toEqual(['Close note', 'Reminder', 'Pin']);
-		expect(container.querySelector('header')?.textContent).not.toContain('⏰');
+		expect(container.querySelector('header')?.textContent).not.toMatch(/Today|Tomorrow|AM|PM/);
 	});
 
 	it('puts the reminder time in the header and keeps reminder before pin', () => {

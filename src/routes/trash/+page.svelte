@@ -4,6 +4,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
+	import { Trash2 } from '@lucide/svelte';
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
@@ -20,7 +21,7 @@
 <div class="pt-4 pb-8">
 	{#if trashed.length === 0}
 		<div class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]">
-			<div class="mb-2 text-5xl">🗑️</div>
+			<Trash2 class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
 			<div class="text-sm">No notes in trash. Notes here are deleted forever after 7 days.</div>
 		</div>
 	{:else}

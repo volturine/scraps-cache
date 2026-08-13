@@ -19,7 +19,7 @@ describe('ReminderLabel', () => {
 		const label = container.querySelector('[aria-label^="Overdue reminder,"]');
 		expect(label).toBeTruthy();
 		expect(label?.className).toContain('bg-rose-600');
-		expect(label?.textContent).toContain('⏰');
+		expect(label?.querySelector('svg')).toBeTruthy();
 	});
 
 	it('keeps chip and inline variants overdue-visible', () => {

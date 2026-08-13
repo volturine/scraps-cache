@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
+	import { AlarmClock } from '@lucide/svelte';
 
 	let {
 		reminder,
@@ -34,6 +35,6 @@
 </script>
 
 <span class={box} aria-label={aria}>
-	<span aria-hidden="true">⏰</span>
+	<AlarmClock class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
 	<span class="truncate">{label}</span>
 </span>

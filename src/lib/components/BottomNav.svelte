@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { useEditorActions } from '$lib/editorContext';
+	import { Plus } from '@lucide/svelte';
 
 	const { startNewNote } = useEditorActions();
 </script>
@@ -13,9 +14,6 @@
 		aria-label="New note"
 		title="New note"
 	>
-		<svg viewBox="0 0 24 24" class="h-6 w-6">
-			<line x1="12" y1="5" x2="12" y2="19" stroke="#4285F4" stroke-width="3" stroke-linecap="round"/>
-			<line x1="5" y1="12" x2="19" y2="12" stroke="#EA4335" stroke-width="3" stroke-linecap="round"/>
-		</svg>
+		<Plus class="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
 	</button>
 </div>

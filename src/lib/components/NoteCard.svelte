@@ -6,6 +6,7 @@
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
+	import { Archive, Trash2 } from '@lucide/svelte';
 
 	let {
 		note,
@@ -60,11 +61,11 @@
 <div class="relative overflow-hidden rounded-lg">
 	{#if offsetX < 0}
 		<div class="absolute inset-0 flex items-center justify-end rounded-lg bg-green-500 pr-4 text-white">
-			<svg viewBox="0 0 24 24" class="h-6 w-6 fill-current"><path d="M20 6h-8V4H4v2H2v4h20V6h-2zM4 12v8h16v-8H4z"/></svg>
+			<Archive class="h-6 w-6" aria-hidden="true" />
 		</div>
 	{:else if offsetX > 0}
 		<div class="absolute inset-0 flex items-center justify-start rounded-lg bg-red-500 pl-4 text-white">
-			<svg viewBox="0 0 24 24" class="h-6 w-6 fill-current"><path d="M6 7h12v13H6zM9 4h6v2h2v2H7V6h2zM10 10v6M14 10v6" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+			<Trash2 class="h-6 w-6" aria-hidden="true" />
 		</div>
 	{/if}
 

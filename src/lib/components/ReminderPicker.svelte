@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { SvelteDate } from 'svelte/reactivity';
 	import WheelPicker from './WheelPicker.svelte';
+	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
 
 	let {
 		reminder,
@@ -163,7 +164,7 @@
 			{/if}
 		</div>
 		<div class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--gkc-text)]">
-			<span class="shrink-0" aria-hidden="true">⏰</span>
+			<AlarmClock class="h-4 w-4 shrink-0" aria-hidden="true" />
 			<span class="min-w-0 truncate">{willSaveLabel}</span>
 		</div>
 	</div>
@@ -173,7 +174,7 @@
 
 		<div class="mb-3 flex items-center">
 			<button type="button" class="icon-btn h-8 w-8 shrink-0 p-2" onclick={() => shiftDay(-1)} aria-label="Previous day">
-				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+				<ChevronLeft class="h-5 w-5" aria-hidden="true" />
 			</button>
 			<button
 				type="button"
@@ -187,7 +188,7 @@
 				<span class="truncate">{dateLabel}</span>
 			</button>
 			<button type="button" class="icon-btn h-8 w-8 shrink-0 p-2" onclick={() => shiftDay(1)} aria-label="Next day">
-				<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
+				<ChevronRight class="h-5 w-5" aria-hidden="true" />
 			</button>
 		</div>
 

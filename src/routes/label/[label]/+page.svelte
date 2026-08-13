@@ -4,6 +4,7 @@
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 	import { page } from '$app/state';
+	import { Tag } from '@lucide/svelte';
 
 	const { openNote: openEditor } = useEditorActions();
 
@@ -21,12 +22,12 @@
 <div class="pt-4 pb-8">
 	{#if !label}
 		<div class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]">
-			<div class="mb-2 text-5xl">🏷️</div>
+			<Tag class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
 			<div class="text-sm">Label not found.</div>
 		</div>
 	{:else if notes.length === 0}
 		<div class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]">
-			<div class="mb-2 text-5xl">🏷️</div>
+			<Tag class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
 			<div class="text-sm">No notes with this label yet.</div>
 		</div>
 	{:else}

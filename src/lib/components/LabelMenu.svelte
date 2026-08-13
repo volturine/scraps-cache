@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { Plus } from '@lucide/svelte';
 
 	let {
 		noteId,
@@ -47,9 +48,7 @@
 			aria-label="Create label"
 			title="Create label"
 		>
-			<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
-				<path d="M12 5v14M5 12h14" />
-			</svg>
+			<Plus class="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
 		</button>
 	</div>
 

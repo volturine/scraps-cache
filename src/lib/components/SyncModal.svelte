@@ -4,6 +4,7 @@
 	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { Cloud, X } from '@lucide/svelte';
 
 	let { onClose }: { onClose: () => void } = $props();
 	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'choice' | 'linked'>(syncStore.isLoggedIn ? 'linked' : 'menu');
@@ -186,7 +187,15 @@
 <div class="fixed inset-0 z-50 flex items-center justify-center p-4" transition:fade={{ duration: 150 }}>
 	<button type="button" class="absolute inset-0 bg-black/40" onclick={close} aria-label="Close sync dialog"></button>
 	<div class="relative w-full max-w-md rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-6 shadow-2xl" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="sync-title" transition:fly={{ y: 20, duration: 200 }}>
-		<div class="mb-4 flex items-center justify-between"><h2 id="sync-title" class="text-lg font-medium text-[var(--gkc-text)]">☁️ Sync</h2><button type="button" onclick={close} class="icon-btn h-8 w-8" aria-label="Close">✕</button></div>
+		<div class="mb-4 flex items-center justify-between">
+			<h2 id="sync-title" class="flex items-center gap-2 text-lg font-medium text-[var(--gkc-text)]">
+				<Cloud class="h-5 w-5" aria-hidden="true" />
+				Sync
+			</h2>
+			<button type="button" onclick={close} class="icon-btn h-8 w-8" aria-label="Close">
+				<X class="h-4 w-4" aria-hidden="true" />
+			</button>
+		</div>
 
 		{#if mode === 'linked' && syncStore.account}
 			<div class="space-y-4">
