@@ -30,6 +30,8 @@ export async function syncReminderWakes(notes: ReminderNote[]): Promise<boolean>
 	if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
 	if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
 
+	const existing = await navigator.serviceWorker.getRegistration().catch(() => undefined);
+	if (!existing) return false;
 	const registration = await navigator.serviceWorker.ready.catch(() => undefined);
 	if (!registration?.pushManager) return false;
 

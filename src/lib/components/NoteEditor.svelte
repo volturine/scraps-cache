@@ -8,6 +8,7 @@
 	import { NOTE_COLORS, NOTE_DARK_COLORS } from '$lib/types';
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
+	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
@@ -491,7 +492,10 @@
 		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<ReminderPicker
 				reminder={note.reminder}
-				onApply={(r) => commit({ reminder: r })}
+				onApply={(r) => {
+					commit({ reminder: r });
+					reminderStore.sync(notesStore.notes);
+				}}
 				onClose={() => {
 					reminderOpen = false;
 				}}

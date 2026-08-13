@@ -42,6 +42,7 @@
 		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(() => {
 			openNoteFromQuery();
+			reminderStore.sync(notesStore.notes);
 			if (syncStore.isLoggedIn) setTimeout(() => notesStore.syncWithCloud(), 3000);
 		});
 		const stopReminders = reminderStore.attach(openEditor);
@@ -97,10 +98,6 @@
 	}
 
 	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: requestCloseEditor });
-
-	$effect(() => {
-		reminderStore.sync(notesStore.notes);
-	});
 
 	// Toggle editor-open class on <html> for compositing isolation.
 	$effect(() => {

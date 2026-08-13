@@ -37,6 +37,7 @@ export class ReminderStore {
 			tickAppClock();
 			this.scan();
 			this.arm();
+			this.queueWakeSync();
 		}, 15_000);
 		void this.hydrateFired();
 		const onWake = () => {
@@ -61,10 +62,11 @@ export class ReminderStore {
 	sync(notes: ReminderNote[]): void {
 		this.notes = notes;
 		this.fired = pruneFiredReminders(notes, this.fired);
-		this.alerts = this.alerts.filter((alert) => {
+		const kept = this.alerts.filter((alert) => {
 			const note = notes.find((item) => item.id === alert.noteId);
 			return note != null && note.reminder === alert.reminder && !note.archived && !note.trashed;
 		});
+		if (kept.length !== this.alerts.length) this.alerts = kept;
 		this.scan();
 		this.arm();
 		if (this.attached) this.queueWakeSync();
@@ -82,10 +84,10 @@ export class ReminderStore {
 	}
 
 	private scan(): void {
-		tickAppClock();
 		const due = unfiredDueReminders(this.notes, [...this.fired, ...this.seen], Date.now());
 		if (due.length === 0) return;
 		const nextAlerts = [...this.alerts];
+		let added = false;
 		for (const note of due) {
 			const reminder = note.reminder as number;
 			const key = reminderNotifyKey(note.id, reminder);
@@ -97,12 +99,13 @@ export class ReminderStore {
 			};
 			if (!nextAlerts.some((item) => item.noteId === note.id && item.reminder === reminder)) {
 				nextAlerts.push(alert);
+				added = true;
 			}
 			void showReminderNotification(alert, () => this.open(note.id)).then((shown) => {
 				if (shown) this.markFired(key);
 			});
 		}
-		this.alerts = nextAlerts;
+		if (added) this.alerts = nextAlerts;
 	}
 
 	private arm(): void {

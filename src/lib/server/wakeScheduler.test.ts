@@ -83,4 +83,33 @@ describe('WakeScheduler', () => {
 		expect(store.countPushDevices('account')).toBe(1);
 		expect(store.listWakeTimes('account', 'device-fail0000000')).toEqual([100]);
 	});
+
+	it('does not immediately reschedule after a failed send', async () => {
+		vi.useFakeTimers();
+		const store = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice(
+			'account',
+			{
+				deviceId: 'device-fail0000000',
+				endpoint: 'https://push.example/fail',
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16)
+			},
+			[100]
+		);
+		const send = vi.fn().mockResolvedValue('failed');
+		const scheduler = new WakeScheduler({
+			store: () => store,
+			send,
+			now: () => 200
+		});
+		scheduler.start();
+		await vi.advanceTimersByTimeAsync(250);
+		expect(send).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(send).toHaveBeenCalledOnce();
+		scheduler.stop();
+		vi.useRealTimers();
+	});
 });

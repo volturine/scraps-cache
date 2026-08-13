@@ -4,6 +4,7 @@ import { recordReminderWake } from '$lib/server/metrics';
 
 const IDLE_MS = 30_000;
 const MIN_DELAY_MS = 250;
+const FAILED_RETRY_MS = 30_000;
 
 export type WakeSender = (device: DueWake) => Promise<WakeSendResult>;
 
@@ -43,12 +44,16 @@ export class WakeScheduler {
 		if (this.running) return 0;
 		this.running = true;
 		let sent = 0;
+		let failed = false;
 		try {
 			const now = this.now();
 			const due = this.store().duePushDevices(now);
 			for (const device of due) {
 				const result = await this.send(device);
-				if (result === 'failed') continue;
+				if (result === 'failed') {
+					failed = true;
+					continue;
+				}
 				if (result === 'gone') {
 					this.store().deletePushDevice(device.accountId, device.deviceId);
 					recordReminderWake('gone');
@@ -60,12 +65,16 @@ export class WakeScheduler {
 			}
 		} finally {
 			this.running = false;
-			if (this.started) this.arm();
+			if (this.started) this.arm(failed);
 		}
 		return sent;
 	}
 
-	private arm(): void {
+	private arm(failed = false): void {
+		if (failed) {
+			this.schedule(FAILED_RETRY_MS);
+			return;
+		}
 		const next = this.store().nextWakeAt();
 		const now = this.now();
 		const delay = next == null ? IDLE_MS : Math.min(IDLE_MS, Math.max(MIN_DELAY_MS, next - now));
