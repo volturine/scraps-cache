@@ -281,6 +281,14 @@ body {
 	height: 0.55rem;
 }
 
+/* Even omnidirectional shadow — 0 offset so it is the same on every side. */
+.note-sheet-shadow {
+	box-shadow: 0 0 16px rgba(0, 0, 0, 0.16);
+}
+.dark .note-sheet-shadow {
+	box-shadow: 0 0 16px rgba(0, 0, 0, 0.4);
+}
+
 /* Icon buttons — hover only on fine pointers (touch never gets sticky :hover). */
 .icon-btn {
 	display: inline-flex;

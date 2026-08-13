@@ -59,7 +59,7 @@
 			: ''
 	);
 	const editorDialogClass =
-		'flex h-[min(72lvh,100%)] max-h-full min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-2xl';
+		'flex h-full w-full flex-col overflow-hidden rounded-2xl';
 	const editorDialogStyle = $derived(`background-color: ${note ? bgColor(note.color) : 'transparent'};`);
 
 	let syncedId: string | null = null;
@@ -309,6 +309,7 @@
 		>
 		<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="note-sheet-shadow h-[min(72lvh,100%)] max-h-full min-h-0 w-full max-w-2xl rounded-2xl">
 		<div
 			bind:this={editorDialog}
 			class={editorDialogClass}
@@ -410,6 +411,7 @@
 				onDelete={() => { notesStore.trashNote(note.id); close(); }}
 				onImagesChange={(imgs) => commitNow(imgs)}
 			/>
+		</div>
 		</div>
 		</div>
 	</div>
