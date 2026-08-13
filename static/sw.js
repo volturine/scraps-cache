@@ -114,6 +114,51 @@ function idbRequest(request) {
 	});
 }
 
+function withTimeout(promise, ms) {
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error('timeout')), ms);
+		promise.then(
+			(value) => {
+				clearTimeout(timer);
+				resolve(value);
+			},
+			(error) => {
+				clearTimeout(timer);
+				reject(error);
+			}
+		);
+	});
+}
+
+async function loadLocalReminderState() {
+	const db = await openNotesDb();
+	try {
+		let notes = [];
+		let fired = [];
+		if (db.objectStoreNames.contains(NOTES_STORE)) {
+			notes = await idbRequest(db.transaction(NOTES_STORE).objectStore(NOTES_STORE).getAll());
+		}
+		if (db.objectStoreNames.contains(SYNC_STATE_STORE)) {
+			const stored = await idbRequest(
+				db.transaction(SYNC_STATE_STORE).objectStore(SYNC_STATE_STORE).get(FIRED_KEY)
+			);
+			if (Array.isArray(stored)) fired = stored.filter((item) => typeof item === 'string');
+		}
+		return { notes, fired };
+	} finally {
+		db.close();
+	}
+}
+
+function showGenericReminder() {
+	return self.registration.showNotification('Reminder', {
+		body: 'Open Shard to see it.',
+		tag: 'shard-reminder-tick',
+		icon: '/icon-192.png',
+		data: { type: 'reminder' }
+	});
+}
+
 function reminderPreview(note) {
 	const title = String(note.title || '').trim();
 	if (title) return title;
@@ -138,20 +183,9 @@ async function showDueRemindersFromDevice() {
 	let notes = [];
 	let fired = [];
 	try {
-		const db = await openNotesDb();
-		try {
-			if (db.objectStoreNames.contains(NOTES_STORE)) {
-				notes = await idbRequest(db.transaction(NOTES_STORE).objectStore(NOTES_STORE).getAll());
-			}
-			if (db.objectStoreNames.contains(SYNC_STATE_STORE)) {
-				const stored = await idbRequest(
-					db.transaction(SYNC_STATE_STORE).objectStore(SYNC_STATE_STORE).get(FIRED_KEY)
-				);
-				if (Array.isArray(stored)) fired = stored.filter((item) => typeof item === 'string');
-			}
-		} finally {
-			db.close();
-		}
+		const loaded = await withTimeout(loadLocalReminderState(), 1_500);
+		notes = loaded.notes;
+		fired = loaded.fired;
 	} catch {
 		notes = [];
 	}
@@ -164,12 +198,7 @@ async function showDueRemindersFromDevice() {
 	});
 
 	if (due.length === 0) {
-		await self.registration.showNotification('Shard', {
-			body: 'Open Shard',
-			tag: 'shard-reminder-tick',
-			icon: '/icon-192.png',
-			data: { type: 'reminder' }
-		});
+		await showGenericReminder();
 		return;
 	}
 
@@ -201,13 +230,14 @@ async function showDueRemindersFromDevice() {
 }
 
 self.addEventListener('push', (event) => {
-	event.waitUntil(showDueRemindersFromDevice());
+	event.waitUntil(showDueRemindersFromDevice().catch(() => showGenericReminder()));
 });
 
 self.addEventListener('notificationclick', (event) => {
 	event.notification.close();
 	const noteId = event.notification.data && event.notification.data.noteId;
-	const path = typeof noteId === 'string' && noteId ? '/?note=' + encodeURIComponent(noteId) : '/';
+	const path =
+		typeof noteId === 'string' && noteId ? '/?note=' + encodeURIComponent(noteId) : '/reminders';
 	event.waitUntil(
 		self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
 			for (const client of clients) {

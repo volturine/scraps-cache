@@ -52,7 +52,7 @@
 			if (import.meta.env.PROD) {
 				// Version query forces browsers to re-fetch sw.js after deploys.
 				void navigator.serviceWorker
-					.register('/sw.js?v=6')
+					.register('/sw.js?v=7')
 					.then((reg) => reg.update())
 					.then(() => reminderStore.sync(notesStore.notes))
 					.catch(() => undefined);

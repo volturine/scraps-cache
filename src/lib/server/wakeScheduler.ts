@@ -48,6 +48,7 @@ export class WakeScheduler {
 		try {
 			const now = this.now();
 			const due = this.store().duePushDevices(now);
+			const accounts = new Set(due.map((device) => device.accountId));
 			for (const device of due) {
 				const result = await this.send(device);
 				if (result === 'failed') {
@@ -59,9 +60,11 @@ export class WakeScheduler {
 					recordReminderWake('gone');
 					continue;
 				}
-				this.store().clearDueWakes(device.deviceId, now);
 				recordReminderWake('sent');
 				sent += 1;
+			}
+			if (!failed) {
+				for (const accountId of accounts) this.store().clearDueWakes(accountId, now);
 			}
 		} finally {
 			this.running = false;

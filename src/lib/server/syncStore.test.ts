@@ -161,27 +161,101 @@ describe('SQLite sync store', () => {
 
 	it('stores blind reminder wakes without note identifiers', () => {
 		const { store } = createStore();
+		store.createAccount('account', 'credential');
 		store.savePushDevice(
 			{
 				deviceId: 'device-aaaaaaaaaaaa',
 				endpoint: 'https://push.example/sub-a',
 				p256dh: 'p'.repeat(20),
-				auth: 'a'.repeat(16)
+				auth: 'a'.repeat(16),
+				accountId: 'account'
 			},
 			[5_000, 1_000, 1_000, 9_000]
 		);
-		expect(store.listWakeTimes('device-aaaaaaaaaaaa')).toEqual([1_000, 5_000, 9_000]);
+		expect(store.listWakeTimes('account', 'device-aaaaaaaaaaaa')).toEqual([1_000, 5_000, 9_000]);
 		expect(store.duePushDevices(1_000)).toEqual([
 			{
+				accountId: 'account',
 				deviceId: 'device-aaaaaaaaaaaa',
 				endpoint: 'https://push.example/sub-a',
 				p256dh: 'p'.repeat(20),
 				auth: 'a'.repeat(16)
 			}
 		]);
-		store.clearDueWakes('device-aaaaaaaaaaaa', 1_000);
-		expect(store.listWakeTimes('device-aaaaaaaaaaaa')).toEqual([5_000, 9_000]);
+		store.clearDueWakes('account', 1_000);
+		expect(store.listWakeTimes('account')).toEqual([5_000, 9_000]);
 		expect(store.nextWakeAt()).toBe(5_000);
+	});
+
+	it('fans a source device wake out to every other device on the account', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice(
+			{
+				deviceId: 'device-phone000000',
+				endpoint: 'https://push.example/phone',
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16),
+				accountId: 'account'
+			},
+			[1_000]
+		);
+		store.savePushDevice(
+			{
+				deviceId: 'device-tablet00000',
+				endpoint: 'https://push.example/tablet',
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16),
+				accountId: 'account'
+			},
+			[]
+		);
+		expect(store.listWakeTimes('account', 'device-phone000000')).toEqual([1_000]);
+		expect(store.listWakeTimes('account', 'device-tablet00000')).toEqual([]);
+		expect(
+			store
+				.duePushDevices(1_000)
+				.map((device) => device.deviceId)
+				.sort()
+		).toEqual(['device-phone000000', 'device-tablet00000']);
+	});
+
+	it('does not let one device wipe another device wake times', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice(
+			{
+				deviceId: 'device-phone000000',
+				endpoint: 'https://push.example/phone',
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16),
+				accountId: 'account'
+			},
+			[1_000]
+		);
+		store.savePushDevice(
+			{
+				deviceId: 'device-tablet00000',
+				endpoint: 'https://push.example/tablet',
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16),
+				accountId: 'account'
+			},
+			[2_000]
+		);
+		store.savePushDevice(
+			{
+				deviceId: 'device-phone000000',
+				endpoint: 'https://push.example/phone',
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16),
+				accountId: 'account'
+			},
+			[]
+		);
+		expect(store.listWakeTimes('account', 'device-phone000000')).toEqual([]);
+		expect(store.listWakeTimes('account', 'device-tablet00000')).toEqual([2_000]);
+		expect(store.listWakeTimes('account')).toEqual([2_000]);
 	});
 
 	it('keeps at most 32 push devices', () => {

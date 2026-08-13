@@ -50,22 +50,9 @@ async function waitForRegistration(timeoutMs = 8_000): Promise<ServiceWorkerRegi
 	]);
 }
 
-async function waitForController(): Promise<void> {
-	if (!('serviceWorker' in navigator) || navigator.serviceWorker.controller) return;
-	await Promise.race([
-		new Promise<void>((resolve) => {
-			navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
-		}),
-		new Promise<void>((resolve) => {
-			setTimeout(resolve, 5_000);
-		})
-	]);
-}
-
 /** Subscribe in the same user-gesture as the permission prompt (required on iOS). */
 export async function ensurePushSubscription(): Promise<boolean> {
 	if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
-	await waitForController();
 	const registration = await waitForRegistration();
 	if (!registration?.pushManager) return false;
 	if (await registration.pushManager.getSubscription()) return true;
