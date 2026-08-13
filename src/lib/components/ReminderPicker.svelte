@@ -172,7 +172,7 @@
 			<span class="min-w-0 truncate">{willSaveLabel}</span>
 		</div>
 		<div class="mt-1 text-[11px] leading-snug text-[var(--gkc-text-muted)]">
-			Notifies on this device while Shard is open.
+			Notifies on this device. Sync can wake it after Shard is closed.
 		</div>
 	</div>
 

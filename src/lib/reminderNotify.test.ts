@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	dueReminderNotes,
+	futureWakeTimes,
 	nextReminderAt,
 	pruneFiredReminders,
 	readFiredReminders,
@@ -68,6 +69,21 @@ describe('due and upcoming reminders', () => {
 				now
 			)
 		).toEqual([]);
+	});
+
+	it('lists unique future wake times without note ids', () => {
+		expect(
+			futureWakeTimes(
+				[
+					note({ id: 'a', reminder: now + 20 }),
+					note({ id: 'b', reminder: now + 10 }),
+					note({ id: 'c', reminder: now + 20 }),
+					note({ id: 'past', reminder: now }),
+					note({ id: 'arch', reminder: now + 5, archived: true })
+				],
+				now
+			)
+		).toEqual([now + 10, now + 20]);
 	});
 
 	it('finds the soonest future reminder', () => {

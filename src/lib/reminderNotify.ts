@@ -1,4 +1,4 @@
-// Local reminder scheduling. The relay never sees reminder times or note text.
+// Local reminder display. The relay may store wake timestamps, never note text.
 import { formatReminder } from './utils';
 
 export type ReminderNote = {
@@ -37,6 +37,15 @@ export function dueReminderNotes(notes: ReminderNote[], now: number): ReminderNo
 	return notes.filter(
 		(note) => !note.archived && !note.trashed && note.reminder != null && note.reminder <= now
 	);
+}
+
+export function futureWakeTimes(notes: ReminderNote[], now: number, limit = 50): number[] {
+	const times = new Set<number>();
+	for (const note of notes) {
+		if (note.archived || note.trashed || note.reminder == null || note.reminder <= now) continue;
+		times.add(note.reminder);
+	}
+	return [...times].sort((left, right) => left - right).slice(0, limit);
 }
 
 export function nextReminderAt(notes: ReminderNote[], now: number): number | null {

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { backupManager } from '$lib/server/backupManager';
 import { recordHttpRequest } from '$lib/server/metrics';
 import { closeSyncStore } from '$lib/server/syncStore';
+import { wakeScheduler } from '$lib/server/wakeScheduler';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
@@ -13,6 +14,7 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 
 export const handle: Handle = async ({ event, resolve }) => {
 	backupManager.start();
+	wakeScheduler.start();
 	const startedAt = performance.now();
 	const suppliedRequestId = event.request.headers.get('x-request-id') ?? '';
 	const requestId = /^[A-Za-z0-9._-]{1,128}$/.test(suppliedRequestId)
@@ -40,5 +42,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 process.on('sveltekit:shutdown', async () => {
 	backupManager.stop();
+	wakeScheduler.stop();
 	closeSyncStore();
 });

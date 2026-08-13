@@ -49,7 +49,7 @@
 			if (import.meta.env.PROD) {
 				// Version query forces browsers to re-fetch sw.js after deploys.
 				void navigator.serviceWorker
-					.register('/sw.js?v=3')
+					.register('/sw.js?v=4')
 					.then((reg) => reg.update())
 					.catch(() => undefined);
 			} else {

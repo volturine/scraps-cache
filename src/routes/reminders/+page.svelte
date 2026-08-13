@@ -37,7 +37,7 @@
 					class="mb-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-3 py-2.5"
 				>
 					<p class="text-xs text-[var(--gkc-text-muted)]">
-						Allow notifications to see reminders when Shard is in the background.
+						Allow notifications so sync can wake this device after Shard is closed.
 					</p>
 					<button
 						type="button"

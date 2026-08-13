@@ -159,6 +159,59 @@ describe('SQLite sync store', () => {
 		expect(removed.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0 });
 	});
 
+	it('stores blind reminder wakes without note identifiers', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice(
+			'account',
+			{
+				deviceId: 'device-aaaaaaaaaaaa',
+				endpoint: 'https://push.example/sub-a',
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16)
+			},
+			[5_000, 1_000, 1_000, 9_000]
+		);
+		expect(store.listWakeTimes('account', 'device-aaaaaaaaaaaa')).toEqual([1_000, 5_000, 9_000]);
+		expect(store.duePushDevices(1_000)).toEqual([
+			{
+				accountId: 'account',
+				deviceId: 'device-aaaaaaaaaaaa',
+				endpoint: 'https://push.example/sub-a',
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16)
+			}
+		]);
+		store.clearDueWakes('account', 'device-aaaaaaaaaaaa', 1_000);
+		expect(store.listWakeTimes('account', 'device-aaaaaaaaaaaa')).toEqual([5_000, 9_000]);
+		expect(store.nextWakeAt()).toBe(5_000);
+	});
+
+	it('keeps at most eight push devices and drops them when the account is deleted', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		for (let index = 0; index < 9; index++) {
+			store.savePushDevice(
+				'account',
+				{
+					deviceId: `device-${String(index).padStart(12, '0')}`,
+					endpoint: `https://push.example/sub-${index}`,
+					p256dh: 'p'.repeat(20),
+					auth: 'a'.repeat(16)
+				},
+				[1_000 + index]
+			);
+		}
+		expect(store.countPushDevices('account')).toBe(8);
+		const kept = Array.from({ length: 9 }, (_, index) =>
+			store.listWakeTimes('account', `device-${String(index).padStart(12, '0')}`)
+		).filter((times) => times.length > 0);
+		expect(kept).toHaveLength(8);
+		expect(store.deleteAccount('account')).toBe(true);
+		expect(store.countPushDevices('account')).toBe(0);
+		expect(store.nextWakeAt()).toBeNull();
+	});
+
 	it('deletes an account and all of its opaque envelopes', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');

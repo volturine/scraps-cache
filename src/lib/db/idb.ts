@@ -431,6 +431,18 @@ export async function setSyncState<T>(key: string, value: T): Promise<void> {
 	await db.put(SYNC_STATE_STORE, value, key);
 }
 
+const FIRED_REMINDERS_KEY = 'gkc-fired-reminders';
+
+export async function getFiredReminderKeys(): Promise<string[]> {
+	const stored = await getSyncState<unknown>(FIRED_REMINDERS_KEY);
+	if (!Array.isArray(stored)) return [];
+	return stored.filter((item): item is string => typeof item === 'string');
+}
+
+export async function setFiredReminderKeys(keys: Iterable<string>): Promise<void> {
+	await setSyncState(FIRED_REMINDERS_KEY, [...keys]);
+}
+
 export async function deleteSyncState(key: string): Promise<void> {
 	const db = await getDB();
 	await db.delete(SYNC_STATE_STORE, key);

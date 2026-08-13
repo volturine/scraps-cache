@@ -131,17 +131,20 @@ Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
 
 ### Application / Node
 
-| Variable                             |      Default | Purpose                                                       |
-| ------------------------------------ | -----------: | ------------------------------------------------------------- |
-| `SHARD_SYNC_DATA_DIR`                |  `sync-data` | Persistent sync-data directory (`/data` in Compose)           |
-| `SHARD_SYNC_MAX_ACCOUNT_BYTES`       | `1000000000` | Ciphertext quota per account                                  |
-| `SHARD_SYNC_MAX_ACCOUNT_ENVELOPES`   |      `50000` | Record quota per account                                      |
-| `SHARD_SYNC_MAX_CONCURRENT_REQUESTS` |          `8` | Max sync requests in flight                                   |
-| `SHARD_BACKUP_DIR`                   |     disabled | Directory for consistent online SQLite snapshots              |
-| `SHARD_BACKUP_INTERVAL_HOURS`        |         `24` | Snapshot interval                                             |
-| `SHARD_BACKUP_RETAIN`                |          `2` | Raw verified staging snapshots retained locally               |
-| `SHARD_ADMIN_TOKEN`                  |            — | Protects metrics and manual backup (required in prod Compose) |
-| `ADDRESS_HEADER` / `XFF_DEPTH`       | direct / `1` | Trusted proxy client-address configuration                    |
+| Variable                             |                  Default | Purpose                                                       |
+| ------------------------------------ | -----------------------: | ------------------------------------------------------------- |
+| `SHARD_SYNC_DATA_DIR`                |              `sync-data` | Persistent sync-data directory (`/data` in Compose)           |
+| `SHARD_SYNC_MAX_ACCOUNT_BYTES`       |             `1000000000` | Ciphertext quota per account                                  |
+| `SHARD_SYNC_MAX_ACCOUNT_ENVELOPES`   |                  `50000` | Record quota per account                                      |
+| `SHARD_SYNC_MAX_CONCURRENT_REQUESTS` |                      `8` | Max sync requests in flight                                   |
+| `SHARD_BACKUP_DIR`                   |                 disabled | Directory for consistent online SQLite snapshots              |
+| `SHARD_BACKUP_INTERVAL_HOURS`        |                     `24` | Snapshot interval                                             |
+| `SHARD_BACKUP_RETAIN`                |                      `2` | Raw verified staging snapshots retained locally               |
+| `SHARD_ADMIN_TOKEN`                  |                        — | Protects metrics and manual backup (required in prod Compose) |
+| `SHARD_VAPID_PUBLIC_KEY`             |           auto-generated | Optional stable Web Push VAPID public key                     |
+| `SHARD_VAPID_PRIVATE_KEY`            |           auto-generated | Optional stable Web Push VAPID private key                    |
+| `SHARD_VAPID_SUBJECT`                | `mailto:shard@localhost` | Contact URI for VAPID (`mailto:` or `https:`)                 |
+| `ADDRESS_HEADER` / `XFF_DEPTH`       |             direct / `1` | Trusted proxy client-address configuration                    |
 
 Compose maps `SHARD_ADDRESS_HEADER` → `ADDRESS_HEADER` and
 `SHARD_XFF_DEPTH` → `XFF_DEPTH`.

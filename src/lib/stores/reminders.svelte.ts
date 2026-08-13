@@ -1,4 +1,5 @@
 import { tickAppClock } from '$lib/appClock.svelte';
+import { getFiredReminderKeys, setFiredReminderKeys } from '$lib/db/idb';
 import {
 	nextReminderAt,
 	pruneFiredReminders,
@@ -11,8 +12,10 @@ import {
 	type ReminderAlert,
 	type ReminderNote
 } from '$lib/reminderNotify';
+import { syncReminderWakes } from '$lib/reminderWake';
 
 const MAX_TIMER_MS = 60_000;
+const WAKE_DEBOUNCE_MS = 800;
 
 export class ReminderStore {
 	alerts = $state<ReminderAlert[]>([]);
@@ -20,6 +23,7 @@ export class ReminderStore {
 	private seen = new Set<string>();
 	private notes: ReminderNote[] = [];
 	private timer: ReturnType<typeof setTimeout> | null = null;
+	private wakeTimer: ReturnType<typeof setTimeout> | null = null;
 	private clock: ReturnType<typeof setInterval> | null = null;
 	private openNote: (id: string) => void = () => {};
 	private attached = false;
@@ -34,15 +38,19 @@ export class ReminderStore {
 			this.scan();
 			this.arm();
 		}, 15_000);
+		void this.hydrateFired();
 		const onWake = () => {
 			if (document.visibilityState === 'hidden') return;
-			tickAppClock();
-			this.scan();
-			this.arm();
+			void this.hydrateFired().then(() => {
+				tickAppClock();
+				this.scan();
+				this.arm();
+			});
 		};
 		document.addEventListener('visibilitychange', onWake);
 		window.addEventListener('focus', onWake);
 		this.listenForNotificationClicks();
+		this.queueWakeSync();
 		return () => {
 			document.removeEventListener('visibilitychange', onWake);
 			window.removeEventListener('focus', onWake);
@@ -59,6 +67,7 @@ export class ReminderStore {
 		});
 		this.scan();
 		this.arm();
+		if (this.attached) this.queueWakeSync();
 	}
 
 	dismiss(noteId: string): void {
@@ -112,10 +121,29 @@ export class ReminderStore {
 		}, delay);
 	}
 
+	private queueWakeSync(): void {
+		if (this.wakeTimer != null) clearTimeout(this.wakeTimer);
+		this.wakeTimer = setTimeout(() => {
+			this.wakeTimer = null;
+			void syncReminderWakes(this.notes);
+		}, WAKE_DEBOUNCE_MS);
+	}
+
+	private async hydrateFired(): Promise<void> {
+		try {
+			const stored = await getFiredReminderKeys();
+			if (stored.length === 0) return;
+			this.fired = new Set([...this.fired, ...stored]);
+		} catch {
+			/* IndexedDB may be unavailable in tests. */
+		}
+	}
+
 	private markFired(key: string): void {
 		if (this.fired.has(key)) return;
 		this.fired.add(key);
 		writeFiredReminders(this.fired);
+		void setFiredReminderKeys(this.fired).catch(() => undefined);
 	}
 
 	private onSwMessage = (event: MessageEvent) => {
@@ -138,6 +166,10 @@ export class ReminderStore {
 		if (this.timer != null) {
 			clearTimeout(this.timer);
 			this.timer = null;
+		}
+		if (this.wakeTimer != null) {
+			clearTimeout(this.wakeTimer);
+			this.wakeTimer = null;
 		}
 		if (this.clock != null) {
 			clearInterval(this.clock);

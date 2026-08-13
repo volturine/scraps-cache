@@ -37,11 +37,12 @@ describe('ReminderStore', () => {
 	it('opens the note and clears the alert', () => {
 		const opened: string[] = [];
 		const store = new ReminderStore();
-		store.attach((id) => opened.push(id));
+		const stop = store.attach((id) => opened.push(id));
 		store.sync([note({ reminder: 100 })]);
 		store.open('n1');
 		expect(opened).toEqual(['n1']);
 		expect(store.alerts).toEqual([]);
+		stop();
 	});
 
 	it('fires a later reminder after the scheduled time', () => {
