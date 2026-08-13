@@ -13,12 +13,12 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 
 ## Trust boundaries
 
-| Component | You trust it with | You should not trust it with |
-| --- | --- | --- |
-| Your browser / device | Local note plaintext, sync key, backup passphrase while entered | Malware, hostile extensions, shared unlocked sessions |
-| Self-hosted relay | Ciphertext, auth material hashes, metadata (sizes, timing, IPs if logged) | Note plaintext, sync key, backup passphrase |
-| Reverse proxy / TLS terminator | TLS keys, request metadata | Application secrets if misconfigured |
-| Client backup file | Ciphertext at rest | Passphrase (never stored in the file) |
+| Component                      | You trust it with                                                         | You should not trust it with                          |
+| ------------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Your browser / device          | Local note plaintext, sync key, backup passphrase while entered           | Malware, hostile extensions, shared unlocked sessions |
+| Self-hosted relay              | Ciphertext, auth material hashes, metadata (sizes, timing, IPs if logged) | Note plaintext, sync key, backup passphrase           |
+| Reverse proxy / TLS terminator | TLS keys, request metadata                                                | Application secrets if misconfigured                  |
+| Client backup file             | Ciphertext at rest                                                        | Passphrase (never stored in the file)                 |
 
 ## Cryptography overview
 
@@ -124,11 +124,11 @@ app is in use; browser storage isolation is the boundary.
 
 ## Related source
 
-| Topic | Files |
-| --- | --- |
-| Pairing + payload crypto | `src/lib/syncPairing.ts` |
-| Backup crypto | `src/lib/backupCrypto.ts` |
-| Relay storage | `src/lib/server/syncStore.ts` |
-| Rate limits | `src/lib/server/rateLimit.ts` |
-| CSP | `svelte.config.js` |
-| Security headers | `src/hooks.server.ts` |
+| Topic                    | Files                         |
+| ------------------------ | ----------------------------- |
+| Pairing + payload crypto | `src/lib/syncPairing.ts`      |
+| Backup crypto            | `src/lib/backupCrypto.ts`     |
+| Relay storage            | `src/lib/server/syncStore.ts` |
+| Rate limits              | `src/lib/server/rateLimit.ts` |
+| CSP                      | `svelte.config.js`            |
+| Security headers         | `src/hooks.server.ts`         |

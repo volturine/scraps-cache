@@ -13,6 +13,9 @@
 	import BodyEditor from './BodyEditor.svelte';
 	import LinkPreview from './LinkPreview.svelte';
 	import { extractHttpUrls } from '$lib/linkPreview';
+	import { formatReminder, isReminderOverdue } from '$lib/utils';
+	import ReminderLabel from './ReminderLabel.svelte';
+	import { Bell, ChevronLeft, Pin } from '@lucide/svelte';
 
 	let {
 		noteId = $bindable(),
@@ -24,6 +27,8 @@
 
 	const note = $derived(noteId ? notesStore.notes.find((n) => n.id === noteId) : null);
 	const isOpen = $derived(noteId !== null && note !== null);
+	const reminderOverdue = $derived(note?.reminder != null && isReminderOverdue(note.reminder));
+	const reminderLabel = $derived(formatReminder(note?.reminder ?? null));
 
 	let taskFocusLine = $state<number | null>(null);
 
@@ -44,11 +49,22 @@
 	let layoutViewportHeight = $state(0);
 	let layoutViewportWidth = $state(0);
 	let revealFrame: number | null = null;
+	let lastTouchY = 0;
 
 	const keyboardVisible = $derived(
 		isOpen && visualViewportHeight > 0 && visualViewportHeight < layoutViewportHeight - 120
 	);
-	const editorDialogStyle = $derived(`background-color: ${note ? bgColor(note.color) : 'transparent'};`);
+	// Dim stays 200lvh so it covers the keyboard accessory. The sheet always
+	// follows the visual viewport: keyboard open → sits above the keys;
+	// keyboard closed in Safari → stays above the toolbar instead of 72lvh
+	// overflowing behind it. In standalone, visual viewport ≈ lvh so 72lvh is unchanged.
+	const editorSheetFrameStyle = $derived(
+		visualViewportHeight > 0 ? `top:${visualViewportTop}px;height:${visualViewportHeight}px;` : ''
+	);
+	const editorDialogClass = 'flex h-full w-full flex-col overflow-hidden rounded-2xl';
+	const editorDialogStyle = $derived(
+		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
+	);
 
 	let syncedId: string | null = null;
 	$effect(() => {
@@ -68,7 +84,11 @@
 		const target = event.target;
 		// Match any contenteditable host (including plaintext-only). A strict ="true"
 		// check lets page clicks steal focus and collapse multi-line iOS selections.
-		if (target instanceof Element && target.closest('button, input, textarea, select, a, [contenteditable]')) return;
+		if (
+			target instanceof Element &&
+			target.closest('button, input, textarea, select, a, [contenteditable]')
+		)
+			return;
 		focusBodySignal++;
 	}
 
@@ -76,7 +96,9 @@
 		if (!keyboardVisible || !editorDialog || !editorScroller) return;
 		const focused = document.activeElement;
 		if (!(focused instanceof HTMLElement) || !editorDialog.contains(focused)) return;
-		const field = focused.closest('input, textarea, select, [contenteditable]') as HTMLElement | null;
+		const field = focused.closest(
+			'input, textarea, select, [contenteditable]'
+		) as HTMLElement | null;
 		if (!field) return;
 
 		const fieldRect = field.getBoundingClientRect();
@@ -114,15 +136,21 @@
 				layoutViewportWidth = window.innerWidth;
 				layoutViewportHeight = Math.max(window.innerHeight, nextViewportHeight);
 			} else {
-				layoutViewportHeight = Math.max(layoutViewportHeight, window.innerHeight, nextViewportHeight);
+				layoutViewportHeight = Math.max(
+					layoutViewportHeight,
+					window.innerHeight,
+					nextViewportHeight
+				);
 			}
 			queueFocusedEditorReveal();
 		};
 		updateViewport();
 		viewport?.addEventListener('resize', updateViewport);
+		viewport?.addEventListener('scroll', updateViewport);
 		window.addEventListener('resize', updateViewport);
 		return () => {
 			viewport?.removeEventListener('resize', updateViewport);
+			viewport?.removeEventListener('scroll', updateViewport);
 			window.removeEventListener('resize', updateViewport);
 			if (revealFrame !== null) cancelAnimationFrame(revealFrame);
 		};
@@ -130,6 +158,50 @@
 
 	$effect(() => {
 		if (keyboardVisible) queueFocusedEditorReveal();
+	});
+
+	function lockPageScroll() {
+		window.scrollTo(0, 0);
+		document.documentElement.scrollTop = 0;
+		document.body.scrollTop = 0;
+	}
+
+	function allowEditorBodyScroll(event: TouchEvent): boolean {
+		const target = event.target;
+		if (!(target instanceof Element) || !editorDialog?.contains(target)) return false;
+		const scroller = target.closest('.scrollable');
+		if (!(scroller instanceof HTMLElement) || !editorDialog.contains(scroller)) return false;
+		if (scroller.scrollHeight <= scroller.clientHeight + 1) return false;
+		const y = event.touches[0]?.clientY ?? lastTouchY;
+		const dy = y - lastTouchY;
+		const atTop = scroller.scrollTop <= 0;
+		const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+		if ((atTop && dy > 0) || (atBottom && dy < 0)) return false;
+		return true;
+	}
+
+	$effect(() => {
+		if (!isOpen) return;
+		lockPageScroll();
+		const viewport = window.visualViewport;
+		const onTouchStart = (event: TouchEvent) => {
+			lastTouchY = event.touches[0]?.clientY ?? 0;
+		};
+		const onTouchMove = (event: TouchEvent) => {
+			if (!allowEditorBodyScroll(event)) event.preventDefault();
+			lastTouchY = event.touches[0]?.clientY ?? lastTouchY;
+		};
+		const onScroll = () => lockPageScroll();
+		document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+		document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+		window.addEventListener('scroll', onScroll, { capture: true, passive: false });
+		viewport?.addEventListener('scroll', onScroll);
+		return () => {
+			document.removeEventListener('touchstart', onTouchStart, { capture: true });
+			document.removeEventListener('touchmove', onTouchMove, { capture: true });
+			window.removeEventListener('scroll', onScroll, { capture: true });
+			viewport?.removeEventListener('scroll', onScroll);
+		};
 	});
 
 	$effect(() => {
@@ -168,6 +240,11 @@
 		paletteOpen = false;
 		reminderOpen = false;
 		labelOpen = false;
+	}
+
+	function openReminder() {
+		closePopups();
+		reminderOpen = true;
 	}
 
 	function bgColor(c: NoteColor): string {
@@ -223,164 +300,236 @@
 			ta.style.opacity = '0';
 			document.body.appendChild(ta);
 			ta.select();
-			try { document.execCommand('copy'); } catch {}
+			try {
+				document.execCommand('copy');
+			} catch {}
 			document.body.removeChild(ta);
 		}
 		copyFlash = true;
-		setTimeout(() => { copyFlash = false; }, 1500);
+		setTimeout(() => {
+			copyFlash = false;
+		}, 1500);
 	}
 </script>
 
 {#if isOpen && note}
 	<div
-		class="fixed left-0 top-0 z-50 flex h-[100lvh] w-screen items-center justify-center overflow-hidden bg-black/40 p-4"
+		class="fixed left-0 top-0 z-50 h-[200lvh] w-screen bg-transparent"
 		role="presentation"
 		onclick={(e) => {
 			// Backdrop click always dismisses, including while a task is focused.
-			if (e.target === e.currentTarget) void close();
+			if (editorDialog && e.target instanceof Node && editorDialog.contains(e.target)) return;
+			void close();
 		}}
 		onkeydown={(e) => {
 			if (e.key === 'Escape') void close();
 		}}
 	>
-		<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
-			bind:this={editorDialog}
-			class="flex h-[72lvh] max-h-[90lvh] min-h-[50lvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
-			style={editorDialogStyle}
-			role="dialog"
-			tabindex="-1"
-			aria-modal="true"
-			onclick={focusBodyFromPage}
+			class="absolute left-0 right-0 flex h-[100lvh] items-center justify-center p-4"
+			style={editorSheetFrameStyle}
+			role="presentation"
 		>
-			<!-- Header -->
-			<header
-				class="flex shrink-0 items-center gap-2 border-b border-black/5 px-2 py-2 dark:border-white/10"
+			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div
+				class="note-sheet-shadow h-[min(72lvh,100%)] max-h-full min-h-0 w-full max-w-2xl rounded-2xl"
 			>
-				<button
-					type="button"
-					class="icon-btn h-10 w-10 p-2"
-					title="Close note"
-					onclick={handleBack}
-					aria-label="Close note"
+				<div
+					bind:this={editorDialog}
+					class={editorDialogClass}
+					style={editorDialogStyle}
+					role="dialog"
+					tabindex="-1"
+					aria-modal="true"
+					onclick={focusBodyFromPage}
 				>
-					<svg viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M15 18l-6-6 6-6" />
-					</svg>
-				</button>
-
-				<div class="flex-1" aria-hidden="true"></div>
-
-				<div class="flex items-center gap-0.5">
-					<button
-						type="button"
-						class="icon-btn h-9 w-9 p-2"
-						title={note.pinned ? 'Unpin' : 'Pin'}
-						onclick={() => commit({ pinned: !note.pinned })}
-						aria-label="Pin"
+					<!-- Header -->
+					<header
+						class="flex shrink-0 items-center gap-2 border-b border-black/5 px-2 py-2 dark:border-white/10"
 					>
-						<svg viewBox="0 0 24 24" class="h-5 w-5 {note.pinned ? 'fill-current' : 'fill-none stroke-current'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M14 2l8 8-4 1-3 7-3-3-4 4-1-1 4-4-3-3 7-3z" fill="{note.pinned ? 'currentColor' : 'none'}" stroke="{note.pinned ? 'none' : 'currentColor'}"/>
-						</svg>
-					</button>
-					<button
-						type="button"
-						class="icon-btn h-9 w-9 p-2"
-						title="Archive"
-						onclick={() => { notesStore.toggleArchive(note.id); close(); }}
-						aria-label="Archive"
+						<button
+							type="button"
+							class="icon-btn h-10 w-10 p-2"
+							title="Close note"
+							onclick={handleBack}
+							aria-label="Close note"
+						>
+							<ChevronLeft class="h-6 w-6" aria-hidden="true" />
+						</button>
+
+						<div class="flex-1" aria-hidden="true"></div>
+
+						<div class="flex min-w-0 items-center gap-1">
+							{#if note.reminder != null}
+								<button
+									type="button"
+									class="min-w-0"
+									title={reminderOverdue ? `Overdue · ${reminderLabel}` : reminderLabel}
+									onclick={openReminder}
+									aria-label={reminderOverdue
+										? `Overdue reminder, ${reminderLabel}`
+										: `Reminder, ${reminderLabel}`}
+								>
+									<ReminderLabel reminder={note.reminder} variant="chip" />
+								</button>
+							{/if}
+							<button
+								type="button"
+								class="icon-btn h-9 w-9 p-2 {note.reminder == null
+									? ''
+									: reminderOverdue
+										? 'text-rose-600 dark:text-rose-400'
+										: 'text-blue-600 dark:text-blue-400'}"
+								title="Reminder"
+								onclick={openReminder}
+								aria-label="Reminder"
+							>
+								<Bell class="h-5 w-5" aria-hidden="true" />
+							</button>
+							<button
+								type="button"
+								class="icon-btn h-9 w-9 p-2"
+								title={note.pinned ? 'Unpin' : 'Pin'}
+								onclick={() => commit({ pinned: !note.pinned })}
+								aria-label="Pin"
+							>
+								<Pin
+									class="h-5 w-5"
+									fill={note.pinned ? 'currentColor' : 'none'}
+									aria-hidden="true"
+								/>
+							</button>
+						</div>
+					</header>
+
+					<div
+						bind:this={editorScroller}
+						class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pt-4 pb-3"
 					>
-						<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M20 6h-8V4H4v2H2v4h20V6h-2zM4 12v8h16v-8H4z"/></svg>
-					</button>
-					<button
-						type="button"
-						class="icon-btn h-9 w-9 p-2 {note.reminder != null ? 'text-blue-600 dark:text-blue-400' : ''}"
-						title="Reminder"
-						onclick={() => { closePopups(); reminderOpen = true; }}
-						aria-label="Reminder"
-					>
-						<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10.5 3.17 10.5 4v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
-					</button>
-				</div>
-			</header>
+						<input
+							type="text"
+							placeholder="Title"
+							bind:value={title}
+							oninput={scheduleCommit}
+							onkeydown={(e) => {
+								if (e.key === 'Enter') {
+									e.preventDefault();
+									focusBodySignal++;
+								}
+							}}
+							class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
+						/>
 
-			<div bind:this={editorScroller} class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pt-4 pb-3">
-				<input
-					type="text"
-						placeholder="Title"
-						bind:value={title}
-						oninput={scheduleCommit}
-						onkeydown={(e) => {
-							if (e.key === 'Enter') {
-								e.preventDefault();
-								focusBodySignal++;
-							}
-						}}
-						class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
-				/>
+						<BodyEditor
+							bind:body
+							oninput={scheduleCommit}
+							placeholder="Take a note… type [ ] for a checklist, Tab for sub-task"
+							focusSignal={focusBodySignal}
+							focusLine={taskFocusLine}
+							onFocusTask={focusTask}
+							onExitTaskFocus={handleBack}
+						/>
 
-				<BodyEditor
-					bind:body
-					oninput={scheduleCommit}
-					placeholder="Take a note… type [ ] for a checklist, Tab for sub-task"
-					focusSignal={focusBodySignal}
-					focusLine={taskFocusLine}
-					onFocusTask={focusTask}
-					onExitTaskFocus={handleBack}
-				/>
-
-				{#if links.length > 0}
-					<div class="mt-3 flex flex-col gap-2" aria-label="Links">
-						{#each links as url (url)}
-							<LinkPreview {url} />
-						{/each}
+						{#if links.length > 0}
+							<div class="mt-3 flex flex-col gap-2" aria-label="Links">
+								{#each links as url (url)}
+									<LinkPreview {url} />
+								{/each}
+							</div>
+						{/if}
 					</div>
-				{/if}
-			</div>
 
-			<NoteEditorFooter
-				bind:images
-				bind:body
-				noteId={note.id}
-				showCopy={true}
-				showDelete={true}
-				{copyFlash}
-				onOpenColor={() => { closePopups(); paletteOpen = true; }}
-				onOpenTags={() => { closePopups(); labelOpen = true; }}
-				onCopy={() => void copyText()}
-				onDelete={() => { notesStore.trashNote(note.id); close(); }}
-				onImagesChange={(imgs) => commitNow(imgs)}
-			/>
+					<NoteEditorFooter
+						bind:images
+						bind:body
+						noteId={note.id}
+						showCopy={true}
+						showArchive={true}
+						showDelete={true}
+						archived={note.archived}
+						{copyFlash}
+						onOpenColor={() => {
+							closePopups();
+							paletteOpen = true;
+						}}
+						onOpenTags={() => {
+							closePopups();
+							labelOpen = true;
+						}}
+						onCopy={() => void copyText()}
+						onArchive={() => {
+							notesStore.toggleArchive(note.id);
+							void close();
+						}}
+						onDelete={() => {
+							notesStore.trashNote(note.id);
+							close();
+						}}
+						onImagesChange={(imgs) => commitNow(imgs)}
+					/>
+				</div>
+			</div>
 		</div>
 	</div>
 
 	<!-- Popups render at the viewport level so they're never clipped by the dialog -->
 	{#if paletteOpen}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="fixed inset-0 z-[60] bg-black/30" onclick={() => { paletteOpen = false; }} role="presentation"></div>
+		<div
+			class="fixed inset-0 z-[60] bg-black/30"
+			onclick={() => {
+				paletteOpen = false;
+			}}
+			role="presentation"
+		></div>
 		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-			<ColorPalette color={note.color} onSelect={(c) => { commit({ color: c }); paletteOpen = false; }} />
+			<ColorPalette
+				color={note.color}
+				onSelect={(c) => {
+					commit({ color: c });
+					paletteOpen = false;
+				}}
+			/>
 		</div>
 	{/if}
 
 	{#if reminderOpen}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="fixed inset-0 z-[60] bg-black/30" onclick={() => { reminderOpen = false; }} role="presentation"></div>
+		<div
+			class="fixed inset-0 z-[60] bg-black/30"
+			onclick={() => {
+				reminderOpen = false;
+			}}
+			role="presentation"
+		></div>
 		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<ReminderPicker
 				reminder={note.reminder}
 				onApply={(r) => commit({ reminder: r })}
-				onClose={() => { reminderOpen = false; }}
+				onClose={() => {
+					reminderOpen = false;
+				}}
 			/>
 		</div>
 	{/if}
 
 	{#if labelOpen}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="fixed inset-0 z-[60] bg-black/30" onclick={() => { labelOpen = false; }} role="presentation"></div>
+		<div
+			class="fixed inset-0 z-[60] bg-black/30"
+			onclick={() => {
+				labelOpen = false;
+			}}
+			role="presentation"
+		></div>
 		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-			<LabelMenu noteId={note.id} onClose={() => { labelOpen = false; }} />
+			<LabelMenu
+				noteId={note.id}
+				onClose={() => {
+					labelOpen = false;
+				}}
+			/>
 		</div>
 	{/if}
 {/if}

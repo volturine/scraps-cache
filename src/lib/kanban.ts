@@ -42,7 +42,11 @@ export function normalizeBacklogFilter(value: unknown): BacklogFilter {
 	const mode = raw.mode === 'custom' ? 'custom' : 'all-non-column';
 	const includeUntagged = raw.includeUntagged !== false;
 	const labelIds = Array.isArray(raw.labelIds)
-		? [...new Set(raw.labelIds.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+		? [
+				...new Set(
+					raw.labelIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+				)
+			]
 		: [];
 	return { mode, includeUntagged, labelIds };
 }
@@ -111,7 +115,9 @@ export function mergeKanbanBoards(
 			byId.set(board.id, board);
 		}
 	}
-	return [...byId.values()].filter((board) => (Number(tombstones[board.id]) || 0) < board.updatedAt);
+	return [...byId.values()].filter(
+		(board) => (Number(tombstones[board.id]) || 0) < board.updatedAt
+	);
 }
 
 /**

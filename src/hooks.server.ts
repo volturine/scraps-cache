@@ -24,14 +24,16 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const durationMs = performance.now() - startedAt;
 	recordHttpRequest(event.url.pathname, response.status, durationMs);
 	if (event.url.pathname.startsWith('/api/') && response.status >= 400) {
-		console.info(JSON.stringify({
-			level: 'info',
-			event: 'http_request',
-			requestId,
-			path: event.url.pathname,
-			status: response.status,
-			durationMs: Math.round(durationMs)
-		}));
+		console.info(
+			JSON.stringify({
+				level: 'info',
+				event: 'http_request',
+				requestId,
+				path: event.url.pathname,
+				status: response.status,
+				durationMs: Math.round(durationMs)
+			})
+		);
 	}
 	return response;
 };

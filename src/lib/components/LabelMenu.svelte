@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { Plus } from '@lucide/svelte';
 
 	let {
 		noteId,
@@ -27,7 +28,9 @@
 	}
 </script>
 
-<div class="w-80 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl">
+<div
+	class="w-80 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
+>
 	<div class="mb-3 text-sm font-medium text-[var(--gkc-text)]">Label as</div>
 
 	<!-- Create new label -->
@@ -47,9 +50,7 @@
 			aria-label="Create label"
 			title="Create label"
 		>
-			<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
-				<path d="M12 5v14M5 12h14" />
-			</svg>
+			<Plus class="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
 		</button>
 	</div>
 
@@ -68,7 +69,11 @@
 						class="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<span
-							class="h-5 w-5 shrink-0 rounded border-2 border-black/30 dark:border-white/30 flex items-center justify-center text-xs {note.labels.includes(label.id) ? 'bg-blue-500 border-blue-500 text-white' : ''}"
+							class="h-5 w-5 shrink-0 rounded border-2 border-black/30 dark:border-white/30 flex items-center justify-center text-xs {note.labels.includes(
+								label.id
+							)
+								? 'bg-blue-500 border-blue-500 text-white'
+								: ''}"
 						>
 							{#if note.labels.includes(label.id)}✓{/if}
 						</span>

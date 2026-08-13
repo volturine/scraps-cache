@@ -12,6 +12,19 @@
 		isEncryptedShardBackup,
 		type EncryptedShardBackup
 	} from '$lib/backupCrypto';
+	import {
+		Cloud,
+		Download,
+		LayoutGrid,
+		List,
+		Menu,
+		Moon,
+		Search,
+		Settings,
+		Sun,
+		Upload,
+		X
+	} from '@lucide/svelte';
 
 	const { startNewNote } = useEditorActions();
 
@@ -23,10 +36,6 @@
 	let backupDialogMode = $state<'export' | 'import' | null>(null);
 	let backupBusy = $state(false);
 	let pendingEncryptedBackup = $state<EncryptedShardBackup | null>(null);
-	let lastBackupAt = $state(
-		typeof localStorage === 'undefined' ? 0 : Number(localStorage.getItem('shard-last-backup-at')) || 0
-	);
-	const backupDue = $derived(!lastBackupAt || Date.now() - lastBackupAt > 30 * 24 * 60 * 60 * 1000);
 
 	function startBackupExport() {
 		settingsOpen = false;
@@ -41,9 +50,10 @@
 			if (backupDialogMode === 'export') {
 				const data = await notesStore.exportBackup();
 				const encrypted = await encryptBackup(data, passphrase);
-				downloadJSON(encrypted, `shard-backup-${new Date().toISOString().slice(0, 10)}.shard-backup`);
-				localStorage.setItem('shard-last-backup-at', String(Date.now()));
-				lastBackupAt = Date.now();
+				downloadJSON(
+					encrypted,
+					`shard-backup-${new Date().toISOString().slice(0, 10)}.shard-backup`
+				);
 				backupDialogMode = null;
 				return;
 			}
@@ -130,22 +140,20 @@
 	}
 </script>
 
-<header
-	class="flex h-14 shrink-0 items-center gap-1 px-2 sm:h-16 sm:gap-2 sm:px-3"
->
+<header class="flex h-14 shrink-0 items-center gap-1 px-2 sm:h-16 sm:gap-2 sm:px-3">
 	<button
 		class="icon-btn h-10 w-10 p-2"
 		title="Toggle sidebar"
 		onclick={() => uiStore.toggleSidebar()}
 		aria-label="Toggle sidebar"
 	>
-		<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M3 6h18v2H3zM3 11h18v2H3zM3 16h18v2H3z"/></svg>
+		<Menu class="h-5 w-5" aria-hidden="true" />
 	</button>
 
 	<div
 		class="flex h-12 flex-1 items-center gap-2 rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-4"
 	>
-		<span class="text-[var(--gkc-text-muted)]">🔍</span>
+		<Search class="h-4 w-4 shrink-0 text-[var(--gkc-text-muted)]" aria-hidden="true" />
 		<input
 			bind:value={uiStore.search}
 			type="text"
@@ -157,7 +165,9 @@
 				class="icon-btn h-8 w-8 p-1.5 text-sm text-[var(--gkc-text-muted)]"
 				onclick={() => (uiStore.search = '')}
 				aria-label="Clear search"
-			>✕</button>
+			>
+				<X class="h-4 w-4" aria-hidden="true" />
+			</button>
 		{/if}
 	</div>
 
@@ -165,17 +175,12 @@
 		type="button"
 		class="icon-btn h-10 w-10 p-2"
 		title="Sync settings"
-		onclick={() => { syncOpen = true; }}
+		onclick={() => {
+			syncOpen = true;
+		}}
 		aria-label="Sync settings"
 	>
-		<svg
-			data-gkc-sync-icon
-			viewBox="0 0 24 24"
-			class="h-5 w-5 fill-current"
-			aria-hidden="true"
-		>
-			<path d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
-		</svg>
+		<Cloud class="h-5 w-5" data-gkc-sync-icon aria-hidden="true" />
 	</button>
 
 	<button
@@ -185,9 +190,9 @@
 		aria-label="Toggle layout"
 	>
 		{#if uiStore.layout === 'grid'}
-			<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+			<List class="h-5 w-5" aria-hidden="true" />
 		{:else}
-			<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+			<LayoutGrid class="h-5 w-5" aria-hidden="true" />
 		{/if}
 	</button>
 
@@ -198,32 +203,82 @@
 			onclick={() => (settingsOpen = !settingsOpen)}
 			aria-label="Settings"
 		>
-			<svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M19.14 12.94a7.49 7.49 0 000-1.88l2.03-1.58-2-3.46-2.39.97a7.49 7.49 0 00-1.63-.94l-.36-2.55h-4l-.36 2.55a7.49 7.49 0 00-1.63.94l-2.39-.97-2 3.46 2.03 1.58a7.49 7.49 0 000 1.88l-2.03 1.58 2 3.46 2.39-.97a7.49 7.49 0 001.63.94l.36 2.55h4l.36-2.55a7.49 7.49 0 001.63-.94l2.39.97 2-3.46-2.03-1.58zM12 15.5A3.5 3.5 0 1112 8.5a3.5 3.5 0 010 7z"/></svg>
+			<Settings class="h-5 w-5" aria-hidden="true" />
 		</button>
 		{#if settingsOpen}
-			<div class="absolute right-0 top-12 z-30 w-48 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-surface)] py-1 shadow-lg">
+			<div
+				class="absolute right-0 top-12 z-30 w-48 rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-surface)] py-1 shadow-lg"
+			>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
-					<div class="space-y-2 px-3 py-2 text-xs text-[var(--gkc-text-muted)]" role="status" aria-live="polite">
-						<div class="flex justify-between gap-2"><span>{progress?.phase === 'finishing' ? 'Finishing backup…' : progress ? 'Importing backup…' : 'Reading backup…'}</span>{#if progress}<span>{progress.completed}/{progress.total}</span>{/if}</div>
-						<div class="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10"><div class="h-full bg-blue-600 transition-[width]" style={`width: ${progress && progress.total ? Math.round(progress.completed / progress.total * 100) : 8}%`}></div></div>
+					<div
+						class="space-y-2 px-3 py-2 text-xs text-[var(--gkc-text-muted)]"
+						role="status"
+						aria-live="polite"
+					>
+						<div class="flex justify-between gap-2">
+							<span
+								>{progress?.phase === 'finishing'
+									? 'Finishing backup…'
+									: progress
+										? 'Importing backup…'
+										: 'Reading backup…'}</span
+							>{#if progress}<span>{progress.completed}/{progress.total}</span>{/if}
+						</div>
+						<div class="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+							<div
+								class="h-full bg-blue-600 transition-[width]"
+								style={`width: ${progress && progress.total ? Math.round((progress.completed / progress.total) * 100) : 8}%`}
+							></div>
+						</div>
 					</div>
 				{:else}
-					<button type="button" onclick={() => { uiStore.toggleDark(); }} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
-						{#if uiStore.effectiveDark}☀️ Light mode{:else}🌙 Dark mode{/if}
+					<button
+						type="button"
+						onclick={() => {
+							uiStore.toggleDark();
+						}}
+						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					>
+						{#if uiStore.effectiveDark}
+							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Light mode
+						{:else}
+							<Moon class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Dark mode
+						{/if}
 					</button>
-					<button type="button" onclick={startBackupExport} class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">
-						<span>Export encrypted backup</span>
-						{#if backupDue}<span class="h-2 w-2 rounded-full bg-amber-500" title="Backup due"></span>{/if}
+					<button
+						type="button"
+						onclick={startBackupExport}
+						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					>
+						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
+						Export backup
 					</button>
-					<button type="button" onclick={() => fileInputEl?.click()} class="block w-full px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10">Import full backup</button>
+					<button
+						type="button"
+						onclick={() => fileInputEl?.click()}
+						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					>
+						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
+						Import backup
+					</button>
 				{/if}
-				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">{backupImportError}</p>{/if}
+				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">
+						{backupImportError}
+					</p>{/if}
 			</div>
 		{/if}
 		<!-- Keep the real input inside settingsContainer: its programmatic click must not
 		     be mistaken for an outside click that hides the import progress UI. -->
-		<input bind:this={fileInputEl} type="file" accept=".shard-backup,application/json" onchange={importBackup} class="hidden" />
+		<input
+			bind:this={fileInputEl}
+			type="file"
+			accept=".shard-backup,application/json"
+			onchange={importBackup}
+			class="hidden"
+		/>
 	</div>
 
 	<div
@@ -232,13 +287,16 @@
 	>
 		K
 	</div>
-
 </header>
 
 <svelte:window onkeydown={handleKeydown} onclick={handleWindowClick} />
 
 {#if syncOpen}
-	<SyncModal onClose={() => { syncOpen = false; }} />
+	<SyncModal
+		onClose={() => {
+			syncOpen = false;
+		}}
+	/>
 {/if}
 
 {#if backupDialogMode}

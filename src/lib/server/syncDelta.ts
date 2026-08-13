@@ -14,7 +14,12 @@ export function planDelta<T extends Versioned>(
 	stored: T[],
 	localTombstones: TombstoneMap = {},
 	storedTombstones: TombstoneMap = {}
-): { download: T[]; uploadIds: string[]; downloadTombstones: TombstoneMap; uploadTombstones: TombstoneMap } {
+): {
+	download: T[];
+	uploadIds: string[];
+	downloadTombstones: TombstoneMap;
+	uploadTombstones: TombstoneMap;
+} {
 	const local = new Map(localManifest.map((record) => [record.id, record]));
 	const server = new Map(stored.map((record) => [record.id, record]));
 	const download: T[] = [];
@@ -22,7 +27,12 @@ export function planDelta<T extends Versioned>(
 	const downloadTombstones: TombstoneMap = {};
 	const uploadTombstones: TombstoneMap = {};
 
-	const ids = new Set([...local.keys(), ...server.keys(), ...Object.keys(localTombstones), ...Object.keys(storedTombstones)]);
+	const ids = new Set([
+		...local.keys(),
+		...server.keys(),
+		...Object.keys(localTombstones),
+		...Object.keys(storedTombstones)
+	]);
 	for (const id of ids) {
 		const localRecord = local.get(id);
 		const localTime = Number(localRecord?.updatedAt) || 0;
@@ -39,7 +49,13 @@ export function planDelta<T extends Versioned>(
 		}
 		if (serverTime > localTime && serverRecord) download.push(serverRecord);
 		else if (localTime > serverTime) uploadIds.push(id);
-		else if (serverRecord && localRecord?.hash && typeof serverRecord.hash === 'string' && localRecord.hash !== serverRecord.hash) download.push(serverRecord);
+		else if (
+			serverRecord &&
+			localRecord?.hash &&
+			typeof serverRecord.hash === 'string' &&
+			localRecord.hash !== serverRecord.hash
+		)
+			download.push(serverRecord);
 	}
 	return { download, uploadIds, downloadTombstones, uploadTombstones };
 }
@@ -54,6 +70,11 @@ export function mergeTombstones(current: TombstoneMap, incoming: TombstoneMap): 
 }
 
 /** Legacy full-snapshot clients must never revive a newer permanent delete. */
-export function withoutTombstoned<T extends Versioned>(records: T[], tombstones: TombstoneMap = {}): T[] {
-	return records.filter((record) => (Number(tombstones[record.id]) || 0) < Number(record.updatedAt));
+export function withoutTombstoned<T extends Versioned>(
+	records: T[],
+	tombstones: TombstoneMap = {}
+): T[] {
+	return records.filter(
+		(record) => (Number(tombstones[record.id]) || 0) < Number(record.updatedAt)
+	);
 }

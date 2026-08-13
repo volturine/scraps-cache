@@ -12,13 +12,13 @@ trash/archive — and a ciphertext-only relay that never sees your note contents
 
 ## Why Shard
 
-| Principle | What it means |
-| --- | --- |
-| **Private by design** | Note contents never leave your devices in plaintext. No remote link previews, no third-party trackers, restrictive CSP. |
-| **E2E encrypted sync** | Multi-device sync always encrypts on the client. The relay stores opaque ciphertext only. |
-| **Self-hosted** | Run the app and relay yourself. One Node process, one SQLite database. |
-| **Local-first data** | Notes live in the browser (IndexedDB). Day-to-day use does not require the network. |
-| **Recoverable** | Encrypted client backups (`.shard-backup`) and operator-friendly server snapshots. |
+| Principle              | What it means                                                                                                           |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Private by design**  | Note contents never leave your devices in plaintext. No remote link previews, no third-party trackers, restrictive CSP. |
+| **E2E encrypted sync** | Multi-device sync always encrypts on the client. The relay stores opaque ciphertext only.                               |
+| **Self-hosted**        | Run the app and relay yourself. One Node process, one SQLite database.                                                  |
+| **Local-first data**   | Notes live in the browser (IndexedDB). Day-to-day use does not require the network.                                     |
+| **Recoverable**        | Encrypted client backups (`.shard-backup`) and operator-friendly server snapshots.                                      |
 
 ## Features
 
@@ -47,7 +47,7 @@ npm run dev -- --host 0.0.0.0
 Open `http://localhost:5173/` (or your LAN / Tailscale IP on port `5173`).
 
 ```sh
-npm run validate   # check + tests + restore smoke + production build
+npm run validate   # check + format + tests + production build
 npm run build && npm start   # production Node adapter on port 3000 by default
 ```
 
@@ -73,13 +73,13 @@ Full operator guide — reverse proxy, backups, restore drill, env reference:
 
 Published images:
 
-| Tag | When |
-| --- | --- |
-| `latest` | Push/merge to `master` (current production build) |
-| `master` | Same as above |
-| `sha-<commit>` | Non-PR publishes (immutable) |
-| `<version>` / `<major>.<minor>` | Git tags like `v1.2.3` |
-| `dev-<n>` / `dev-sha-<commit>` | Pull requests only (never overwrites `latest`) |
+| Tag                             | When                                              |
+| ------------------------------- | ------------------------------------------------- |
+| `latest`                        | Push/merge to `master` (current production build) |
+| `master`                        | Same as above                                     |
+| `sha-<commit>`                  | Non-PR publishes (immutable)                      |
+| `<version>` / `<major>.<minor>` | Git tags like `v1.2.3`                            |
+| `dev-<n>` / `dev-sha-<commit>`  | Pull requests only (never overwrites `latest`)    |
 
 Prefer a **pinned release tag or digest**, not floating `latest`, for production.
 
@@ -106,15 +106,15 @@ Details, threat model, and limits: **[docs/security.md](docs/security.md)**.
 
 ## Documentation
 
-| Doc | Contents |
-| --- | --- |
-| [docs/architecture.md](docs/architecture.md) | System layout, data flow, major modules |
-| [docs/security.md](docs/security.md) | Crypto, threat model, headers, logging rules |
-| [docs/self-hosting.md](docs/self-hosting.md) | Docker, env vars, backups, restore, metrics |
-| [docs/development.md](docs/development.md) | Local workflow, testing, CI |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
-| [SECURITY.md](SECURITY.md) | Vulnerability reporting |
-| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
+| Doc                                          | Contents                                     |
+| -------------------------------------------- | -------------------------------------------- |
+| [docs/architecture.md](docs/architecture.md) | System layout, data flow, major modules      |
+| [docs/security.md](docs/security.md)         | Crypto, threat model, headers, logging rules |
+| [docs/self-hosting.md](docs/self-hosting.md) | Docker, env vars, backups, restore, metrics  |
+| [docs/development.md](docs/development.md)   | Local workflow, testing, CI                  |
+| [CONTRIBUTING.md](CONTRIBUTING.md)           | How to contribute                            |
+| [SECURITY.md](SECURITY.md)                   | Vulnerability reporting                      |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)     | Community standards                          |
 
 ## Stack
 

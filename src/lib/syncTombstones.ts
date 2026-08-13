@@ -11,7 +11,11 @@ function readManifest(key: string): Tombstones {
 		const raw = localStorage.getItem(key);
 		const parsed = raw ? JSON.parse(raw) : {};
 		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-		return Object.fromEntries(Object.entries(parsed).filter(([, at]) => Number(at) > 0).map(([id, at]) => [id, Number(at)]));
+		return Object.fromEntries(
+			Object.entries(parsed)
+				.filter(([, at]) => Number(at) > 0)
+				.map(([id, at]) => [id, Number(at)])
+		);
 	} catch (err) {
 		console.error('[sync] could not read delete tombstones:', err);
 		return {};
@@ -20,8 +24,11 @@ function readManifest(key: string): Tombstones {
 
 function writeManifest(key: string, tombstones: Tombstones): void {
 	if (typeof localStorage === 'undefined') return;
-	try { localStorage.setItem(key, JSON.stringify(tombstones)); }
-	catch (err) { console.error('[sync] could not save delete tombstones:', err); }
+	try {
+		localStorage.setItem(key, JSON.stringify(tombstones));
+	} catch (err) {
+		console.error('[sync] could not save delete tombstones:', err);
+	}
 }
 
 export function readTombstones(): Tombstones {

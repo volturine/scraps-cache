@@ -39,19 +39,19 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 
 ## Client
 
-| Area | Location | Responsibility |
-| --- | --- | --- |
-| Routes / pages | `src/routes/` | Notes home, kanban, reminders, archive, trash, labels |
-| Components | `src/lib/components/` | Editors, feed, sidebar, sync UI, backup dialogs |
-| Domain types | `src/lib/types.ts` | Notes, labels, attachments, colors |
-| Notes state | `src/lib/stores/notes.svelte.ts` | CRUD, search, trash, labels |
-| Sync state | `src/lib/stores/sync.svelte.ts` | Pairing, auto-sync, cloud status |
-| Kanban | `src/lib/stores/kanban.svelte.ts`, `src/lib/kanban.ts` | Boards and columns |
-| IndexedDB | `src/lib/db/idb.ts` | Persistence, outbox, replace/import |
-| Sync crypto | `src/lib/syncPairing.ts` | Identity, pairing PAKE, payload encrypt/decrypt |
-| Sync records | `src/lib/syncRecords.ts`, `noteMerge.ts` | Envelope packing, merge, tombstones |
-| Backups | `src/lib/backup.ts`, `backupCrypto.ts` | Export/import encrypted `.shard-backup` |
-| Images | `src/lib/imageOptimize.ts` | Resize, WebP, strip EXIF before store/sync |
+| Area           | Location                                               | Responsibility                                        |
+| -------------- | ------------------------------------------------------ | ----------------------------------------------------- |
+| Routes / pages | `src/routes/`                                          | Notes home, kanban, reminders, archive, trash, labels |
+| Components     | `src/lib/components/`                                  | Editors, feed, sidebar, sync UI, backup dialogs       |
+| Domain types   | `src/lib/types.ts`                                     | Notes, labels, attachments, colors                    |
+| Notes state    | `src/lib/stores/notes.svelte.ts`                       | CRUD, search, trash, labels                           |
+| Sync state     | `src/lib/stores/sync.svelte.ts`                        | Pairing, auto-sync, cloud status                      |
+| Kanban         | `src/lib/stores/kanban.svelte.ts`, `src/lib/kanban.ts` | Boards and columns                                    |
+| IndexedDB      | `src/lib/db/idb.ts`                                    | Persistence, outbox, replace/import                   |
+| Sync crypto    | `src/lib/syncPairing.ts`                               | Identity, pairing PAKE, payload encrypt/decrypt       |
+| Sync records   | `src/lib/syncRecords.ts`, `noteMerge.ts`               | Envelope packing, merge, tombstones                   |
+| Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                 | Export/import encrypted `.shard-backup`               |
+| Images         | `src/lib/imageOptimize.ts`                             | Resize, WebP, strip EXIF before store/sync            |
 
 ### Local data model (conceptual)
 
@@ -77,18 +77,18 @@ verifies `accountId` + `authSecret` but cannot decrypt envelopes.
 
 ## Server
 
-| Area | Location | Responsibility |
-| --- | --- | --- |
-| Sync store | `src/lib/server/syncStore.ts` | SQLite accounts, envelopes, quotas, migrations |
-| Delta API | `src/routes/api/sync/delta/` | Upload/download encrypted records, slot deletes |
-| Register | `src/routes/api/sync/register/` | Create account credentials |
-| Pairing | `src/routes/api/sync/pair/*` | Rendezvous for PAKE shares (no plaintext key) |
-| Account delete | `src/routes/api/sync/account/` | Wipe cloud ciphertext for an account |
-| Rate limits | `src/lib/server/rateLimit.ts` | In-memory token buckets (single-node) |
-| Backups | `src/lib/server/backupManager.ts` | Online SQLite snapshot + integrity check |
-| Metrics | `src/lib/server/metrics.ts`, `/metrics` | Operator metrics (admin token) |
-| Health | `/health/live`, `/health/ready` | Liveness and readiness probes |
-| Hooks | `src/hooks.server.ts` | Security headers, request IDs, graceful shutdown |
+| Area           | Location                                | Responsibility                                   |
+| -------------- | --------------------------------------- | ------------------------------------------------ |
+| Sync store     | `src/lib/server/syncStore.ts`           | SQLite accounts, envelopes, quotas, migrations   |
+| Delta API      | `src/routes/api/sync/delta/`            | Upload/download encrypted records, slot deletes  |
+| Register       | `src/routes/api/sync/register/`         | Create account credentials                       |
+| Pairing        | `src/routes/api/sync/pair/*`            | Rendezvous for PAKE shares (no plaintext key)    |
+| Account delete | `src/routes/api/sync/account/`          | Wipe cloud ciphertext for an account             |
+| Rate limits    | `src/lib/server/rateLimit.ts`           | In-memory token buckets (single-node)            |
+| Backups        | `src/lib/server/backupManager.ts`       | Online SQLite snapshot + integrity check         |
+| Metrics        | `src/lib/server/metrics.ts`, `/metrics` | Operator metrics (admin token)                   |
+| Health         | `/health/live`, `/health/ready`         | Liveness and readiness probes                    |
+| Hooks          | `src/hooks.server.ts`                   | Security headers, request IDs, graceful shutdown |
 
 ### Opaque envelopes
 
@@ -104,14 +104,14 @@ counts per account for quotas (default 1 GB / 50k envelopes).
 
 ## Deployment shapes
 
-| Mode | How | Notes |
-| --- | --- | --- |
-| Dev | `npm run dev` | Vite + HMR; sync data under `sync-data/` by default |
-| Local prod build | `npm run build && npm start` | Node adapter; same env vars as Docker |
-| Dev Compose | `docker/compose.yaml` | Build local image, loose admin token default |
-| PR preview Compose | `docker/compose.dev.yaml` | Pull GHCR `dev-*` image on port 3000, isolated volumes |
-| Prod Compose | `docker/compose.production.yaml` | Pull GHCR image, require admin token + image pin |
-| Backup overlay | `docker/compose.backup.yaml` | Restic local and/or S3 encrypted repos |
+| Mode               | How                              | Notes                                                  |
+| ------------------ | -------------------------------- | ------------------------------------------------------ |
+| Dev                | `npm run dev`                    | Vite + HMR; sync data under `sync-data/` by default    |
+| Local prod build   | `npm run build && npm start`     | Node adapter; same env vars as Docker                  |
+| Dev Compose        | `docker/compose.yaml`            | Build local image, loose admin token default           |
+| PR preview Compose | `docker/compose.dev.yaml`        | Pull GHCR `dev-*` image on port 3000, isolated volumes |
+| Prod Compose       | `docker/compose.production.yaml` | Pull GHCR image, require admin token + image pin       |
+| Backup overlay     | `docker/compose.backup.yaml`     | Restic local and/or S3 encrypted repos                 |
 
 ## Related docs
 

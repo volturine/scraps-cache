@@ -22,6 +22,11 @@ export function formatReminder(ts: number | null): string {
 	return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
+/** True when a reminder timestamp is in the past. */
+export function isReminderOverdue(ts: number | null, now = Date.now()): boolean {
+	return ts != null && ts < now;
+}
+
 /** Days a trashed note has been sitting in the trash. */
 export function daysSinceTrashed(trashedAt: number | null): number {
 	if (trashedAt == null) return Infinity;

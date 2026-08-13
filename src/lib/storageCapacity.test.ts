@@ -1,11 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import type { Note } from '$lib/types';
-import { attachmentStorageBytes, dataUrlByteLength, replacementFitsStorage } from './storageCapacity';
+import {
+	attachmentStorageBytes,
+	dataUrlByteLength,
+	replacementFitsStorage
+} from './storageCapacity';
 
 const note: Note = {
-	id: 'cloud', title: '', body: '', color: 'default', pinned: false, archived: false,
-	trashed: false, trashedAt: null, createdAt: 1, updatedAt: 1, reminder: null, labels: [],
-	images: [{ id: 'image', mime: 'image/jpeg', dataUrl: 'data:image/jpeg;base64,AAAAAA==', createdAt: 1 }]
+	id: 'cloud',
+	title: '',
+	body: '',
+	color: 'default',
+	pinned: false,
+	archived: false,
+	trashed: false,
+	trashedAt: null,
+	createdAt: 1,
+	updatedAt: 1,
+	reminder: null,
+	labels: [],
+	images: [
+		{ id: 'image', mime: 'image/jpeg', dataUrl: 'data:image/jpeg;base64,AAAAAA==', createdAt: 1 }
+	]
 };
 
 describe('fresh-device replacement storage preflight', () => {

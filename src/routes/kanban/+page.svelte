@@ -11,14 +11,19 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { kanbanStore } from '$lib/stores/kanban.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import { ChevronDown, X } from '@lucide/svelte';
 
 	const { openNote } = useEditorActions();
 	const board = $derived(kanbanStore.activeBoard);
 	const visibleNotes = $derived(
-		uiStore.search ? notesStore.search(uiStore.search, notesStore.activeNotes) : notesStore.activeNotes
+		uiStore.search
+			? notesStore.search(uiStore.search, notesStore.activeNotes)
+			: notesStore.activeNotes
 	);
 	const unusedTags = $derived(
-		notesStore.labels.filter((label) => !board.columns.some((column) => column.labelId === label.id))
+		notesStore.labels.filter(
+			(label) => !board.columns.some((column) => column.labelId === label.id)
+		)
 	);
 	/** Tags that can be used in the backlog filter (not already a column). */
 	const backlogFilterTags = $derived(unusedTags);
@@ -130,7 +135,9 @@
 		event.preventDefault();
 		try {
 			const raw = event.dataTransfer?.getData('application/x-shard-kanban');
-			const payload = raw ? (JSON.parse(raw) as { noteId?: unknown; sourceColumnId?: unknown }) : null;
+			const payload = raw
+				? (JSON.parse(raw) as { noteId?: unknown; sourceColumnId?: unknown })
+				: null;
 			if (typeof payload?.noteId === 'string' && typeof payload.sourceColumnId === 'string') {
 				moveNote(payload.noteId, payload.sourceColumnId, destinationColumnId);
 			}
@@ -146,17 +153,18 @@
 			<select
 				aria-label="Kanban board"
 				value={board.id}
-				onchange={(event) => kanbanStore.selectBoard((event.currentTarget as HTMLSelectElement).value)}
+				onchange={(event) =>
+					kanbanStore.selectBoard((event.currentTarget as HTMLSelectElement).value)}
 				class="min-w-0 max-w-full appearance-none rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] py-2 pl-3 pr-8 text-sm font-semibold text-[var(--gkc-text)] outline-none"
 			>
 				{#each kanbanStore.boards as choice (choice.id)}
 					<option value={choice.id}>{choice.name}</option>
 				{/each}
 			</select>
-			<svg
+			<ChevronDown
 				class="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--gkc-text-muted)]"
-				viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-			><path d="m6 9 6 6 6-6"/></svg>
+				aria-hidden="true"
+			/>
 		</div>
 		<button
 			type="button"
@@ -245,7 +253,7 @@
 								aria-label={`Remove ${columnName(column)} column`}
 								title="Remove column"
 							>
-								×
+								<X class="h-3.5 w-3.5" aria-hidden="true" />
 							</button>
 						{/if}
 					</div>
@@ -260,7 +268,9 @@
 								Choose which notes show in Backlog. Notes already in a tag column are never listed
 								here.
 							</p>
-							<label class="flex cursor-pointer items-start gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]">
+							<label
+								class="flex cursor-pointer items-start gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+							>
 								<input
 									type="radio"
 									name="backlog-mode-{board.id}"
@@ -275,7 +285,9 @@
 									>
 								</span>
 							</label>
-							<label class="flex cursor-pointer items-start gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]">
+							<label
+								class="flex cursor-pointer items-start gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+							>
 								<input
 									type="radio"
 									name="backlog-mode-{board.id}"
@@ -318,7 +330,10 @@
 								</div>
 							{/if}
 
-							<p class="truncate px-1 text-[10px] text-[var(--gkc-text-muted)]" title={backlogFilterSummary()}>
+							<p
+								class="truncate px-1 text-[10px] text-[var(--gkc-text-muted)]"
+								title={backlogFilterSummary()}
+							>
 								Showing: {backlogFilterSummary()}
 							</p>
 						</div>

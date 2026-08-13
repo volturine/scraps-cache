@@ -5,10 +5,14 @@ describe('AttachmentHydrationQueue', () => {
 	it('limits visible attachment hydration and ignores duplicate requests', async () => {
 		const started: string[] = [];
 		const release = new Map<string, () => void>();
-		const queue = new AttachmentHydrationQueue((id) => new Promise<void>((resolve) => {
-			started.push(id);
-			release.set(id, resolve);
-		}), 2);
+		const queue = new AttachmentHydrationQueue(
+			(id) =>
+				new Promise<void>((resolve) => {
+					started.push(id);
+					release.set(id, resolve);
+				}),
+			2
+		);
 
 		queue.enqueue('a');
 		queue.enqueue('b');

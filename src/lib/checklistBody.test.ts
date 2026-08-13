@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-	formatCheckLine,
-	parseBody,
-	parseCheckLine,
-	toggleLineAt
-} from './checklistBody';
+import { formatCheckLine, parseBody, parseCheckLine, toggleLineAt } from './checklistBody';
 
 describe('checklist indent / sub-tasks', () => {
 	it('parses indented checklist lines as nested tasks', () => {

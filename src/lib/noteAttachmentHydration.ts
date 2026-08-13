@@ -5,7 +5,10 @@ import type { NoteImage } from './types';
  * were loading. The current list owns membership; hydration only fills an
  * existing empty payload.
  */
-export function mergeHydratedImages(current: NoteImage[] = [], hydrated: NoteImage[] = []): NoteImage[] {
+export function mergeHydratedImages(
+	current: NoteImage[] = [],
+	hydrated: NoteImage[] = []
+): NoteImage[] {
 	const hydratedById = new Map(hydrated.map((image) => [image.id, image]));
 	return current.map((image) => {
 		if (image.dataUrl) return image;
@@ -18,7 +21,9 @@ export function mergeHydratedImages(current: NoteImage[] = [], hydrated: NoteIma
 			...(image.thumbUrl || loaded.thumbUrl ? { thumbUrl: image.thumbUrl || loaded.thumbUrl } : {}),
 			...((image.width ?? loaded.width) != null ? { width: image.width ?? loaded.width } : {}),
 			...((image.height ?? loaded.height) != null ? { height: image.height ?? loaded.height } : {}),
-			...((image.byteSize ?? loaded.byteSize) != null ? { byteSize: image.byteSize ?? loaded.byteSize } : {}),
+			...((image.byteSize ?? loaded.byteSize) != null
+				? { byteSize: image.byteSize ?? loaded.byteSize }
+				: {}),
 			...((image.contentHash ?? loaded.contentHash)
 				? { contentHash: image.contentHash ?? loaded.contentHash }
 				: {}),

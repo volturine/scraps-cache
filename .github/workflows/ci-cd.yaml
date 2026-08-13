@@ -6,7 +6,7 @@ on:
     branches:
       - master
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
 
 concurrency:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Required PR status check: typecheck + full Vitest suite (incl. backup/restore) + production build.
+  # Required PR status check: typecheck + Prettier + full Vitest suite (incl. backup/restore) + production build.
   validate:
     name: Validate application
     runs-on: ubuntu-latest
@@ -36,6 +36,9 @@ jobs:
 
       - name: Typecheck
         run: npm run check
+
+      - name: Format
+        run: npm run format:check
 
       - name: Test
         run: npm test

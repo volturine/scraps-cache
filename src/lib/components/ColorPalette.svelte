@@ -15,7 +15,9 @@
 	}
 </script>
 
-<div class="grid grid-cols-4 gap-3 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl">
+<div
+	class="grid grid-cols-4 gap-3 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
+>
 	{#each KEEP_COLOR_ORDER as c (c)}
 		<button
 			type="button"
@@ -26,7 +28,10 @@
 			title={c}
 		>
 			{#if c === color}
-				<span class="flex h-full w-full items-center justify-center text-sm text-black/60 dark:text-white/70">✓</span>
+				<span
+					class="flex h-full w-full items-center justify-center text-sm text-black/60 dark:text-white/70"
+					>✓</span
+				>
 			{/if}
 		</button>
 	{/each}

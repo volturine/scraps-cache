@@ -20,68 +20,97 @@ type OpaqueEnvelope = { id: string; ciphertext: string; slot: string };
 type OpaqueDelete = { id: string; slot: string };
 
 function isOpaqueEnvelope(value: unknown): value is OpaqueEnvelope {
-	return !!value && typeof value === 'object'
-		&& typeof (value as OpaqueEnvelope).id === 'string'
-		&& typeof (value as OpaqueEnvelope).ciphertext === 'string'
-		&& typeof (value as OpaqueEnvelope).slot === 'string'
-		&& (value as OpaqueEnvelope).id.length <= 128
-		&& (value as OpaqueEnvelope).ciphertext.length <= MAX_ENVELOPE_BYTES
-		&& /^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).id)
-		&& /^[a-f0-9]{64}$/.test((value as OpaqueEnvelope).slot)
-		&& /^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).ciphertext);
+	return (
+		!!value &&
+		typeof value === 'object' &&
+		typeof (value as OpaqueEnvelope).id === 'string' &&
+		typeof (value as OpaqueEnvelope).ciphertext === 'string' &&
+		typeof (value as OpaqueEnvelope).slot === 'string' &&
+		(value as OpaqueEnvelope).id.length <= 128 &&
+		(value as OpaqueEnvelope).ciphertext.length <= MAX_ENVELOPE_BYTES &&
+		/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).id) &&
+		/^[a-f0-9]{64}$/.test((value as OpaqueEnvelope).slot) &&
+		/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).ciphertext)
+	);
 }
 
 function isOpaqueDelete(value: unknown): value is OpaqueDelete {
-	return !!value && typeof value === 'object'
-		&& typeof (value as OpaqueDelete).id === 'string'
-		&& typeof (value as OpaqueDelete).slot === 'string'
-		&& (value as OpaqueDelete).id.length <= 128
-		&& /^[A-Za-z0-9_-]+$/.test((value as OpaqueDelete).id)
-		&& /^[a-f0-9]{64}$/.test((value as OpaqueDelete).slot);
+	return (
+		!!value &&
+		typeof value === 'object' &&
+		typeof (value as OpaqueDelete).id === 'string' &&
+		typeof (value as OpaqueDelete).slot === 'string' &&
+		(value as OpaqueDelete).id.length <= 128 &&
+		/^[A-Za-z0-9_-]+$/.test((value as OpaqueDelete).id) &&
+		/^[a-f0-9]{64}$/.test((value as OpaqueDelete).slot)
+	);
 }
 
 /** Current-state opaque relay: each keyed slot holds one latest ciphertext only. */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const addressLimit = publicApiLimiter.check(
-		`sync-ip:${clientAddress(getClientAddress)}`,
-		{ capacity: 120, refillWindowMs: 60_000 }
-	);
+	const addressLimit = publicApiLimiter.check(`sync-ip:${clientAddress(getClientAddress)}`, {
+		capacity: 120,
+		refillWindowMs: 60_000
+	});
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
-	const release = enterSyncRequest(Math.max(1, Number(env.SHARD_SYNC_MAX_CONCURRENT_REQUESTS) || 8));
+	const release = enterSyncRequest(
+		Math.max(1, Number(env.SHARD_SYNC_MAX_CONCURRENT_REQUESTS) || 8)
+	);
 	if (!release) {
-		return json(
-			{ error: 'Sync server is busy' },
-			{ status: 503, headers: { 'retry-after': '2' } }
-		);
+		return json({ error: 'Sync server is busy' }, { status: 503, headers: { 'retry-after': '2' } });
 	}
 	try {
-		let body: { accountId?: unknown; authSecret?: unknown; cursor?: unknown; envelopes?: unknown; deleteSlots?: unknown; limit?: unknown };
+		let body: {
+			accountId?: unknown;
+			authSecret?: unknown;
+			cursor?: unknown;
+			envelopes?: unknown;
+			deleteSlots?: unknown;
+			limit?: unknown;
+		};
 		try {
-			body = await readJsonBody(request, MAX_REQUEST_BYTES) as typeof body;
+			body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 		} catch {
 			return json({ error: 'Invalid JSON body' }, { status: 400 });
 		}
-		if (typeof body.accountId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(body.accountId)
-			|| typeof body.authSecret !== 'string' || body.authSecret.length < 32 || body.authSecret.length > 256) {
+		if (
+			typeof body.accountId !== 'string' ||
+			!/^[A-Za-z0-9_-]{16,128}$/.test(body.accountId) ||
+			typeof body.authSecret !== 'string' ||
+			body.authSecret.length < 32 ||
+			body.authSecret.length > 256
+		) {
 			return json({ error: 'Sync account credentials are required' }, { status: 400 });
 		}
-		const accountLimit = publicApiLimiter.check(
-			`sync-account:${body.accountId}`,
-			{ capacity: 60, refillWindowMs: 60_000 }
-		);
+		const accountLimit = publicApiLimiter.check(`sync-account:${body.accountId}`, {
+			capacity: 60,
+			refillWindowMs: 60_000
+		});
 		if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
-		const cursor = typeof body.cursor === 'number' && Number.isInteger(body.cursor) && body.cursor >= 0 ? body.cursor : 0;
+		const cursor =
+			typeof body.cursor === 'number' && Number.isInteger(body.cursor) && body.cursor >= 0
+				? body.cursor
+				: 0;
 		const envelopes = body.envelopes == null ? [] : body.envelopes;
-		if (!Array.isArray(envelopes) || envelopes.length > MAX_ENVELOPES_PER_REQUEST || !envelopes.every(isOpaqueEnvelope)) {
+		if (
+			!Array.isArray(envelopes) ||
+			envelopes.length > MAX_ENVELOPES_PER_REQUEST ||
+			!envelopes.every(isOpaqueEnvelope)
+		) {
 			return json({ error: 'Invalid encrypted envelope batch' }, { status: 400 });
 		}
 		const deleteSlots = body.deleteSlots == null ? [] : body.deleteSlots;
-		if (!Array.isArray(deleteSlots) || deleteSlots.length > MAX_ENVELOPES_PER_REQUEST || !deleteSlots.every(isOpaqueDelete)) {
+		if (
+			!Array.isArray(deleteSlots) ||
+			deleteSlots.length > MAX_ENVELOPES_PER_REQUEST ||
+			!deleteSlots.every(isOpaqueDelete)
+		) {
 			return json({ error: 'Invalid encrypted deletion batch' }, { status: 400 });
 		}
-		const limit = typeof body.limit === 'number' && Number.isInteger(body.limit) && body.limit > 0
-			? Math.min(body.limit, 50)
-			: DEFAULT_DOWNLOAD_LIMIT;
+		const limit =
+			typeof body.limit === 'number' && Number.isInteger(body.limit) && body.limit > 0
+				? Math.min(body.limit, 50)
+				: DEFAULT_DOWNLOAD_LIMIT;
 		recordSyncBatch(envelopes.length, deleteSlots.length);
 		try {
 			const store = getSyncStore();

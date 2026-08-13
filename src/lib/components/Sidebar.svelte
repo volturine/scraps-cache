@@ -7,6 +7,18 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import type { Label } from '$lib/types';
+	import {
+		AlarmClock,
+		Archive,
+		Kanban,
+		Pencil,
+		Plus,
+		StickyNote,
+		Tag,
+		Trash2,
+		X,
+		type LucideIcon
+	} from '@lucide/svelte';
 
 	let { onNavigate }: { onNavigate?: () => void } = $props();
 	let labelsEditMode = $state(false);
@@ -19,12 +31,12 @@
 	let navigationFrame: number | null = null;
 	let navigationTimer: ReturnType<typeof setTimeout> | null = null;
 
-	const navItems: { view: View; label: string; icon: 'notes' | 'kanban' | 'reminders' | 'archive' | 'trash' }[] = [
-		{ view: 'notes', label: 'Notes', icon: 'notes' },
-		{ view: 'kanban', label: 'Kanban', icon: 'kanban' },
-		{ view: 'reminders', label: 'Reminders', icon: 'reminders' },
-		{ view: 'archive', label: 'Archive', icon: 'archive' },
-		{ view: 'trash', label: 'Trash', icon: 'trash' }
+	const navItems: { view: View; label: string; icon: LucideIcon }[] = [
+		{ view: 'notes', label: 'Notes', icon: StickyNote },
+		{ view: 'kanban', label: 'Kanban', icon: Kanban },
+		{ view: 'reminders', label: 'Reminders', icon: AlarmClock },
+		{ view: 'archive', label: 'Archive', icon: Archive },
+		{ view: 'trash', label: 'Trash', icon: Trash2 }
 	];
 
 	const reminderCount = $derived(notesStore.notesWithReminders.length);
@@ -55,14 +67,16 @@
 		// first animation frame. Commit the selection, then begin navigation from a
 		// timer scheduled *after* the next rendering update. This is an actual paint
 		// boundary rather than merely queueing goto() beside the state change.
-		flushSync(() => { uiStore.pendingPath = target; });
+		flushSync(() => {
+			uiStore.pendingPath = target;
+		});
 		if (navigationFrame !== null) cancelAnimationFrame(navigationFrame);
 		if (navigationTimer !== null) clearTimeout(navigationTimer);
 		navigationFrame = requestAnimationFrame(() => {
 			navigationFrame = null;
 			navigationTimer = setTimeout(() => {
 				navigationTimer = null;
-					void goto(resolve(target)).finally(() => {
+				void goto(resolve(target)).finally(() => {
 					if (uiStore.pendingPath === target) uiStore.pendingPath = null;
 				});
 			}, 0);
@@ -152,38 +166,21 @@
 	transition:fly={{ x: -20, duration: 120 }}
 >
 	{#each navItems as item (item.view)}
+		{@const NavIcon = item.icon}
 		<button
 			type="button"
 			onclick={() => navigate(item.view)}
-			class="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 {isActive(item.view)
+			class="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 {isActive(
+				item.view
+			)
 				? 'nav-active'
 				: 'text-[var(--gkc-text-muted)]'}"
 		>
-			<span class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text)]" aria-hidden="true">
-				{#if item.icon === 'notes'}
-					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M7 3.5h7.5L19 8v12.5a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1z" />
-						<path d="M14.5 3.5V8H19M9 12h6M9 15.5h6" />
-					</svg>
-				{:else if item.icon === 'kanban'}
-					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-						<rect x="3.5" y="4" width="17" height="16" rx="1.5" />
-						<path d="M9 4v16M15 4v16M5.5 8h1M11 8h2M17 8h1M5.5 12h1M11 12h2M17 12h1" />
-					</svg>
-				{:else if item.icon === 'reminders'}
-					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="12" cy="13" r="7" />
-						<path d="M12 10v3.5l2 1.5M9 3.5h6" />
-					</svg>
-				{:else if item.icon === 'archive'}
-					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M4 7h16v3H4zM6 10v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-8M10 14h4" />
-					</svg>
-				{:else}
-					<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M8 7l1 12a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1l1-12" />
-					</svg>
-				{/if}
+			<span
+				class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text)]"
+				aria-hidden="true"
+			>
+				<NavIcon class="h-[18px] w-[18px]" strokeWidth={1.75} />
 			</span>
 			<span class="min-w-0 flex-1 truncate text-left">{item.label}</span>
 			{#if item.view === 'reminders' && reminderCount > 0}
@@ -196,7 +193,10 @@
 
 	<section class="mt-5" data-labels-edit aria-label="Labels">
 		<div class="mb-1 flex h-8 items-center gap-2 pl-4 pr-2">
-			<span class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--gkc-text-muted)]">Labels</span>
+			<span
+				class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--gkc-text-muted)]"
+				>Labels</span
+			>
 			{#if labelsEditMode}
 				<button
 					type="button"
@@ -215,22 +215,18 @@
 					aria-label="Edit labels"
 					title="Edit labels"
 				>
-					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
-					</svg>
+					<Pencil class="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
 				</button>
 			{/if}
 		</div>
 
 		{#if labelsEditMode}
-			<div
-				class="mb-1 flex items-center gap-3 rounded-xl px-4 py-2"
-				data-sidebar-stay-open
-			>
-				<span class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]" aria-hidden="true">
-					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
-						<path d="M12 5v14M5 12h14" />
-					</svg>
+			<div class="mb-1 flex items-center gap-3 rounded-xl px-4 py-2" data-sidebar-stay-open>
+				<span
+					class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]"
+					aria-hidden="true"
+				>
+					<Plus class="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
 				</span>
 				<input
 					bind:this={newLabelInput}
@@ -261,10 +257,7 @@
 				class="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 			>
 				<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-					<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M20.5 12.5 12 21l-8.5-8.5V4.5H12z" />
-						<circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
-					</svg>
+					<Tag class="h-4 w-4" strokeWidth={1.75} />
 				</span>
 				<span>Create a label</span>
 			</button>
@@ -272,12 +265,15 @@
 			<div class="flex flex-col gap-0.5">
 				{#each notesStore.labels as label (label.id)}
 					{#if labelsEditMode && renamingId === label.id}
-						<div class="flex items-center gap-3 rounded-xl px-4 py-2 dark:bg-white/[0.04]" data-sidebar-stay-open>
-							<span class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]" aria-hidden="true">
-								<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M20.5 12.5 12 21l-8.5-8.5V4.5H12z" />
-									<circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
-								</svg>
+						<div
+							class="flex items-center gap-3 rounded-xl px-4 py-2 dark:bg-white/[0.04]"
+							data-sidebar-stay-open
+						>
+							<span
+								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]"
+								aria-hidden="true"
+							>
+								<Tag class="h-4 w-4" strokeWidth={1.75} />
 							</span>
 							<input
 								bind:this={renameInput}
@@ -293,11 +289,11 @@
 						</div>
 					{:else if labelsEditMode}
 						<div class="flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2">
-							<span class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]" aria-hidden="true">
-								<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M20.5 12.5 12 21l-8.5-8.5V4.5H12z" />
-									<circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
-								</svg>
+							<span
+								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]"
+								aria-hidden="true"
+							>
+								<Tag class="h-4 w-4" strokeWidth={1.75} />
 							</span>
 							<button
 								type="button"
@@ -316,28 +312,28 @@
 								aria-label={`Delete ${label.name}`}
 								title="Delete"
 							>
-								<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
-									<path d="M6 6l12 12M18 6 6 18" />
-								</svg>
+								<X class="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
 							</button>
 						</div>
 					{:else}
 						<button
 							type="button"
 							onclick={() => navigate('label', label.id)}
-							class="flex w-full items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-left text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 {isActive('label', label.id)
+							class="flex w-full items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-left text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 {isActive(
+								'label',
+								label.id
+							)
 								? 'nav-active'
 								: 'text-[var(--gkc-text-muted)]'}"
 						>
 							<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-								<svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M20.5 12.5 12 21l-8.5-8.5V4.5H12z" />
-									<circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
-								</svg>
+								<Tag class="h-4 w-4" strokeWidth={1.75} />
 							</span>
 							<span class="min-w-0 flex-1 truncate">{label.name}</span>
 							{#if (labelCounts.get(label.id) ?? 0) > 0}
-								<span class="shrink-0 text-xs tabular-nums opacity-70">{labelCounts.get(label.id)}</span>
+								<span class="shrink-0 text-xs tabular-nums opacity-70"
+									>{labelCounts.get(label.id)}</span
+								>
 							{/if}
 						</button>
 					{/if}
@@ -348,7 +344,7 @@
 </aside>
 
 {#if pendingDelete}
-		<div
+	<div
 		class="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center"
 		role="presentation"
 		data-sidebar-stay-open
@@ -356,20 +352,24 @@
 			if (event.target === event.currentTarget) cancelDelete();
 		}}
 	>
-			<div
-				class="w-full max-w-sm rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
-				role="dialog"
-				tabindex="-1"
-				aria-modal="true"
-				aria-labelledby="label-delete-title"
-				data-sidebar-stay-open
-			>
+		<div
+			class="w-full max-w-sm rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
+			role="dialog"
+			tabindex="-1"
+			aria-modal="true"
+			aria-labelledby="label-delete-title"
+			data-sidebar-stay-open
+		>
 			<h2 id="label-delete-title" class="text-base font-semibold text-[var(--gkc-text)]">
 				Delete “{pendingDelete.name}”?
 			</h2>
 			<p class="mt-1.5 text-sm leading-snug text-[var(--gkc-text-muted)]">
 				{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
-					This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(pendingDelete.id) ?? 0) === 1 ? '' : 's'}.
+					This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
+						pendingDelete.id
+					) ?? 0) === 1
+						? ''
+						: 's'}.
 				{:else}
 					No notes currently use this label.
 				{/if}

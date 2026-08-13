@@ -2,9 +2,11 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { KEEP_COLORS, KEEP_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
-	import { activateOnKeyboard, formatReminder } from '$lib/utils';
+	import { activateOnKeyboard, formatReminder, isReminderOverdue } from '$lib/utils';
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
+	import ReminderLabel from './ReminderLabel.svelte';
+	import { Archive, Trash2 } from '@lucide/svelte';
 
 	let {
 		note,
@@ -34,6 +36,15 @@
 			.filter((l): l is NonNullable<typeof l> => !!l)
 	);
 
+	const openLabel = $derived.by(() => {
+		const title = note.title || 'untitled note';
+		if (note.reminder == null) return `Open ${title}`;
+		const when = formatReminder(note.reminder);
+		return isReminderOverdue(note.reminder)
+			? `Open ${title}, overdue reminder ${when}`
+			: `Open ${title}, reminder ${when}`;
+	});
+
 	let offsetX = $state(0);
 	let dragging = $state(false);
 
@@ -49,19 +60,23 @@
 
 <div class="relative overflow-hidden rounded-lg">
 	{#if offsetX < 0}
-		<div class="absolute inset-0 flex items-center justify-end rounded-lg bg-green-500 pr-4 text-white">
-			<svg viewBox="0 0 24 24" class="h-6 w-6 fill-current"><path d="M20 6h-8V4H4v2H2v4h20V6h-2zM4 12v8h16v-8H4z"/></svg>
+		<div
+			class="absolute inset-0 flex items-center justify-end rounded-lg bg-green-500 pr-4 text-white"
+		>
+			<Archive class="h-6 w-6" aria-hidden="true" />
 		</div>
 	{:else if offsetX > 0}
-		<div class="absolute inset-0 flex items-center justify-start rounded-lg bg-red-500 pl-4 text-white">
-			<svg viewBox="0 0 24 24" class="h-6 w-6 fill-current"><path d="M6 7h12v13H6zM9 4h6v2h2v2H7V6h2zM10 10v6M14 10v6" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+		<div
+			class="absolute inset-0 flex items-center justify-start rounded-lg bg-red-500 pl-4 text-white"
+		>
+			<Trash2 class="h-6 w-6" aria-hidden="true" />
 		</div>
 	{/if}
 
-		<div
-			role="button"
-			tabindex="0"
-			aria-label={`Open ${note.title || 'untitled note'}`}
+	<div
+		role="button"
+		tabindex="0"
+		aria-label={openLabel}
 		class="relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-hidden rounded-lg border border-black/5 shadow-sm transition-shadow dark:border-white/10"
 		style="background-color: {bgColor(note.color)}; {cardSwipeStyle(offsetX, dragging)}"
 		class:shadow-md={note.pinned}
@@ -69,22 +84,21 @@
 		onpointermove={swipe.onPointerMove}
 		onpointerup={swipe.onPointerUp}
 		onpointercancel={swipe.onPointerCancel}
-			onclick={openUnlessAction}
-			onkeydown={(event) => activateOnKeyboard(event, () => onOpen(note.id))}
+		onclick={openUnlessAction}
+		onkeydown={(event) => activateOnKeyboard(event, () => onOpen(note.id))}
 	>
 		<div class="scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
 			{#if note.reminder != null}
-				<div
-					class="flex items-center gap-1 rounded-t-lg bg-black/5 px-3 py-1 text-xs text-[var(--gkc-text-muted)] dark:bg-white/5"
-				>
-					<span>⏰</span>
-					<span>{formatReminder(note.reminder)}</span>
-				</div>
+				<ReminderLabel reminder={note.reminder} />
 			{/if}
 
 			<div class="block w-full p-3 pb-2 text-left">
 				{#if note.title}
-					<h3 class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--gkc-text)]">{note.title}</h3>
+					<h3
+						class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--gkc-text)]"
+					>
+						{note.title}
+					</h3>
 				{/if}
 				<NoteBodyDisplay {note} />
 			</div>
@@ -101,5 +115,5 @@
 				{/each}
 			</div>
 		{/if}
-		</div>
+	</div>
 </div>

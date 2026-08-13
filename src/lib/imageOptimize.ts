@@ -32,7 +32,7 @@ export function fitImageDimensions(
 function canvasBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
 	return new Promise((resolve, reject) => {
 		canvas.toBlob(
-			(blob) => blob ? resolve(blob) : reject(new Error('Browser could not encode this image')),
+			(blob) => (blob ? resolve(blob) : reject(new Error('Browser could not encode this image'))),
 			'image/webp',
 			quality
 		);
@@ -58,7 +58,7 @@ async function loadWithImageElement(source: Blob): Promise<Drawable> {
 
 async function loadDrawable(source: Blob): Promise<Drawable> {
 	if (typeof createImageBitmap === 'function') {
-		return await createImageBitmap(source, { imageOrientation: 'from-image' }) as Drawable;
+		return (await createImageBitmap(source, { imageOrientation: 'from-image' })) as Drawable;
 	}
 	return loadWithImageElement(source);
 }
