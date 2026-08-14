@@ -155,7 +155,7 @@
 	</button>
 
 	<div
-		class="flex h-12 flex-1 items-center gap-2 rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-4"
+		class="flex h-10 flex-1 items-center gap-2 rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-3"
 	>
 		<Search class="h-4 w-4 shrink-0 text-[var(--gkc-text-muted)]" aria-hidden="true" />
 		<input
