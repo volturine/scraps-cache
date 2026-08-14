@@ -32,6 +32,18 @@ describe('isKeyboardOccluding', () => {
 });
 
 describe('keyboardOcclusion', () => {
+	it('adds nothing when the layout viewport already resized with the keyboard', () => {
+		expect(
+			keyboardOcclusion({
+				fieldFocused: true,
+				visualTop: 0,
+				visualHeight: 500,
+				layoutHeight: 500,
+				safe
+			})
+		).toEqual({ top: 0, bottom: 0 });
+	});
+
 	it('adds nothing when the keyboard is not occluding the visual viewport', () => {
 		expect(
 			keyboardOcclusion({

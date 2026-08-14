@@ -61,13 +61,11 @@ html.dark {
 	color-scheme: dark;
 }
 
-/* Note editor open: freeze the document and feed. iOS Safari otherwise pans the
- * visual viewport under the keyboard and treats position:fixed as scrollable. */
+/* Note editor open: freeze the document and feed. Do not position:fixed the
+ * document — that prevents innerHeight from restoring after the keyboard
+ * dismisses and leaves a dead strip at the bottom. */
 html.editor-open,
 html.editor-open body {
-	position: fixed;
-	inset: 0;
-	width: 100%;
 	overflow: hidden;
 	overscroll-behavior: none;
 }

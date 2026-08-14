@@ -98,19 +98,15 @@ function setInsetVar(name: string, value: number) {
 export function attachAppViewport(_node: HTMLElement) {
 	let cachedSafe: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 	let fieldFocused = isKeyboardField(document.activeElement);
-	let layoutWidth = 0;
-	let layoutHeight = 0;
 
 	const apply = () => {
 		const viewport = window.visualViewport;
 		const visualHeight = viewport?.height ?? window.innerHeight;
 		const visualTop = viewport?.offsetTop ?? 0;
-		if (layoutWidth !== window.innerWidth || layoutHeight === 0) {
-			layoutWidth = window.innerWidth;
-			layoutHeight = Math.max(window.innerHeight, visualHeight);
-		} else {
-			layoutHeight = Math.max(layoutHeight, window.innerHeight, visualHeight);
-		}
+		// Use the current layout viewport, not a ratcheted max. WKWebView often
+		// resizes innerHeight with the keyboard; comparing against a historical
+		// max would double-count that resize and leave a huge gap.
+		const layoutHeight = window.innerHeight;
 
 		const occluding = isKeyboardOccluding({
 			fieldFocused,
