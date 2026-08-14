@@ -52,6 +52,7 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 | Sync records   | `src/lib/syncRecords.ts`, `noteMerge.ts`               | Envelope packing, merge, tombstones                   |
 | Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                 | Export/import encrypted `.shard-backup`               |
 | Images         | `src/lib/imageOptimize.ts`                             | Resize, WebP, strip EXIF before store/sync            |
+| App viewport   | `src/lib/appViewport.ts`                               | Safe area + keyboard frame; overlay host              |
 
 ### Local data model (conceptual)
 

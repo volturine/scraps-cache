@@ -283,10 +283,15 @@
 			if (e.key === 'Escape') void close();
 		}}
 	>
-		<div class="absolute inset-0 flex items-center justify-center p-4" role="presentation">
+		<div
+			class="absolute inset-0 flex items-start justify-center p-4 md:items-center"
+			role="presentation"
+		>
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="note-sheet-shadow h-[72%] max-h-full min-h-0 w-full max-w-2xl rounded-2xl">
+			<div
+				class="note-sheet-shadow h-full max-h-full min-h-0 w-full max-w-2xl rounded-2xl md:h-[72%]"
+			>
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}
