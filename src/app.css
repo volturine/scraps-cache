@@ -26,7 +26,7 @@
 	/* Published by attachAppViewport(); CSS env() is the pre-JS default. */
 	--app-inset-top: env(safe-area-inset-top, 0px);
 	--app-inset-right: env(safe-area-inset-right, 0px);
-	--app-inset-bottom: env(safe-area-inset-bottom, 0px);
+	--app-inset-bottom: 0px;
 	--app-inset-left: env(safe-area-inset-left, 0px);
 	--app-keyboard-top: 0px;
 	--app-keyboard-bottom: 0px;
@@ -82,15 +82,15 @@ html.editor-open .app-shell .scrollable {
 }
 
 /*
- * Device safe area + software keyboard live only here. transform makes this
- * the containing block for position:fixed descendants, so overlays cannot
- * paint into the notch, home indicator, or keyboard.
+ * Device chrome + software keyboard live only here. The frame clears the
+ * status bar; the bottom is the screen edge. transform makes this the
+ * containing block for position:fixed descendants.
  */
 .app-viewport {
 	position: fixed;
 	top: var(--app-inset-top);
 	right: var(--app-inset-right);
-	bottom: var(--app-inset-bottom);
+	bottom: 0;
 	left: var(--app-inset-left);
 	transform: translate(0);
 	overflow: hidden;

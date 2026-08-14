@@ -51,7 +51,9 @@ export function keyboardOcclusion(options: {
 	const visualBottom = options.visualTop + options.visualHeight;
 	return {
 		top: Math.max(0, options.visualTop - options.safe.top),
-		bottom: Math.max(0, options.layoutHeight - visualBottom - options.safe.bottom)
+		// Viewport is flush with the screen bottom (no home-indicator strip).
+		// Only raise overlays when the keyboard actually overlays the layout.
+		bottom: Math.max(0, options.layoutHeight - visualBottom)
 	};
 }
 
@@ -124,7 +126,6 @@ export function attachAppViewport(_node: HTMLElement) {
 
 		setInsetVar('--app-inset-top', cachedSafe.top);
 		setInsetVar('--app-inset-right', cachedSafe.right);
-		setInsetVar('--app-inset-bottom', cachedSafe.bottom);
 		setInsetVar('--app-inset-left', cachedSafe.left);
 		setInsetVar('--app-keyboard-top', occlusion.top);
 		setInsetVar('--app-keyboard-bottom', occlusion.bottom);

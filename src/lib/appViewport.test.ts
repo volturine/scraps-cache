@@ -65,7 +65,7 @@ describe('keyboardOcclusion', () => {
 				layoutHeight: 844,
 				safe
 			})
-		).toEqual({ top: 0, bottom: 844 - 420 - 34 });
+		).toEqual({ top: 0, bottom: 844 - 420 });
 	});
 
 	it('shifts the overlay layer down when iOS pans the visual viewport', () => {
@@ -77,7 +77,7 @@ describe('keyboardOcclusion', () => {
 				layoutHeight: 844,
 				safe
 			})
-		).toEqual({ top: 80 - 59, bottom: 844 - 440 - 34 });
+		).toEqual({ top: 80 - 59, bottom: 844 - 440 });
 	});
 });
 
