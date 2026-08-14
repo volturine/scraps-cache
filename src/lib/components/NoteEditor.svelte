@@ -503,6 +503,7 @@
 						commit({ reminder: r });
 						reminderStore.sync(notesStore.notes);
 						reminderStore.flushWakes();
+						void notesStore.flushSync();
 					}}
 					onClose={() => {
 						reminderOpen = false;

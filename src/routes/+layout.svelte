@@ -45,8 +45,14 @@
 		void notesStore.init().then(() => {
 			openNoteFromQuery();
 			reminderStore.sync(notesStore.notes);
-			if (syncStore.isLoggedIn) setTimeout(() => notesStore.syncWithCloud(), 3000);
+			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
 		});
+		const onForeground = () => {
+			if (document.visibilityState === 'hidden') return;
+			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
+		};
+		document.addEventListener('visibilitychange', onForeground);
+		window.addEventListener('focus', onForeground);
 		const stopReminders = reminderStore.attach(openEditor);
 		void preloadVapidPublicKey();
 		if ('serviceWorker' in navigator) {
@@ -66,7 +72,11 @@
 					.catch(() => undefined);
 			}
 		}
-		return stopReminders;
+		return () => {
+			document.removeEventListener('visibilitychange', onForeground);
+			window.removeEventListener('focus', onForeground);
+			stopReminders();
+		};
 	});
 
 	$effect(() => {

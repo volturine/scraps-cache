@@ -793,9 +793,18 @@ export class NotesStore {
 	private scheduleSyncPush() {
 		if (this.syncFlight) this.syncFollowupRequested = true;
 		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
-		this.syncPushTimer = setTimeout(async () => {
+		this.syncPushTimer = setTimeout(() => {
 			if (!this.dirty) return;
-			const synced = await this.syncWithCloud();
+			void this.flushSync();
+		}, 5000);
+	}
+
+	flushSync(): Promise<boolean> {
+		if (this.syncPushTimer) {
+			clearTimeout(this.syncPushTimer);
+			this.syncPushTimer = null;
+		}
+		return this.syncWithCloud().then(async (synced) => {
 			const leftover = synced ? await getSyncOutboxKeys().catch(() => []) : [];
 			if (synced && leftover.length === 0) {
 				this.dirty = false;
@@ -803,7 +812,8 @@ export class NotesStore {
 				this.dirty = true;
 				this.scheduleSyncPush();
 			}
-		}, 5000);
+			return synced;
+		});
 	}
 
 	// Replace this device's local data with the already-linked account without uploading any
