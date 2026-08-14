@@ -2,6 +2,7 @@
 export const KEYBOARD_HEIGHT_THRESHOLD_PX = 120;
 
 export const APP_FLOAT_SELECTOR = '[data-app-float]';
+export const PHONE_MEDIA = '(max-width: 767px)';
 
 export type Insets = { top: number; right: number; bottom: number; left: number };
 
@@ -109,32 +110,38 @@ export function attachAppViewport(_node: HTMLElement) {
 	let cachedSafe: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 	let fieldFocused = isKeyboardField(document.activeElement);
 	let restingLayoutHeight = window.innerHeight;
+	const phone = window.matchMedia(PHONE_MEDIA);
 
 	const apply = () => {
 		const viewport = window.visualViewport;
 		const visualHeight = viewport?.height ?? window.innerHeight;
 		const visualTop = viewport?.offsetTop ?? 0;
 		const layoutHeight = window.innerHeight;
+		const onPhone = phone.matches;
 		if (!fieldFocused) {
 			restingLayoutHeight = Math.max(layoutHeight, visualHeight);
 		}
 
-		const occluding = isKeyboardOccluding({
-			fieldFocused,
-			visualHeight,
-			layoutHeight
-		});
+		const occluding =
+			onPhone &&
+			isKeyboardOccluding({
+				fieldFocused,
+				visualHeight,
+				layoutHeight
+			});
 		cachedSafe = rememberSafeArea(cachedSafe, readSafeAreaInsets(), occluding);
-		const occlusion = keyboardOcclusion({
-			fieldFocused,
-			visualTop,
-			visualHeight,
-			layoutHeight,
-			restingLayoutHeight,
-			safe: cachedSafe
-		});
+		const occlusion = onPhone
+			? keyboardOcclusion({
+					fieldFocused,
+					visualTop,
+					visualHeight,
+					layoutHeight,
+					restingLayoutHeight,
+					safe: cachedSafe
+				})
+			: { top: 0, bottom: 0 };
 
-		document.documentElement.classList.toggle('keyboard-open', fieldFocused);
+		document.documentElement.classList.toggle('keyboard-open', onPhone && fieldFocused);
 		setInsetVar('--app-inset-top', cachedSafe.top);
 		setInsetVar('--app-inset-right', cachedSafe.right);
 		setInsetVar('--app-inset-left', cachedSafe.left);
@@ -158,12 +165,14 @@ export function attachAppViewport(_node: HTMLElement) {
 	viewport?.addEventListener('resize', apply);
 	viewport?.addEventListener('scroll', apply);
 	window.addEventListener('resize', apply);
+	phone.addEventListener('change', apply);
 	document.addEventListener('focusin', onFocusIn);
 	document.addEventListener('focusout', onFocusOut);
 	return () => {
 		viewport?.removeEventListener('resize', apply);
 		viewport?.removeEventListener('scroll', apply);
 		window.removeEventListener('resize', apply);
+		phone.removeEventListener('change', apply);
 		document.removeEventListener('focusin', onFocusIn);
 		document.removeEventListener('focusout', onFocusOut);
 		document.documentElement.classList.remove('keyboard-open');

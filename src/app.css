@@ -36,10 +36,10 @@
 	--app-sheet-pad-bottom: calc(var(--app-fab-bottom) + var(--app-fab-size) + 0.5rem);
 }
 
-html.keyboard-open {
-	--app-sheet-pad-bottom: 0.5rem;
-}
 @media (max-width: 767px) {
+	html.keyboard-open {
+		--app-sheet-pad-bottom: 0.5rem;
+	}
 	html.keyboard-open .new-note-fab {
 		visibility: hidden;
 		pointer-events: none;
