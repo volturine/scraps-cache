@@ -1,5 +1,5 @@
 // Rune-based notes & labels store. Persists to IndexedDB via $effect.
-import type { Note, Label, NoteColor } from '$lib/types';
+import type { Note, Label, NoteColor, NoteField } from '$lib/types';
 import {
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
@@ -15,7 +15,12 @@ import {
 	replaceAllDeviceData,
 	getSyncOutboxKeys
 } from '$lib/db/idb';
-import { mergeNoteLists, mergeTwoNotes, mergeLabelLists } from '$lib/noteMerge';
+import {
+	mergeLabelLists,
+	mergeNoteLists,
+	touchNoteFields,
+	withoutTombstoned
+} from '$lib/noteMerge';
 import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 import { AttachmentHydrationQueue } from '$lib/attachmentHydrationQueue';
 import { syncStore } from '$lib/stores/sync.svelte';
@@ -30,6 +35,7 @@ import {
 	writeNotesMirror
 } from '$lib/noteStorage';
 import {
+	hydrateTombstones,
 	readLabelTombstones,
 	readTombstones,
 	writeLabelTombstones,
@@ -109,7 +115,16 @@ export class NotesStore {
 		const seededFlag =
 			typeof localStorage !== 'undefined' ? localStorage.getItem('gkc-seeded') : null;
 
-		if (notes.length === 0 && labels.length === 0 && !seededFlag) {
+		const tombstones = await hydrateTombstones().catch(() => ({
+			notes: this.deletedNoteIds,
+			labels: this.deletedLabelIds,
+			boards: {}
+		}));
+		this.deletedNoteIds = tombstones.notes;
+		this.deletedLabelIds = tombstones.labels;
+		await kanbanStore.hydrateFromDevice(tombstones.boards);
+
+		if (notes.length === 0 && labels.length === 0 && !seededFlag && !syncStore.isLoggedIn) {
 			localStorage?.setItem('gkc-seeded', '1');
 			this.notes = this.seedNotes();
 			this.labels = [];
@@ -120,8 +135,8 @@ export class NotesStore {
 				this.recordPersistenceError('Could not save starter notes', err);
 			}
 		} else {
-			this.notes = notes;
-			this.labels = labels;
+			this.notes = withoutTombstoned(notes, this.deletedNoteIds);
+			this.labels = withoutTombstoned(labels, this.deletedLabelIds);
 			this.mirrorToLS();
 			// Recover the primary store from a valid mirror after an IDB reset.
 			if (!deviceReadFailed && dbNotes.length === 0 && notes.length > 0) {
@@ -140,10 +155,13 @@ export class NotesStore {
 	private async rehydrateFromIDB() {
 		try {
 			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
-			this.notes = mergeNoteLists(this.notes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
-			this.labels = mergeLabelLists(this.labels, dbLabels).sort((a, b) =>
-				a.name.localeCompare(b.name)
+			this.notes = withoutTombstoned(mergeNoteLists(this.notes, dbNotes), this.deletedNoteIds).sort(
+				(a, b) => b.updatedAt - a.updatedAt
 			);
+			this.labels = withoutTombstoned(
+				mergeLabelLists(this.labels, dbLabels),
+				this.deletedLabelIds
+			).sort((a, b) => a.name.localeCompare(b.name));
 			this.mirrorToLS();
 		} catch (err) {
 			this.recordPersistenceError('Could not rehydrate from IndexedDB', err);
@@ -203,16 +221,14 @@ export class NotesStore {
 	/** Only hydrate a few notes per sync so photo-heavy accounts transfer in fractions. */
 	private async hydrateAttachmentsForSync(): Promise<void> {
 		const dirtyKeys = new Set(await getSyncOutboxKeys().catch(() => []));
-		const prioritized = this.notes.filter(
-			(note) =>
-				dirtyKeys.has(`note:${note.id}`) ||
-				(note.images ?? []).some((image) => dirtyKeys.has(`attachment:${image.id}`))
-		);
-		const prioritizedIds = new Set(prioritized.map((note) => note.id));
-		const ids = [...prioritized, ...this.notes.filter((note) => !prioritizedIds.has(note.id))]
-			.filter((note) => (note.images ?? []).some((image) => !image.dataUrl))
-			.map((note) => note.id)
-			.slice(0, 3);
+		const ids = this.notes
+			.filter(
+				(note) =>
+					(dirtyKeys.has(`note:${note.id}`) ||
+						(note.images ?? []).some((image) => dirtyKeys.has(`attachment:${image.id}`))) &&
+					(note.images ?? []).some((image) => !image.dataUrl)
+			)
+			.map((note) => note.id);
 		for (const noteId of ids) await this.ensureNoteAttachments(noteId);
 	}
 
@@ -305,6 +321,18 @@ export class NotesStore {
 			reminder: partial.reminder ?? null,
 			labels: [...(partial.labels ?? [])],
 			images: (partial.images ?? []).map((image) => ({ ...image })),
+			fieldTimes: {
+				title: now,
+				body: now,
+				color: now,
+				pinned: now,
+				archived: now,
+				trashed: now,
+				reminder: now,
+				labels: now,
+				images: now,
+				linkPreviews: now
+			},
 			...(partial.linkPreviews?.length
 				? { linkPreviews: partial.linkPreviews.map((preview) => ({ ...preview })) }
 				: {})
@@ -318,16 +346,29 @@ export class NotesStore {
 		const idx = this.notes.findIndex((n) => n.id === id);
 		if (idx === -1) return;
 		const current = this.notes[idx];
-		const next: Note = {
-			...current,
-			...patch,
-			updatedAt: Date.now(),
-			labels: patch.labels ? [...patch.labels] : current.labels,
-			images: patch.images ? patch.images.map((image) => ({ ...image })) : current.images,
-			linkPreviews: patch.linkPreviews
-				? patch.linkPreviews.map((preview) => ({ ...preview }))
-				: current.linkPreviews
-		};
+		const fields: NoteField[] = [];
+		if ('title' in patch) fields.push('title');
+		if ('body' in patch) fields.push('body');
+		if ('color' in patch) fields.push('color');
+		if ('pinned' in patch) fields.push('pinned');
+		if ('archived' in patch) fields.push('archived');
+		if ('trashed' in patch) fields.push('trashed');
+		if ('reminder' in patch) fields.push('reminder');
+		if ('labels' in patch) fields.push('labels');
+		if ('images' in patch) fields.push('images');
+		if ('linkPreviews' in patch) fields.push('linkPreviews');
+		const next: Note = touchNoteFields(
+			{
+				...current,
+				...patch,
+				labels: patch.labels ? [...patch.labels] : current.labels,
+				images: patch.images ? patch.images.map((image) => ({ ...image })) : current.images,
+				linkPreviews: patch.linkPreviews
+					? patch.linkPreviews.map((preview) => ({ ...preview }))
+					: current.linkPreviews
+			},
+			fields
+		);
 		this.notes[idx] = next;
 		this.persist(id);
 	}
@@ -378,11 +419,19 @@ export class NotesStore {
 		this.updateNote(id, { trashed: false, trashedAt: null });
 	}
 
-	deleteNoteForever(id: string): void {
-		this.markNotesDeleted([id]);
+	async deleteNoteForever(id: string): Promise<void> {
+		const deletedAt = Date.now();
+		const next = { ...this.deletedNoteIds, [id]: deletedAt };
+		await writeTombstones(next);
+		this.deletedNoteIds = next;
 		this.notes = this.notes.filter((n) => n.id !== id);
 		this.mirrorToLS();
-		deleteNote(id).catch((err) => this.recordPersistenceError(`Could not delete note ${id}`, err));
+		await deleteNote(id).catch((err) =>
+			this.recordPersistenceError(`Could not delete note ${id}`, err)
+		);
+		await syncStore.queueOutbox([`note-tombstone:${id}`]);
+		this.dirty = true;
+		this.scheduleSyncPush();
 	}
 
 	emptyTrash(): void {
@@ -572,8 +621,8 @@ export class NotesStore {
 			this.labels = [...backup.labels].sort((a, b) => a.name.localeCompare(b.name));
 			this.deletedNoteIds = { ...backup.tombstones };
 			this.deletedLabelIds = { ...backup.labelTombstones };
-			writeTombstones(this.deletedNoteIds);
-			writeLabelTombstones(this.deletedLabelIds);
+			await writeTombstones(this.deletedNoteIds);
+			await writeLabelTombstones(this.deletedLabelIds);
 			kanbanStore.replaceWithCloud(backup.boards, backup.boardTombstones);
 			if (
 				backup.activeBoardId &&
@@ -584,6 +633,21 @@ export class NotesStore {
 			uiStore.restoreState(backup.ui);
 			syncStore.restoreFromBackup(backup.sync);
 			this.mirrorToLS();
+			const outbox = [
+				...this.notes.flatMap((note) => [
+					`note:${note.id}`,
+					...(note.images ?? []).map((image) => `attachment:${image.id}`)
+				]),
+				...this.labels.map((label) => `label:${label.id}`),
+				...kanbanStore.boards.map((board) => `board:${board.id}`),
+				...Object.keys(this.deletedNoteIds).map((id) => `note-tombstone:${id}`),
+				...Object.keys(this.deletedLabelIds).map((id) => `label-tombstone:${id}`),
+				...Object.keys(kanbanStore.boardTombstones).map((id) => `board-tombstone:${id}`)
+			];
+			if (syncStore.account) {
+				await syncStore.clearAccountControlPlane(syncStore.account.accountId);
+			}
+			await syncStore.queueOutbox(outbox);
 			this.dirty = true;
 			this.scheduleSyncPush();
 			return { success: true };
@@ -619,8 +683,9 @@ export class NotesStore {
 		if (ids.length === 0) return;
 		const deletedAt = Date.now();
 		for (const id of ids) this.deletedNoteIds[id] = deletedAt;
-		writeTombstones(this.deletedNoteIds);
-		syncStore.requestAutoSync(ids.map((id) => `note-tombstone:${id}`));
+		void writeTombstones(this.deletedNoteIds).then(() =>
+			syncStore.queueOutbox(ids.map((id) => `note-tombstone:${id}`))
+		);
 		this.dirty = true;
 		this.scheduleSyncPush();
 	}
@@ -628,8 +693,9 @@ export class NotesStore {
 	private markLabelsDeleted(ids: string[], deletedAt = Date.now()): void {
 		if (ids.length === 0) return;
 		for (const id of ids) this.deletedLabelIds[id] = deletedAt;
-		writeLabelTombstones(this.deletedLabelIds);
-		this.markLabelsDirty(ids.map((id) => `label-tombstone:${id}`));
+		void writeLabelTombstones(this.deletedLabelIds).then(() =>
+			this.markLabelsDirty(ids.map((id) => `label-tombstone:${id}`))
+		);
 	}
 
 	private markLabelsDirty(keys: Iterable<string> = []): void {
@@ -718,13 +784,16 @@ export class NotesStore {
 	}
 
 	private scheduleSyncPush() {
+		if (this.syncFlight) this.syncFollowupRequested = true;
 		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
 		this.syncPushTimer = setTimeout(async () => {
 			if (!this.dirty) return;
 			const synced = await this.syncWithCloud();
-			if (synced) {
+			const leftover = synced ? await getSyncOutboxKeys().catch(() => []) : [];
+			if (synced && leftover.length === 0) {
 				this.dirty = false;
-			} else if (this.dirty) {
+			} else if (this.dirty || leftover.length > 0) {
+				this.dirty = true;
 				this.scheduleSyncPush();
 			}
 		}, 5000);
@@ -735,7 +804,7 @@ export class NotesStore {
 	async replaceWithCloudManual(): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
 		try {
-			const result = await syncStore.sync([], [], {}, {}, [], {}, true);
+			const result = await syncStore.sync([], [], {}, {}, [], {}, true, true);
 			if (!result.success || !result.notes) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
 				return false;
@@ -744,12 +813,12 @@ export class NotesStore {
 			const labelTombstones = result.labelTombstones ?? {};
 			const boardTombstones = result.boardTombstones ?? {};
 			kanbanStore.replaceWithCloud(result.boards ?? [], boardTombstones);
-			const cloudNotes = (result.notes as Note[])
-				.filter((note) => (Number(tombstones[note.id]) || 0) < note.updatedAt)
-				.sort((a, b) => b.updatedAt - a.updatedAt);
-			const cloudLabels = ((result.labels ?? []) as Label[])
-				.filter((label) => (Number(labelTombstones[label.id]) || 0) < label.updatedAt)
-				.sort((a, b) => a.name.localeCompare(b.name));
+			const cloudNotes = withoutTombstoned(result.notes as Note[], tombstones).sort(
+				(a, b) => b.updatedAt - a.updatedAt
+			);
+			const cloudLabels = withoutTombstoned((result.labels ?? []) as Label[], labelTombstones).sort(
+				(a, b) => a.name.localeCompare(b.name)
+			);
 
 			if (navigator.storage?.estimate) {
 				const estimate = await navigator.storage.estimate();
@@ -766,8 +835,8 @@ export class NotesStore {
 			this.labels = cloudLabels;
 			this.deletedNoteIds = { ...tombstones };
 			this.deletedLabelIds = { ...labelTombstones };
-			writeTombstones(this.deletedNoteIds);
-			writeLabelTombstones(this.deletedLabelIds);
+			await writeTombstones(this.deletedNoteIds);
+			await writeLabelTombstones(this.deletedLabelIds);
 			this.mirrorToLS();
 			this.dirty = false;
 			this.lastPersistError = null;
@@ -809,8 +878,18 @@ export class NotesStore {
 		return this.syncFlight;
 	}
 
+	private async withSyncLock<T>(run: () => Promise<T>): Promise<T> {
+		const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+		if (!locks?.request) return run();
+		return locks.request('shard-sync', run);
+	}
+
 	// Core sync. Local IDB remains authoritative; photo bytes move in small fractions.
 	private async doSync(indicate = false): Promise<boolean> {
+		return this.withSyncLock(() => this.doSyncLocked(indicate));
+	}
+
+	private async doSyncLocked(indicate = false): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
 		// A newly reset relay needs one current-state bootstrap from this source device.
 		// Bytes are returned to thumb-only memory immediately after reconciliation below.
@@ -843,20 +922,19 @@ export class NotesStore {
 				if ((Number(deletedAt) || 0) > (this.deletedNoteIds[id] || 0))
 					this.deletedNoteIds[id] = Number(deletedAt);
 			}
-			writeTombstones(this.deletedNoteIds);
+			await writeTombstones(this.deletedNoteIds);
 			const incomingLabelTombstones = result.labelTombstones ?? {};
 			for (const [id, deletedAt] of Object.entries(incomingLabelTombstones)) {
 				if ((Number(deletedAt) || 0) > (this.deletedLabelIds[id] || 0))
 					this.deletedLabelIds[id] = Number(deletedAt);
 			}
-			writeLabelTombstones(this.deletedLabelIds);
-			const remoteNotes = (result.notes as Note[]).filter(
-				(note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt
-			);
+			await writeLabelTombstones(this.deletedLabelIds);
+			const remoteNotes = withoutTombstoned(result.notes as Note[], this.deletedNoteIds);
 			const localById = new Map(this.notes.map((note) => [note.id, note]));
-			let mergedNotes = mergeNoteLists(this.notes, remoteNotes)
-				.filter((note) => (this.deletedNoteIds[note.id] || 0) < note.updatedAt)
-				.sort((a, b) => b.updatedAt - a.updatedAt);
+			let mergedNotes = withoutTombstoned(
+				mergeNoteLists(this.notes, remoteNotes),
+				this.deletedNoteIds
+			).sort((a, b) => b.updatedAt - a.updatedAt);
 			// Build thumbs for any newly received full photos, then drop full bytes from memory.
 			mergedNotes = await Promise.all(
 				mergedNotes.map(async (note) => {
@@ -873,12 +951,14 @@ export class NotesStore {
 					return { ...note, images };
 				})
 			);
-			const remoteLabels = ((result.labels ?? []) as Label[]).filter(
-				(label) => (this.deletedLabelIds[label.id] || 0) < label.updatedAt
+			const remoteLabels = withoutTombstoned(
+				(result.labels ?? []) as Label[],
+				this.deletedLabelIds
 			);
-			const mergedLabels = mergeLabelLists(this.labels, remoteLabels)
-				.filter((label) => (this.deletedLabelIds[label.id] || 0) < label.updatedAt)
-				.sort((a, b) => a.name.localeCompare(b.name));
+			const mergedLabels = withoutTombstoned(
+				mergeLabelLists(this.labels, remoteLabels),
+				this.deletedLabelIds
+			).sort((a, b) => a.name.localeCompare(b.name));
 			const labelsChanged = JSON.stringify(this.labels) !== JSON.stringify(mergedLabels);
 
 			// Persist notes that gained remote content (full bytes still available on result.notes).
@@ -897,10 +977,10 @@ export class NotesStore {
 			});
 
 			const tombstonedLocalIds = this.notes
-				.filter((note) => (this.deletedNoteIds[note.id] || 0) >= note.updatedAt)
+				.filter((note) => this.deletedNoteIds[note.id])
 				.map((note) => note.id);
 			const tombstonedLocalLabelIds = this.labels
-				.filter((label) => (this.deletedLabelIds[label.id] || 0) >= label.updatedAt)
+				.filter((label) => this.deletedLabelIds[label.id])
 				.map((label) => label.id);
 			this.notes = mergedNotes;
 			this.labels = mergedLabels;

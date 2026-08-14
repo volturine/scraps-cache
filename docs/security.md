@@ -38,12 +38,13 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 
 ### Device pairing
 
-- User enters a **14-digit pairing code** derived from the sync key on an
-  existing device (or starts a new identity).
-- Devices run **CPace** (ristretto255) over the code so they share a session key
+- The existing device shows a **one-time 16-character pairing code** (80 bits,
+  60-second lifetime). It is not derived from the sync key and is not reused.
+- Devices run **CPace** (ristretto255) over that code so they share a session key
   without revealing the code or sync key to the relay.
 - The sync key is sealed to the peer with XChaCha20-Poly1305 under the PAKE
-  output; the server only relays opaque PAKE shares and ciphertext.
+  output; the server only relays opaque PAKE shares and ciphertext. The rendezvous
+  tag is a hash of the high-entropy one-time code, not a crackable 14-digit secret.
 
 ### Client backups (`.shard-backup`)
 

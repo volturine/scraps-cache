@@ -115,9 +115,7 @@ export function mergeKanbanBoards(
 			byId.set(board.id, board);
 		}
 	}
-	return [...byId.values()].filter(
-		(board) => (Number(tombstones[board.id]) || 0) < board.updatedAt
-	);
+	return [...byId.values()].filter((board) => !(Number(tombstones[board.id]) || 0));
 }
 
 /**

@@ -24,5 +24,12 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		!/^[A-Za-z0-9_-]{43}$/.test(body.publicKey)
 	)
 		return json({ error: 'Invalid pairing request' }, { status: 400 });
-	return json(pairingSessions.start(body.codeTag, body.role, body.publicKey));
+	try {
+		return json(pairingSessions.start(body.codeTag, body.role, body.publicKey));
+	} catch {
+		return json(
+			{ error: 'Pairing rendezvous is busy' },
+			{ status: 503, headers: { 'retry-after': '2' } }
+		);
+	}
 };

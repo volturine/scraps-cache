@@ -57,6 +57,7 @@ export function cloneNote(note: import('$lib/types').Note): import('$lib/types')
 		updatedAt: note.updatedAt,
 		reminder: note.reminder,
 		labels: [...note.labels],
+		...(note.fieldTimes ? { fieldTimes: { ...note.fieldTimes } } : {}),
 		images: (note.images ?? []).map((image) => ({
 			id: image.id,
 			mime: image.mime,

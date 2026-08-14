@@ -12,4 +12,13 @@ describe('token bucket rate limiter', () => {
 		now = 500;
 		expect(limiter.check('client', policy).allowed).toBe(true);
 	});
+
+	it('refuses new keys instead of evicting active ones', () => {
+		const limiter = new TokenBucketLimiter(2, () => 0);
+		const policy = { capacity: 1, refillWindowMs: 1_000 };
+		expect(limiter.check('a', policy).allowed).toBe(true);
+		expect(limiter.check('b', policy).allowed).toBe(true);
+		expect(limiter.check('c', policy).allowed).toBe(false);
+		expect(limiter.check('a', policy).allowed).toBe(false);
+	});
 });

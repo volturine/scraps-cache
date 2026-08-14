@@ -34,6 +34,30 @@ describe('SQLite sync store', () => {
 		expect(store.getCredentialHash('account')).toBe('first');
 	});
 
+	it('pages more than 480 envelopes without dropping the tail', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		const uploads = Array.from({ length: 600 }, (_, index) => ({
+			id: `id-${index}`,
+			slot: slot(index.toString(16).padStart(1, 'a').repeat(1)).slice(0, 64).padEnd(64, 'a'),
+			ciphertext: `c${index}`
+		}));
+		// Unique slots: hash-like 64 hex from index
+		for (const [index, upload] of uploads.entries()) {
+			upload.slot = index.toString(16).padStart(64, '0');
+		}
+		store.sync('account', 0, uploads, 600);
+		let cursor = 0;
+		let seen = 0;
+		for (let page = 0; page < 60; page++) {
+			const result = store.sync('account', cursor, [], 12);
+			seen += result.envelopes.length;
+			cursor = result.cursor;
+			if (!result.hasMore) break;
+		}
+		expect(seen).toBe(600);
+	});
+
 	it('paginates existing data without skipping simultaneous uploads', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');

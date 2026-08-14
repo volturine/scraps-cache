@@ -51,6 +51,11 @@ describe('opaque per-record sync payloads', () => {
 		expect(records.map((record) => record.key)).toEqual(['note-tombstone:gone']);
 	});
 
+	it('does not revive a permanently deleted note that has a newer local timestamp', async () => {
+		const records = await buildSyncRecords([note('gone', 50)], [], [], { gone: 20 });
+		expect(records.map((record) => record.key)).toEqual(['note-tombstone:gone']);
+	});
+
 	it('stores each photo as its own attachment record and keeps only a ref on the note', async () => {
 		const photo = image('pic', `data:image/jpeg;base64,${'A'.repeat(20_000)}`);
 		const records = await buildSyncRecords([note('n1', 1, 'has photo', [photo])], [], []);

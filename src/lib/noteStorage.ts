@@ -1,18 +1,31 @@
-import type { Label, Note } from './types';
+import type { Label, Note, NoteImage } from './types';
 
 /** Canonical fast-boot mirrors. IndexedDB remains the durable device store. */
 export const NOTES_MIRROR_KEY = 'gkc-notes-mirror';
 export const LABELS_MIRROR_KEY = 'gkc-labels-mirror';
 export const MAX_MIRRORED_NOTES = 50;
 
-type MirroredNote = Omit<Note, 'images'> & { hasImages?: boolean };
+type MirroredImage = Omit<NoteImage, 'dataUrl'>;
+type MirroredNote = Omit<Note, 'images'> & { images?: MirroredImage[] };
 
-/** Note shape safe for localStorage: attachment bytes never enter the mirror. */
+function imageRef(image: NoteImage): MirroredImage {
+	const { dataUrl: _bytes, ...meta } = image;
+	return {
+		...meta,
+		id: image.id,
+		mime: image.mime,
+		createdAt: image.createdAt
+	};
+}
+
+/** Note shape safe for localStorage: attachment bytes never enter the mirror. Image refs stay. */
 export function noteForLocalStorage(note: Note): MirroredNote {
-	const { images: _images, linkPreviews, ...rest } = note;
-	const base = {
+	const { images, linkPreviews, ...rest } = note;
+	return {
 		...rest,
 		labels: [...(note.labels ?? [])],
+		...(images?.length ? { images: images.map(imageRef) } : {}),
+		fieldTimes: note.fieldTimes ? { ...note.fieldTimes } : undefined,
 		...(linkPreviews?.length
 			? {
 					linkPreviews: linkPreviews.map((preview) => ({
@@ -26,7 +39,6 @@ export function noteForLocalStorage(note: Note): MirroredNote {
 				}
 			: {})
 	};
-	return note.images?.length ? { ...base, hasImages: true } : base;
 }
 
 function parseArray<T>(raw: string | null): T[] {
@@ -60,8 +72,14 @@ function writeJson<T>(key: string, value: T[]): void {
 
 export function readNotesMirror(): Note[] {
 	return readJson<MirroredNote>(NOTES_MIRROR_KEY).map((note) => {
-		const { hasImages: _hasImages, ...rest } = note;
-		return { ...rest, images: [] };
+		const { hasImages: _legacy, images, ...rest } = note as MirroredNote & { hasImages?: boolean };
+		return {
+			...rest,
+			images: (images ?? []).map((image) => ({
+				...image,
+				dataUrl: ''
+			}))
+		};
 	});
 }
 

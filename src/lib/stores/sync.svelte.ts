@@ -3,7 +3,15 @@
 import type { KanbanBoard } from '$lib/kanban';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { mergeKanbanBoards } from '$lib/kanban';
-import { mergeLabelLists, mergeNoteLists } from '$lib/noteMerge';
+import { mergeLabelLists, mergeNoteLists, withoutTombstoned } from '$lib/noteMerge';
+import {
+	currentRecordKeys,
+	fingerprintMapFrom,
+	planDeletableKeys,
+	reconcileBaseline,
+	referencedAttachmentIds,
+	syncControlKeys
+} from '$lib/syncEngine';
 import {
 	attachmentToImage,
 	buildSyncRecords,
@@ -17,6 +25,7 @@ import {
 } from '$lib/syncRecords';
 import { sha256 } from '$lib/syncHash';
 import {
+	createOneTimePairingCode,
 	createPairingRequestKey,
 	createSyncIdentity,
 	identityFromSyncKey,
@@ -29,6 +38,7 @@ import {
 } from '$lib/syncPairing';
 import {
 	clearSyncOutbox,
+	deleteSyncState,
 	getSyncOutboxKeys,
 	getSyncState,
 	markSyncOutbox,
@@ -139,9 +149,15 @@ class SyncStore {
 	}
 
 	requestAutoSync(keys: Iterable<string> = []): void {
-		void markSyncOutbox(keys).catch((err) =>
-			console.error('[sync] could not persist outbox:', err)
-		);
+		void this.queueOutbox(keys);
+	}
+
+	async queueOutbox(keys: Iterable<string> = []): Promise<void> {
+		try {
+			await markSyncOutbox(keys);
+		} catch (err) {
+			console.error('[sync] could not persist outbox:', err);
+		}
 		this.onLocalDataChange?.();
 	}
 
@@ -199,7 +215,7 @@ class SyncStore {
 		error?: string;
 	}> {
 		if (!this.account) return { success: false, error: 'Sync is not set up on this device' };
-		return this.startRendezvous('existing', this.account.pairingCode);
+		return this.startRendezvous('existing', createOneTimePairingCode());
 	}
 
 	private async startRendezvous(
@@ -254,7 +270,7 @@ class SyncStore {
 				if (!this.account) return { success: false, error: 'Sync is not set up on this device' };
 				const grant = sealSyncKeyForPeer(
 					this.account.syncKey,
-					this.account.pairingCode,
+					link.syncCode,
 					link.pake,
 					data.peerPublicKey
 				);
@@ -299,7 +315,7 @@ class SyncStore {
 			const xhr = new XMLHttpRequest();
 			xhr.open('POST', path);
 			// Pairing expires in 60 seconds; photo/data sync must be allowed to finish.
-			xhr.timeout = 0;
+			xhr.timeout = 300_000;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 
 			if (indicate) {
@@ -356,7 +372,7 @@ class SyncStore {
 		});
 	}
 
-	/** End-to-end encrypted per-record delta log. The server only relays opaque envelopes. */
+	/** End-to-end encrypted per-record delta. Uploads only dirty outbox keys. */
 	async sync(
 		notes: Note[],
 		labels: Label[],
@@ -364,49 +380,33 @@ class SyncStore {
 		labelTombstones: Record<string, number> = {},
 		boards: KanbanBoard[] = [],
 		boardTombstones: Record<string, number> = {},
-		indicate = false
+		indicate = false,
+		pullOnly = false
 	): Promise<SyncResult> {
 		if (!this.account) return { success: false, error: 'Not linked' };
 		if (indicate) this.onSyncStart?.();
 		try {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
 			const DOWNLOAD_LIMIT = 12;
-			const MAX_ROUNDS = 40;
-			const cursorKey = `gkc-sync-cursor:${this.account.accountId}`;
-			const baselineKey = `gkc-sync-record-fingerprints:${this.account.accountId}`;
-			const migrationKey = `gkc-sync-slot-migration:${this.account.accountId}`;
-			const recordIdsKey = `gkc-sync-record-ids:${this.account.accountId}`;
-			const fullReconcileKey = `gkc-sync-full-reconcile:${this.account.accountId}`;
-			// Legacy accounts get one compaction pass after their source device has every
-			// attachment available. This repacks append-only historical ciphertext once.
-			const storedMigration = await getSyncState<boolean>(migrationKey).catch(() => undefined);
-			const migratingLegacy =
-				storedMigration == null ? localStorage.getItem(migrationKey) !== 'done' : !storedMigration;
-
+			const keys = syncControlKeys(this.account.accountId);
 			let baseline: Record<string, string> = {};
 			try {
-				const durable = await getSyncState<unknown>(baselineKey);
-				const stored: unknown = durable ?? JSON.parse(localStorage.getItem(baselineKey) || '{}');
-				if (stored && typeof stored === 'object' && !Array.isArray(stored))
+				const durable = await getSyncState<unknown>(keys.baseline);
+				if (durable && typeof durable === 'object' && !Array.isArray(durable))
 					baseline = Object.fromEntries(
-						Object.entries(stored).filter(
+						Object.entries(durable).filter(
 							([key, value]) => typeof key === 'string' && typeof value === 'string'
 						)
 					);
 			} catch {
-				/* first sync or a malformed local baseline: re-send local records once */
+				/* first sync */
 			}
+			const firstFullUpload = Object.keys(baseline).length === 0;
 			let recordIds =
-				(await getSyncState<Record<string, string>>(recordIdsKey).catch(() => undefined)) ?? {};
+				(await getSyncState<Record<string, string>>(keys.recordIds).catch(() => undefined)) ?? {};
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
 			const outboxSnapshotAt = Date.now();
-			const outboxKeys = new Set(await getSyncOutboxKeys().catch(() => []));
-			const lastFullReconcile =
-				Number(await getSyncState<number>(fullReconcileKey).catch(() => 0)) || 0;
-			const fullReconcile =
-				migratingLegacy ||
-				Object.keys(baseline).length === 0 ||
-				Date.now() - lastFullReconcile >= 24 * 60 * 60 * 1000;
+			let outboxKeys = new Set(await getSyncOutboxKeys().catch(() => []));
 
 			let mergedNotes = notes,
 				mergedLabels = labels,
@@ -421,15 +421,18 @@ class SyncStore {
 				}
 			}
 
-			let cursor =
-				Number(
-					(await getSyncState<number>(cursorKey).catch(() => undefined)) ??
-						localStorage.getItem(cursorKey)
-				) || 0;
+			let cursor = Number((await getSyncState<number>(keys.cursor).catch(() => undefined)) || 0);
 			let hasMore = true;
-			let migrationUploadsComplete = false;
+			let downloadsDrained = false;
 			const acknowledgedOutbox = new Set<string>();
-			for (let round = 0; round < MAX_ROUNDS && hasMore; round++) {
+			let poisonCount = 0;
+			while (hasMore) {
+				const tombstoneMaps = {
+					notes: mergedTombstones,
+					labels: mergedLabelTombstones,
+					boards: mergedBoardTombstones
+				};
+				const uploadKeys = pullOnly ? new Set<string>() : firstFullUpload ? undefined : outboxKeys;
 				const currentRecords = await buildSyncRecords(
 					mergedNotes,
 					mergedLabels,
@@ -437,11 +440,9 @@ class SyncStore {
 					mergedTombstones,
 					mergedLabelTombstones,
 					mergedBoardTombstones,
-					fullReconcile ? undefined : outboxKeys
+					uploadKeys
 				);
-				const changed = migratingLegacy
-					? currentRecords.filter((record) => baseline[record.key] !== record.fingerprint)
-					: changedRecords(currentRecords, baseline);
+				const changed = pullOnly ? [] : changedRecords(currentRecords, baseline);
 				const nonAttachments = changed.filter((record) => record.payload.kind !== 'attachment');
 				const changedAttachments = changed.filter((record) => record.payload.kind === 'attachment');
 				// Photo bytes move in small fractions so initial/device syncs stay interactive.
@@ -467,43 +468,21 @@ class SyncStore {
 						};
 					})
 				);
-				// Determine existence without serializing or hashing the full account.
-				const currentKeys = new Set<string>();
-				for (const note of mergedNotes) {
-					if ((mergedTombstones[note.id] || 0) >= note.updatedAt) continue;
-					currentKeys.add(`note:${note.id}`);
-					for (const image of note.images ?? []) currentKeys.add(`attachment:${image.id}`);
-				}
-				for (const label of mergedLabels) {
-					if ((mergedLabelTombstones[label.id] || 0) < label.updatedAt)
-						currentKeys.add(`label:${label.id}`);
-				}
-				for (const board of mergedBoards) {
-					if ((mergedBoardTombstones[board.id] || 0) < board.updatedAt)
-						currentKeys.add(`board:${board.id}`);
-				}
-				for (const id of Object.keys(mergedTombstones)) currentKeys.add(`note-tombstone:${id}`);
-				for (const id of Object.keys(mergedLabelTombstones))
-					currentKeys.add(`label-tombstone:${id}`);
-				for (const id of Object.keys(mergedBoardTombstones))
-					currentKeys.add(`board-tombstone:${id}`);
-				const deletableKeys = Object.keys(recordIds)
-					.filter((key) => {
-						if (currentKeys.has(key)) return false;
-						if (key.startsWith('note:')) return !!mergedTombstones[key.slice('note:'.length)];
-						if (key.startsWith('label:'))
-							return !!mergedLabelTombstones[key.slice('label:'.length)];
-						if (key.startsWith('board:'))
-							return !!mergedBoardTombstones[key.slice('board:'.length)];
-						if (key.startsWith('attachment:')) {
-							const attachmentId = key.slice('attachment:'.length);
-							return !mergedNotes.some((note) =>
-								(note.images ?? []).some((image) => image.id === attachmentId)
-							);
-						}
-						return false;
-					})
-					.slice(0, 500);
+				const currentKeys = currentRecordKeys(
+					mergedNotes,
+					mergedLabels,
+					mergedBoards,
+					tombstoneMaps
+				);
+				const deletableKeys = planDeletableKeys({
+					recordIds,
+					notes: mergedNotes,
+					labels: mergedLabels,
+					boards: mergedBoards,
+					tombstones: tombstoneMaps,
+					pullOnly,
+					catchUpComplete: downloadsDrained
+				});
 				const deleteSlots = await Promise.all(
 					deletableKeys.map(async (key) => ({
 						id: recordIds[key],
@@ -541,7 +520,6 @@ class SyncStore {
 				}
 				for (const key of deletableKeys) delete recordIds[key];
 				for (const [key, id] of sentRecordIds) recordIds[key] = id;
-				for (const key of sentRecordKeys) acknowledgedOutbox.add(key);
 				for (const key of deletableKeys) acknowledgedOutbox.add(key);
 				if (response.data.reset === true) {
 					// The relay was deliberately reset while this device retained a baseline.
@@ -587,23 +565,35 @@ class SyncStore {
 				};
 				const envelopes = Array.isArray(response.data.envelopes) ? response.data.envelopes : [];
 				for (const envelope of envelopes) {
-					if (!envelope || typeof envelope !== 'object')
-						throw new Error('Invalid encrypted sync envelope');
+					if (!envelope || typeof envelope !== 'object') {
+						poisonCount += 1;
+						continue;
+					}
 					const id =
 						typeof (envelope as { id?: unknown }).id === 'string'
 							? (envelope as { id: string }).id
 							: '';
 					if (id && sentIds.has(id)) continue;
-					if (typeof (envelope as { ciphertext?: unknown }).ciphertext !== 'string')
-						throw new Error('Invalid encrypted sync envelope');
-					const remote = decryptSyncPayload(
-						this.account.syncKey,
-						(envelope as { ciphertext: string }).ciphertext
-					);
-					const decodedRecords = isSyncRecordPayload(remote)
-						? [remote]
-						: await legacySnapshotPayloads(remote);
-					if (!decodedRecords) throw new Error('Invalid encrypted sync record');
+					if (typeof (envelope as { ciphertext?: unknown }).ciphertext !== 'string') {
+						poisonCount += 1;
+						continue;
+					}
+					let decodedRecords: SyncRecordPayload[] | null = null;
+					try {
+						const remote = decryptSyncPayload(
+							this.account.syncKey,
+							(envelope as { ciphertext: string }).ciphertext
+						);
+						decodedRecords = isSyncRecordPayload(remote)
+							? [remote]
+							: await legacySnapshotPayloads(remote);
+					} catch {
+						decodedRecords = null;
+					}
+					if (!decodedRecords) {
+						poisonCount += 1;
+						continue;
+					}
 					const ordered = [
 						...decodedRecords.filter((record) => record.kind === 'attachment'),
 						...decodedRecords.filter((record) => record.kind !== 'attachment')
@@ -614,7 +604,6 @@ class SyncStore {
 						recordIds[key] = id;
 						remoteFingerprints[key] = await sha256(record);
 						currentKeys.add(key);
-						acknowledgedOutbox.add(key);
 					}
 				}
 				if (pendingNotes.length) {
@@ -628,67 +617,56 @@ class SyncStore {
 				if (typeof response.data.cursor === 'number') {
 					cursor = response.data.cursor;
 				}
+				downloadsDrained = response.data.hasMore !== true;
 
-				// Advance baseline only for records actually uploaded this round, plus merged state for non-attachments.
-				const nextBaseline = { ...baseline };
-				for (const record of currentRecords) {
-					if (record.payload.kind === 'attachment' && !sentRecordKeys.has(record.key)) continue;
-					nextBaseline[record.key] = record.fingerprint;
+				mergedNotes = withoutTombstoned(mergedNotes, mergedTombstones);
+				mergedLabels = withoutTombstoned(mergedLabels, mergedLabelTombstones);
+				mergedBoards = withoutTombstoned(mergedBoards, mergedBoardTombstones);
+				const mergedRecords = await buildSyncRecords(
+					mergedNotes,
+					mergedLabels,
+					mergedBoards,
+					mergedTombstones,
+					mergedLabelTombstones,
+					mergedBoardTombstones,
+					new Set([...sentRecordKeys, ...Object.keys(remoteFingerprints), ...outboxKeys])
+				);
+				const uploadedFingerprints = Object.fromEntries(
+					outgoing.map((record) => [record.key, record.fingerprint])
+				);
+				const reconciled = reconcileBaseline({
+					previous: baseline,
+					uploaded: uploadedFingerprints,
+					remote: remoteFingerprints,
+					merged: fingerprintMapFrom(mergedRecords),
+					currentKeys: currentRecordKeys(mergedNotes, mergedLabels, mergedBoards, tombstoneMaps),
+					referencedAttachments: referencedAttachmentIds(mergedNotes, mergedTombstones)
+				});
+				baseline = reconciled.baseline;
+				for (const key of reconciled.ackKeys) acknowledgedOutbox.add(key);
+				if (reconciled.dirtyKeys.length) {
+					await markSyncOutbox(reconciled.dirtyKeys);
+					for (const key of reconciled.dirtyKeys) outboxKeys.add(key);
 				}
-				for (const [key, fingerprint] of Object.entries(remoteFingerprints)) {
-					nextBaseline[key] = fingerprint;
-				}
-				// Preserve attachment baselines while full bytes are not in memory (thumb-only local state).
-				for (const [key, fingerprint] of Object.entries(baseline)) {
-					if (!key.startsWith('attachment:')) continue;
-					const attachmentId = key.slice('attachment:'.length);
-					const stillReferenced = mergedNotes.some((note) =>
-						(note.images ?? []).some((image) => image.id === attachmentId)
-					);
-					if (stillReferenced && !(key in nextBaseline)) nextBaseline[key] = fingerprint;
-				}
-				for (const key of Object.keys(nextBaseline)) {
-					if (key.startsWith('attachment:')) {
-						const attachmentId = key.slice('attachment:'.length);
-						const stillReferenced = mergedNotes.some((note) =>
-							(note.images ?? []).some((image) => image.id === attachmentId)
-						);
-						if (!stillReferenced) delete nextBaseline[key];
-						continue;
-					}
-					if (!currentKeys.has(key) && !sentRecordKeys.has(key)) delete nextBaseline[key];
-				}
-				baseline = nextBaseline;
 
-				const remainingUploads = changedAttachments.length > ATTACHMENT_UPLOAD_BUDGET;
-				if (migratingLegacy && !remainingUploads && changed.length === 0) {
-					migrationUploadsComplete = true;
-				}
-				// Bootstrap writes every current slotted record once; subsequent syncs remain incremental.
-				hasMore =
-					response.data.hasMore === true ||
-					remainingUploads ||
-					(migratingLegacy && !migrationUploadsComplete);
+				await Promise.all([
+					setSyncState(keys.cursor, cursor),
+					setSyncState(keys.baseline, baseline),
+					setSyncState(keys.recordIds, recordIds),
+					clearSyncOutbox(acknowledgedOutbox, outboxSnapshotAt),
+					setSyncState(keys.migration, true)
+				]);
+
+				const remainingUploads = !pullOnly && changedAttachments.length > ATTACHMENT_UPLOAD_BUDGET;
+				hasMore = response.data.hasMore === true || remainingUploads;
 			}
 
-			if (hasMore) {
-				return this.fail({ success: false, error: 'Encrypted sync needs another pass' });
+			if (poisonCount > 0) {
+				this.lastError = `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`;
+			} else {
+				this.lastError = null;
 			}
-			// Commit progress only with the fully merged result. A failed later page must
-			// be retried from the last cursor whose data the notes store already applied.
-			await Promise.all([
-				setSyncState(cursorKey, cursor),
-				setSyncState(baselineKey, baseline),
-				setSyncState(recordIdsKey, recordIds),
-				clearSyncOutbox(acknowledgedOutbox, outboxSnapshotAt),
-				...(fullReconcile ? [setSyncState(fullReconcileKey, Date.now())] : []),
-				...(migratingLegacy && migrationUploadsComplete ? [setSyncState(migrationKey, true)] : [])
-			]);
-			localStorage.removeItem(cursorKey);
-			localStorage.removeItem(baselineKey);
-			if (migratingLegacy && migrationUploadsComplete) localStorage.removeItem(migrationKey);
 			this.lastSync = Date.now();
-			this.lastError = null;
 			this.saveStatus();
 			return {
 				success: true,
@@ -723,18 +701,31 @@ class SyncStore {
 	}
 
 	async needsCurrentStateBootstrap(): Promise<boolean> {
-		if (!this.account || typeof localStorage === 'undefined') return false;
-		const key = `gkc-sync-slot-migration:${this.account.accountId}`;
-		const durable = await getSyncState<boolean>(key).catch(() => undefined);
-		return durable == null ? localStorage.getItem(key) !== 'done' : !durable;
+		if (!this.account) return false;
+		const baseline = await getSyncState<Record<string, string>>(
+			syncControlKeys(this.account.accountId).baseline
+		).catch(() => undefined);
+		return !baseline || Object.keys(baseline).length === 0;
+	}
+
+	async clearAccountControlPlane(accountId: string): Promise<void> {
+		const keys = syncControlKeys(accountId);
+		await Promise.all([
+			deleteSyncState(keys.cursor),
+			deleteSyncState(keys.baseline),
+			deleteSyncState(keys.recordIds),
+			deleteSyncState(keys.migration)
+		]);
 	}
 
 	logout(): void {
+		const accountId = this.account?.accountId;
 		this.account = null;
 		this.lastError = null;
 		this.progress = null;
 		this.usage = null;
 		this.saveAccount();
+		if (accountId) void this.clearAccountControlPlane(accountId);
 	}
 
 	async deleteCloudAccount(): Promise<{ success: boolean; error?: string }> {

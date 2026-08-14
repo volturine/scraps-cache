@@ -37,6 +37,9 @@ function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 function getDB(): Promise<IDBPDatabase> {
+	if (typeof indexedDB === 'undefined') {
+		return Promise.reject(new Error('IndexedDB is not available'));
+	}
 	if (!dbPromise) {
 		dbPromise = openDB(DB_NAME, DB_VERSION, {
 			upgrade(db) {
@@ -119,6 +122,7 @@ function plainNote(note: Note): Note {
 		reminder: note.reminder == null ? null : Number(note.reminder),
 		labels: Array.from(note.labels ?? [], (id) => String(id)),
 		images,
+		...(note.fieldTimes ? { fieldTimes: { ...note.fieldTimes } } : {}),
 		...(linkPreviews.length ? { linkPreviews } : {})
 	};
 }

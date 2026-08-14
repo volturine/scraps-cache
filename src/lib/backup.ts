@@ -155,6 +155,9 @@ export function normalizeBackup(data: unknown): ShardBackup | null {
 				reminder: note.reminder == null ? null : Number(note.reminder),
 				labels: Array.isArray(note.labels) ? note.labels.map(String) : [],
 				images,
+				...(note.fieldTimes && typeof note.fieldTimes === 'object'
+					? { fieldTimes: { ...note.fieldTimes } }
+					: {}),
 				linkPreviews: Array.isArray(note.linkPreviews)
 					? note.linkPreviews.flatMap((preview) => {
 							const normalized = normalizeLinkPreview(preview);

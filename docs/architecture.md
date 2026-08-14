@@ -70,7 +70,7 @@ From a random 32-byte sync key the client derives:
 
 - `accountId` — server-visible account handle (hash-derived)
 - `authSecret` — credential presented to the relay (hash-derived)
-- `pairingCode` — 14-digit code for device linking
+- One-time pairing code — random 80-bit rendezvous code, shown only while connecting another device
 
 Payload encryption key material is also derived from the sync key. The server
 verifies `accountId` + `authSecret` but cannot decrypt envelopes.
