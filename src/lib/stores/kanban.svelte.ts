@@ -7,6 +7,11 @@ import {
 	type KanbanColumn
 } from '$lib/kanban';
 import { syncStore } from '$lib/stores/sync.svelte';
+import {
+	loadBoardsFromDevice,
+	saveBoardsToDevice,
+	writeBoardTombstones
+} from '$lib/syncTombstones';
 import { uid } from '$lib/utils';
 
 const BOARDS_KEY = 'gkc-kanban-boards-v1';
@@ -117,8 +122,26 @@ export class KanbanStore {
 				localStorage.setItem(BOARDS_KEY, JSON.stringify(this.boards));
 				localStorage.setItem(ACTIVE_BOARD_KEY, this.activeBoardId);
 				localStorage.setItem(BOARD_TOMBSTONES_KEY, JSON.stringify(this.boardTombstones));
+				void saveBoardsToDevice(this.boards).catch(() => undefined);
+				void writeBoardTombstones(this.boardTombstones).catch(() => undefined);
 			});
 		});
+	}
+
+	async hydrateFromDevice(remoteTombstones: Record<string, number> = {}): Promise<void> {
+		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(undefined);
+		if (Array.isArray(stored) && stored.length) {
+			this.boards = stored;
+			if (!this.boards.some((board) => board.id === this.activeBoardId))
+				this.activeBoardId = this.boards[0].id;
+		}
+		const tombstones = { ...this.boardTombstones, ...remoteTombstones };
+		this.boardTombstones = tombstones;
+		this.boards = mergeKanbanBoards(this.boards, [], tombstones);
+		if (!this.boards.length) {
+			this.boards = [createKanbanBoard()];
+			this.activeBoardId = this.boards[0].id;
+		}
 	}
 
 	get activeBoard(): KanbanBoard {

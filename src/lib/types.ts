@@ -42,6 +42,22 @@ export interface NoteImage {
 /** Alias for clarity; same shape as NoteImage (wire field remains `images`). */
 export type NoteAttachment = NoteImage;
 
+/** Per-field write times for last-write-wins merge. Missing keys fall back to `updatedAt`. */
+export type NoteFieldTimes = {
+	title?: number;
+	body?: number;
+	color?: number;
+	pinned?: number;
+	archived?: number;
+	trashed?: number;
+	reminder?: number;
+	labels?: number;
+	images?: number;
+	linkPreviews?: number;
+};
+
+export type NoteField = keyof NoteFieldTimes;
+
 export interface Note {
 	id: string;
 	title: string;
@@ -60,6 +76,7 @@ export interface Note {
 	updatedAt: number;
 	reminder: number | null; // epoch ms
 	labels: string[]; // label ids
+	fieldTimes?: NoteFieldTimes;
 }
 
 export interface Label {

@@ -64,7 +64,7 @@
 	async function beginLink() {
 		const normalized = normalizePairingCode(code);
 		if (!normalized) {
-			error = 'Enter the full sync key';
+			error = 'Enter the full one-time code';
 			return;
 		}
 		loading = true;
@@ -185,7 +185,7 @@
 	}
 
 	async function copyCode() {
-		const text = formatPairingCode(syncStore.account?.pairingCode ?? '');
+		const text = formatPairingCode(waiting?.syncCode ?? '');
 		if (!text) return;
 		try {
 			if (navigator.clipboard?.writeText) {
@@ -274,22 +274,10 @@
 
 		{#if mode === 'linked' && syncStore.account}
 			<div class="space-y-4">
-				<div class="rounded-lg bg-black/5 p-3 dark:bg-white/5">
-					<div class="text-xs text-[var(--gkc-text-muted)]">Your sync key</div>
-					<div class="mt-1 flex items-center justify-between gap-2">
-						<code class="text-lg font-bold tracking-wider"
-							>{formatPairingCode(syncStore.account.pairingCode)}</code
-						>
-						<button
-							type="button"
-							onclick={() => void copyCode()}
-							class="shrink-0 rounded px-2 py-1 text-xs font-medium touch-manipulation {copyFlash
-								? 'bg-green-600 text-white'
-								: 'text-[var(--gkc-text-muted)] hover:bg-black/10 dark:hover:bg-white/10'}"
-							>{copyFlash ? 'Copied' : 'Copy'}</button
-						>
-					</div>
-				</div>
+				<p class="text-sm text-[var(--gkc-text-muted)]">
+					This device is linked. Connect another device with a one-time code that expires in 60
+					seconds.
+				</p>
 				{#if syncStore.progress}
 					{@const progress = syncStore.progress}
 					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
@@ -336,8 +324,7 @@
 					</div>
 				{/if}
 				<div class="rounded-lg bg-black/5 p-3 text-xs text-[var(--gkc-text-muted)] dark:bg-white/5">
-					Start connection on both devices within 60 seconds. The server only relays anonymous
-					encrypted handshakes.
+					Each connection uses a fresh code. The durable sync secret never appears on screen.
 				</div>
 				<button
 					type="button"
@@ -412,8 +399,8 @@
 		{:else if mode === 'register'}
 			<div class="space-y-3">
 				<p class="text-sm text-[var(--gkc-text-muted)]">
-					A private code like <strong>1234-5678-901234</strong> is generated here. The server never stores
-					it.
+					Creates a private account on this device. Other devices join with a one-time code, not a
+					lifetime password.
 				</p>
 				{#if error}<p class="text-sm text-red-600">{error}</p>{/if}<button
 					type="button"
@@ -430,16 +417,16 @@
 		{:else if mode === 'link'}
 			<div class="space-y-3">
 				<p class="text-sm text-[var(--gkc-text-muted)]">
-					Enter the sync key from your existing device. Then start Connect another device there
-					within 60 seconds.
+					On your other device open Sync and choose Connect another device. Enter the one-time code
+					shown there.
 				</p>
 				<input
 					value={code}
 					oninput={formatInput}
-					inputmode="numeric"
 					autocomplete="one-time-code"
-					placeholder="1234-5678-901234"
-					maxlength="16"
+					placeholder="XXXX-XXXX-XXXX-XXXX"
+					maxlength="19"
+					spellcheck="false"
 					class="w-full rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-bg)] px-3 py-2 text-center text-lg font-bold tracking-wider"
 					onkeydown={(event) => event.key === 'Enter' && void beginLink()}
 				/>{#if error}<p class="text-sm text-red-600">{error}</p>{/if}<button
@@ -458,9 +445,28 @@
 			<div class="space-y-4 text-center">
 				<div class="rounded-lg bg-blue-500/5 p-4">
 					<p class="font-medium">Waiting for your other device</p>
-					<p class="mt-2 text-sm text-[var(--gkc-text-muted)]">
-						Open Sync there and choose Connect another device.
-					</p>
+					{#if waiting?.role === 'existing'}
+						<p class="mt-2 text-sm text-[var(--gkc-text-muted)]">
+							Enter this one-time code on the new device.
+						</p>
+						<div class="mt-3 flex items-center justify-center gap-2">
+							<code class="text-lg font-bold tracking-wider"
+								>{formatPairingCode(waiting.syncCode)}</code
+							>
+							<button
+								type="button"
+								onclick={() => void copyCode()}
+								class="shrink-0 rounded px-2 py-1 text-xs font-medium touch-manipulation {copyFlash
+									? 'bg-green-600 text-white'
+									: 'text-[var(--gkc-text-muted)] hover:bg-black/10 dark:hover:bg-white/10'}"
+								>{copyFlash ? 'Copied' : 'Copy'}</button
+							>
+						</div>
+					{:else}
+						<p class="mt-2 text-sm text-[var(--gkc-text-muted)]">
+							On the other device open Sync and choose Connect another device.
+						</p>
+					{/if}
 					<p class="mt-3 text-2xl font-semibold text-blue-600 tabular-nums">{secondsLeft()}s</p>
 				</div>
 				<p class="text-xs text-[var(--gkc-text-muted)]">

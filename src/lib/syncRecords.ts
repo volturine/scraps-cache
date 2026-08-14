@@ -172,7 +172,7 @@ export async function buildSyncRecords(
 	const values: { key: string; payload: SyncRecordPayload }[] = [];
 	const seenAttachments = new Set<string>();
 
-	for (const note of notes.filter((item) => (Number(tombstones[item.id]) || 0) < item.updatedAt)) {
+	for (const note of notes.filter((item) => !(Number(tombstones[item.id]) || 0))) {
 		const noteKey = `note:${note.id}`;
 		const wantsNote = !onlyKeys || onlyKeys.has(noteKey);
 		const wantsAttachment =
@@ -191,15 +191,11 @@ export async function buildSyncRecords(
 		}
 	}
 
-	for (const label of labels.filter(
-		(item) => (Number(labelTombstones[item.id]) || 0) < item.updatedAt
-	)) {
+	for (const label of labels.filter((item) => !(Number(labelTombstones[item.id]) || 0))) {
 		if (onlyKeys && !onlyKeys.has(`label:${label.id}`)) continue;
 		values.push({ key: `label:${label.id}`, payload: { kind: 'label', value: label } });
 	}
-	for (const board of boards.filter(
-		(item) => (Number(boardTombstones[item.id]) || 0) < item.updatedAt
-	)) {
+	for (const board of boards.filter((item) => !(Number(boardTombstones[item.id]) || 0))) {
 		if (onlyKeys && !onlyKeys.has(`board:${board.id}`)) continue;
 		values.push({ key: `board:${board.id}`, payload: { kind: 'board', value: board } });
 	}
@@ -267,7 +263,23 @@ function isAttachment(value: unknown): value is SyncAttachment {
 
 function isSyncNote(value: unknown): value is SyncNote {
 	if (!versioned(value)) return false;
-	const note = value as { images?: unknown };
+	const note = value as {
+		title?: unknown;
+		body?: unknown;
+		color?: unknown;
+		pinned?: unknown;
+		archived?: unknown;
+		trashed?: unknown;
+		createdAt?: unknown;
+		labels?: unknown;
+		images?: unknown;
+	};
+	if (typeof note.title !== 'string' || typeof note.body !== 'string') return false;
+	if (typeof note.color !== 'string') return false;
+	if (typeof note.pinned !== 'boolean' || typeof note.archived !== 'boolean') return false;
+	if (typeof note.trashed !== 'boolean') return false;
+	if (typeof note.createdAt !== 'number' || !Number.isFinite(note.createdAt)) return false;
+	if (note.labels != null && !Array.isArray(note.labels)) return false;
 	if (note.images == null) return true;
 	return (
 		Array.isArray(note.images) &&
@@ -276,6 +288,7 @@ function isSyncNote(value: unknown): value is SyncNote {
 				isImageRef(image) ||
 				(object(image) &&
 					typeof image.id === 'string' &&
+					typeof image.mime === 'string' &&
 					typeof (image as { dataUrl?: unknown }).dataUrl === 'string')
 		)
 	);
@@ -286,7 +299,13 @@ export function isSyncRecordPayload(value: unknown): value is SyncRecordPayload 
 	if (!object(value) || typeof value.kind !== 'string') return false;
 	if (value.kind === 'note') return isSyncNote(value.value);
 	if (value.kind === 'attachment') return isAttachment(value.value);
-	if ((value.kind === 'label' || value.kind === 'board') && versioned(value.value)) return true;
+	if (value.kind === 'label') {
+		return versioned(value.value) && typeof (value.value as { name?: unknown }).name === 'string';
+	}
+	if (value.kind === 'board') {
+		const board = value.value as { name?: unknown; columns?: unknown };
+		return versioned(value.value) && typeof board.name === 'string' && Array.isArray(board.columns);
+	}
 	const tombstone = value as { id?: unknown; deletedAt?: unknown };
 	return (
 		(value.kind === 'note-tombstone' ||

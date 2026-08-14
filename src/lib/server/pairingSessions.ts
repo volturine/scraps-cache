@@ -19,7 +19,10 @@ type Session = PairingParticipant & {
 /** Anonymous 60-second meet-in-the-middle relay. It has no account, device, or user identity. */
 export class PairingSessions {
 	private readonly sessions = new Map<string, Session>();
-	constructor(private readonly createId: () => string = randomUUID) {}
+	constructor(
+		private readonly createId: () => string = randomUUID,
+		private readonly maxSessions = 2_000
+	) {}
 
 	start(
 		codeTag: string,
@@ -28,6 +31,9 @@ export class PairingSessions {
 		now = Date.now()
 	): PairingParticipant {
 		this.prune(now);
+		if (this.sessions.size >= this.maxSessions) {
+			throw new Error('Pairing rendezvous is busy');
+		}
 		const id = this.createId(),
 			expiresAt = now + 60_000;
 		const session: Session = { id, role, codeTag, publicKey, expiresAt, peerId: null, grant: null };

@@ -5,7 +5,8 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const CODE_DIGITS = 14;
+const PAIRING_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const PAIRING_CODE_LENGTH = 16;
 export type SyncIdentity = {
 	syncKey: string;
 	accountId: string;
@@ -30,13 +31,33 @@ function secureBytes(length: number): Uint8Array {
 	crypto.getRandomValues(bytes);
 	return bytes;
 }
-export function normalizePairingCode(value: string): string | null {
-	const digits = value.replace(/\D/g, '');
-	return digits.length === CODE_DIGITS ? digits : null;
+function canonicalizePairingChar(char: string): string {
+	const upper = char.toUpperCase();
+	if (upper === 'O') return '0';
+	if (upper === 'I' || upper === 'L') return '1';
+	return upper;
 }
+
+export function normalizePairingCode(value: string): string | null {
+	const cleaned = [...value]
+		.map(canonicalizePairingChar)
+		.filter((char) => PAIRING_ALPHABET.includes(char))
+		.join('');
+	return cleaned.length === PAIRING_CODE_LENGTH ? cleaned : null;
+}
+
 export function formatPairingCode(value: string): string {
-	const digits = value.replace(/\D/g, '').slice(0, CODE_DIGITS);
-	return [digits.slice(0, 4), digits.slice(4, 8), digits.slice(8)].filter(Boolean).join('-');
+	const cleaned = [...value]
+		.map(canonicalizePairingChar)
+		.filter((char) => PAIRING_ALPHABET.includes(char))
+		.join('')
+		.slice(0, PAIRING_CODE_LENGTH);
+	return cleaned.match(/.{1,4}/g)?.join('-') ?? cleaned;
+}
+
+export function createOneTimePairingCode(): string {
+	const bytes = secureBytes(PAIRING_CODE_LENGTH);
+	return [...bytes].map((byte) => PAIRING_ALPHABET[byte & 31]).join('');
 }
 export function identityFromSyncKey(syncKey: string): SyncIdentity {
 	const raw = base64UrlToBytes(syncKey);
@@ -45,14 +66,11 @@ export function identityFromSyncKey(syncKey: string): SyncIdentity {
 		sha256(encoder.encode(`shard-account-id:v1:${syncKey}`)).slice(0, 18)
 	);
 	const authSecret = bytesToBase64Url(sha256(encoder.encode(`shard-account-auth:v1:${syncKey}`)));
-	const codeValue = BigInt(
-		`0x${bytesToHex(sha256(encoder.encode(`shard-pairing-code:v1:${syncKey}`)).slice(0, 8))}`
-	);
 	return {
 		syncKey,
 		accountId,
 		authSecret,
-		pairingCode: (codeValue % 100_000_000_000_000n).toString().padStart(CODE_DIGITS, '0')
+		pairingCode: ''
 	};
 }
 export function createSyncIdentity(): SyncIdentity {
@@ -63,12 +81,12 @@ export function randomOpaqueId(): string {
 }
 export function pairingCodeTag(code: string): string {
 	const normalized = normalizePairingCode(code);
-	if (!normalized) throw new Error('Sync key must contain 14 digits');
+	if (!normalized) throw new Error('Pairing code is invalid');
 	return bytesToHex(sha256(encoder.encode(`shard-pairing-tag:v1:${normalized}`)));
 }
 function pakeInputs(code: string) {
 	const normalized = normalizePairingCode(code);
-	if (!normalized) throw new Error('Sync key must contain 14 digits');
+	if (!normalized) throw new Error('Pairing code is invalid');
 	const tag = pairingCodeTag(normalized);
 	return {
 		PRS: sha256(encoder.encode(`shard-pake-prs:v1:${normalized}`)),

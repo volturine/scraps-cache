@@ -24,18 +24,28 @@ function note(updatedAt: number, images: NoteImage[]): Note {
 	};
 }
 
-describe('mergeTwoNotes image hydration', () => {
-	it('repairs each missing image independently when equal versions are reconciled', () => {
-		const partial = note(10, [image('one', 'data:one')]);
-		const complete = note(10, [image('one', 'data:one'), image('two', 'data:two')]);
-
-		expect(mergeTwoNotes(partial, complete).images).toEqual(complete.images);
-	});
-
-	it('hydrates an empty matching payload without resurrecting images removed by a newer note', () => {
+describe('mergeTwoNotes', () => {
+	it('hydrates bytes for the winning image list without adding removed ids', () => {
 		const stored = note(10, [image('one', 'data:one'), image('removed', 'data:removed')]);
 		const newer = note(11, [image('one', '')]);
 
 		expect(mergeTwoNotes(newer, stored).images).toEqual([image('one', 'data:one')]);
+	});
+
+	it('keeps a newer body when the other device only changed pin', () => {
+		const edited = {
+			...note(10, []),
+			body: 'edited',
+			fieldTimes: { body: 20, pinned: 10 }
+		};
+		const pinned = {
+			...note(15, []),
+			body: '',
+			pinned: true,
+			fieldTimes: { body: 10, pinned: 15 }
+		};
+		const merged = mergeTwoNotes(edited, pinned);
+		expect(merged.body).toBe('edited');
+		expect(merged.pinned).toBe(true);
 	});
 });
