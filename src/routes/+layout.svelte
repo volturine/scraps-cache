@@ -44,6 +44,7 @@
 
 	let editingId = $state<string | null>(null);
 	let editorDismissTick = $state(0);
+	let editorFocusOnOpen = $state(false);
 
 	$effect(() => {
 		const dark = uiStore.effectiveDark;
@@ -57,6 +58,7 @@
 	});
 
 	function openEditor(id: string) {
+		editorFocusOnOpen = false;
 		editingId = id;
 	}
 
@@ -72,6 +74,7 @@
 			body: '',
 			labels
 		});
+		editorFocusOnOpen = true;
 		editingId = n.id;
 	}
 
@@ -143,7 +146,12 @@
 				</main>
 				<div class="app-float" data-app-float>
 					<BottomNav />
-					<NoteEditor noteId={editingId} dismissTick={editorDismissTick} onClose={closeEditor} />
+					<NoteEditor
+						noteId={editingId}
+						dismissTick={editorDismissTick}
+						focusOnOpen={editorFocusOnOpen}
+						onClose={closeEditor}
+					/>
 				</div>
 			</div>
 		</div>

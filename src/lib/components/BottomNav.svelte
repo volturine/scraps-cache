@@ -6,7 +6,7 @@
 </script>
 
 <!-- Floating + button — bottom right on every device -->
-<div class="fixed z-10 bottom-[var(--app-fab-bottom)] right-6">
+<div class="new-note-fab fixed z-[60] bottom-[var(--app-fab-bottom)] right-6">
 	<button
 		type="button"
 		onclick={startNewNote}

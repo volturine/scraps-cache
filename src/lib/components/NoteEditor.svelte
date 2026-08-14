@@ -20,10 +20,12 @@
 	let {
 		noteId = $bindable(),
 		dismissTick = 0,
+		focusOnOpen = false,
 		onClose
 	}: {
 		noteId: string | null;
 		dismissTick?: number;
+		focusOnOpen?: boolean;
 		onClose: () => void;
 	} = $props();
 
@@ -69,7 +71,7 @@
 			images = noteAttachments(note).map((attachment) => ({ ...attachment }));
 			taskFocusLine = null;
 			draftDirty = false;
-			focusBodySignal++;
+			if (focusOnOpen) focusBodySignal++;
 		}
 	});
 
