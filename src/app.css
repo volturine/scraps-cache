@@ -30,6 +30,13 @@
 	--app-inset-left: env(safe-area-inset-left, 0px);
 	--app-keyboard-top: 0px;
 	--app-keyboard-bottom: 0px;
+	--app-topbar-height: 3.5rem;
+}
+
+@media (min-width: 640px) {
+	:root {
+		--app-topbar-height: 4rem;
+	}
 }
 
 .dark {
@@ -69,7 +76,7 @@ html.editor-open body {
 	overflow: hidden;
 	overscroll-behavior: none;
 }
-html.editor-open .app-shell,
+html.editor-open .app-canvas > main,
 html.editor-open .new-note-fab {
 	pointer-events: none;
 }
@@ -100,7 +107,7 @@ html.editor-open .app-shell .scrollable {
 	isolation: isolate;
 }
 
-/* Keyboard-aware overlay host. Screens and future chrome render into this. */
+/* Overlay host for the canvas below the header. */
 .app-float {
 	position: absolute;
 	inset: var(--app-keyboard-top) 0 var(--app-keyboard-bottom);

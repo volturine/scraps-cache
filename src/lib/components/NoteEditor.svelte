@@ -19,9 +19,11 @@
 
 	let {
 		noteId = $bindable(),
+		dismissTick = 0,
 		onClose
 	}: {
 		noteId: string | null;
+		dismissTick?: number;
 		onClose: () => void;
 	} = $props();
 
@@ -52,6 +54,12 @@
 	);
 
 	let syncedId: string | null = null;
+	let seenDismissTick = 0;
+	$effect(() => {
+		if (dismissTick === seenDismissTick) return;
+		seenDismissTick = dismissTick;
+		if (isOpen) void close();
+	});
 	$effect(() => {
 		if (!note) return;
 		if (syncedId !== note.id) {
@@ -284,7 +292,7 @@
 		}}
 	>
 		<div
-			class="absolute inset-0 flex items-start justify-center p-4 md:items-center"
+			class="absolute inset-0 flex items-start justify-center px-4 pb-[var(--app-topbar-height)] md:items-center"
 			role="presentation"
 		>
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->

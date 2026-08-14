@@ -43,6 +43,7 @@
 	});
 
 	let editingId = $state<string | null>(null);
+	let editorDismissTick = $state(0);
 
 	$effect(() => {
 		const dark = uiStore.effectiveDark;
@@ -74,7 +75,12 @@
 		editingId = n.id;
 	}
 
-	provideEditorActions({ openNote: openEditor, startNewNote });
+	function requestCloseEditor() {
+		if (editingId === null) return;
+		editorDismissTick += 1;
+	}
+
+	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: requestCloseEditor });
 
 	// Toggle editor-open class on <html> for compositing isolation.
 	$effect(() => {
@@ -127,15 +133,19 @@
 			{/if}
 		{/if}
 
-		<div class="flex min-w-0 min-h-0 flex-1 flex-col">
+		<div class="flex min-h-0 min-w-0 flex-1 flex-col">
 			<Topbar />
-			<main class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6">
-				{@render children()}
-			</main>
+			<div class="app-canvas relative min-h-0 min-w-0 flex-1">
+				<main
+					class="scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+				>
+					{@render children()}
+				</main>
+				<div class="app-float" data-app-float>
+					<BottomNav />
+					<NoteEditor noteId={editingId} dismissTick={editorDismissTick} onClose={closeEditor} />
+				</div>
+			</div>
 		</div>
-	</div>
-	<div class="app-float" data-app-float>
-		<BottomNav />
-		<NoteEditor noteId={editingId} onClose={closeEditor} />
 	</div>
 </div>

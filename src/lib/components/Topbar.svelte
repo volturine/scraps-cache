@@ -26,7 +26,7 @@
 		X
 	} from '@lucide/svelte';
 
-	const { startNewNote } = useEditorActions();
+	const { startNewNote, closeNote } = useEditorActions();
 
 	let fileInputEl: HTMLInputElement | null = $state(null);
 	let settingsOpen = $state(false);
@@ -140,7 +140,11 @@
 	}
 </script>
 
-<header class="flex h-14 shrink-0 items-center gap-1 px-2 sm:h-16 sm:gap-2 sm:px-3">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<header
+	class="relative z-20 flex h-[var(--app-topbar-height)] shrink-0 items-center gap-1 px-2 sm:gap-2 sm:px-3"
+	onpointerdown={closeNote}
+>
 	<button
 		class="icon-btn h-10 w-10 p-2"
 		title="Toggle sidebar"
