@@ -43,16 +43,24 @@ export function keyboardOcclusion(options: {
 	visualTop: number;
 	visualHeight: number;
 	layoutHeight: number;
+	restingLayoutHeight?: number;
 	safe: Insets;
 }): { top: number; bottom: number } {
-	if (!isKeyboardOccluding(options) || options.visualHeight <= 0) {
+	if (!options.fieldFocused || options.visualHeight <= 0) {
+		return { top: 0, bottom: 0 };
+	}
+	// The window already shrank with the keyboard. Another inset would
+	// leave a gap the size of the keyboard.
+	const resting = options.restingLayoutHeight ?? 0;
+	if (resting > 0 && options.layoutHeight < resting - KEYBOARD_HEIGHT_THRESHOLD_PX) {
+		return { top: 0, bottom: 0 };
+	}
+	if (!isKeyboardOccluding(options)) {
 		return { top: 0, bottom: 0 };
 	}
 	const visualBottom = options.visualTop + options.visualHeight;
 	return {
 		top: Math.max(0, options.visualTop - options.safe.top),
-		// Viewport is flush with the screen bottom (no home-indicator strip).
-		// Only raise overlays when the keyboard actually overlays the layout.
 		bottom: Math.max(0, options.layoutHeight - visualBottom)
 	};
 }
@@ -100,15 +108,16 @@ function setInsetVar(name: string, value: number) {
 export function attachAppViewport(_node: HTMLElement) {
 	let cachedSafe: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 	let fieldFocused = isKeyboardField(document.activeElement);
+	let restingLayoutHeight = window.innerHeight;
 
 	const apply = () => {
 		const viewport = window.visualViewport;
 		const visualHeight = viewport?.height ?? window.innerHeight;
 		const visualTop = viewport?.offsetTop ?? 0;
-		// Use the current layout viewport, not a ratcheted max. WKWebView often
-		// resizes innerHeight with the keyboard; comparing against a historical
-		// max would double-count that resize and leave a huge gap.
 		const layoutHeight = window.innerHeight;
+		if (!fieldFocused) {
+			restingLayoutHeight = Math.max(layoutHeight, visualHeight);
+		}
 
 		const occluding = isKeyboardOccluding({
 			fieldFocused,
@@ -121,9 +130,11 @@ export function attachAppViewport(_node: HTMLElement) {
 			visualTop,
 			visualHeight,
 			layoutHeight,
+			restingLayoutHeight,
 			safe: cachedSafe
 		});
 
+		document.documentElement.classList.toggle('keyboard-open', fieldFocused);
 		setInsetVar('--app-inset-top', cachedSafe.top);
 		setInsetVar('--app-inset-right', cachedSafe.right);
 		setInsetVar('--app-inset-left', cachedSafe.left);
@@ -155,6 +166,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		window.removeEventListener('resize', apply);
 		document.removeEventListener('focusin', onFocusIn);
 		document.removeEventListener('focusout', onFocusOut);
+		document.documentElement.classList.remove('keyboard-open');
 	};
 }
 

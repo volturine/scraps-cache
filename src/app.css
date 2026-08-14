@@ -31,6 +31,11 @@
 	--app-keyboard-top: 0px;
 	--app-keyboard-bottom: 0px;
 	--app-topbar-height: 3.5rem;
+	--app-sheet-pad-bottom: var(--app-topbar-height);
+}
+
+html.keyboard-open {
+	--app-sheet-pad-bottom: 0.5rem;
 }
 
 @media (min-width: 640px) {

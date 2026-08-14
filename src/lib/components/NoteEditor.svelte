@@ -292,7 +292,7 @@
 		}}
 	>
 		<div
-			class="absolute inset-0 flex items-start justify-center px-4 pb-[var(--app-topbar-height)] md:items-center"
+			class="absolute inset-0 flex items-start justify-center px-4 pb-[var(--app-sheet-pad-bottom)] md:items-center"
 			role="presentation"
 		>
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->

@@ -39,6 +39,7 @@ describe('keyboardOcclusion', () => {
 				visualTop: 0,
 				visualHeight: 500,
 				layoutHeight: 500,
+				restingLayoutHeight: 844,
 				safe
 			})
 		).toEqual({ top: 0, bottom: 0 });
