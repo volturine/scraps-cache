@@ -31,7 +31,9 @@
 	--app-keyboard-top: 0px;
 	--app-keyboard-bottom: 0px;
 	--app-topbar-height: 3.5rem;
-	--app-sheet-pad-bottom: var(--app-topbar-height);
+	--app-fab-bottom: 2rem;
+	--app-fab-size: 3.5rem;
+	--app-sheet-pad-bottom: calc(var(--app-fab-bottom) + var(--app-fab-size));
 }
 
 html.keyboard-open {

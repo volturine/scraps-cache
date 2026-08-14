@@ -6,11 +6,11 @@
 </script>
 
 <!-- Floating + button — bottom right on every device -->
-<div class="fixed z-10 bottom-8 right-6">
+<div class="fixed z-10 bottom-[var(--app-fab-bottom)] right-6">
 	<button
 		type="button"
 		onclick={startNewNote}
-		class="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-surface)] shadow-lg"
+		class="flex h-[var(--app-fab-size)] w-[var(--app-fab-size)] items-center justify-center rounded-full border border-[var(--gkc-border)] bg-[var(--gkc-surface)] shadow-lg"
 		aria-label="New note"
 		title="New note"
 	>
