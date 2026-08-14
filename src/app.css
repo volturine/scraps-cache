@@ -39,9 +39,11 @@
 html.keyboard-open {
 	--app-sheet-pad-bottom: 0.5rem;
 }
-html.keyboard-open .new-note-fab {
-	visibility: hidden;
-	pointer-events: none;
+@media (max-width: 767px) {
+	html.keyboard-open .new-note-fab {
+		visibility: hidden;
+		pointer-events: none;
+	}
 }
 
 @media (min-width: 640px) {
