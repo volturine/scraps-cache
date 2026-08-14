@@ -13,6 +13,7 @@
 	import { onMount } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
+	import { attachAppViewport } from '$lib/appViewport';
 
 	let { children } = $props();
 	const mobile = new MediaQuery('max-width: 767px');
@@ -42,6 +43,8 @@
 	});
 
 	let editingId = $state<string | null>(null);
+	let editorDismissTick = $state(0);
+	let editorFocusOnOpen = $state(false);
 
 	$effect(() => {
 		const dark = uiStore.effectiveDark;
@@ -55,6 +58,7 @@
 	});
 
 	function openEditor(id: string) {
+		editorFocusOnOpen = false;
 		editingId = id;
 	}
 
@@ -70,10 +74,16 @@
 			body: '',
 			labels
 		});
+		editorFocusOnOpen = true;
 		editingId = n.id;
 	}
 
-	provideEditorActions({ openNote: openEditor, startNewNote });
+	function requestCloseEditor() {
+		if (editingId === null) return;
+		editorDismissTick += 1;
+	}
+
+	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: requestCloseEditor });
 
 	// Toggle editor-open class on <html> for compositing isolation.
 	$effect(() => {
@@ -94,45 +104,56 @@
 	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
-<div
-	class="app-shell flex w-screen overflow-hidden bg-[var(--gkc-bg)] text-[var(--gkc-text)]"
-	style="height: 100dvh;"
->
-	{#if mobile.current}
-		{#if uiStore.sidebarOpen}
-			<button
-				type="button"
-				aria-label="Close sidebar"
-				class="fixed inset-0 z-20 bg-black/30"
-				onclick={() => {
-					uiStore.sidebarOpen = false;
-				}}
-				transition:fade={{ duration: 150 }}
-			></button>
-			<div
-				class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--gkc-border)] bg-[var(--gkc-surface)] pt-[env(safe-area-inset-top,0px)] pl-[env(safe-area-inset-left,0px)]"
-				transition:fly={{ x: -288, duration: 200 }}
-				role="navigation"
-				aria-label="Sidebar"
-			>
-				<Sidebar onNavigate={closeMobileSidebar} />
-			</div>
+<div class="app-viewport" {@attach attachAppViewport}>
+	<div
+		class="app-shell flex h-full w-full overflow-hidden bg-[var(--gkc-bg)] text-[var(--gkc-text)]"
+	>
+		{#if mobile.current}
+			{#if uiStore.sidebarOpen}
+				<button
+					type="button"
+					aria-label="Close sidebar"
+					class="fixed inset-0 z-20 bg-black/30"
+					onclick={() => {
+						uiStore.sidebarOpen = false;
+					}}
+					transition:fade={{ duration: 150 }}
+				></button>
+				<div
+					class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--gkc-border)] bg-[var(--gkc-surface)]"
+					transition:fly={{ x: -288, duration: 200 }}
+					role="navigation"
+					aria-label="Sidebar"
+				>
+					<Sidebar onNavigate={closeMobileSidebar} />
+				</div>
+			{/if}
+		{:else}
+			{#if uiStore.sidebarOpen}
+				<div class="w-64 shrink-0 border-r border-[var(--gkc-border)]">
+					<Sidebar />
+				</div>
+			{/if}
 		{/if}
-	{:else}
-		{#if uiStore.sidebarOpen}
-			<div class="w-64 shrink-0 border-r border-[var(--gkc-border)]">
-				<Sidebar />
-			</div>
-		{/if}
-	{/if}
 
-	<div class="flex min-w-0 min-h-0 flex-1 flex-col">
-		<Topbar />
-		<main class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6">
-			{@render children()}
-		</main>
+		<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+			<Topbar />
+			<div class="app-canvas relative min-h-0 min-w-0 flex-1">
+				<main
+					class="scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+				>
+					{@render children()}
+				</main>
+				<div class="app-float" data-app-float>
+					<BottomNav />
+					<NoteEditor
+						noteId={editingId}
+						dismissTick={editorDismissTick}
+						focusOnOpen={editorFocusOnOpen}
+						onClose={closeEditor}
+					/>
+				</div>
+			</div>
+		</div>
 	</div>
 </div>
-
-<BottomNav />
-<NoteEditor noteId={editingId} onClose={closeEditor} />

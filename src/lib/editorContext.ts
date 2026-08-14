@@ -4,6 +4,7 @@ import { getContext, setContext } from 'svelte';
 export type EditorActions = {
 	openNote: (id: string) => void;
 	startNewNote: () => void;
+	closeNote: () => void;
 };
 
 const KEY = Symbol('editorActions');
@@ -15,7 +16,7 @@ export function provideEditorActions(actions: EditorActions): void {
 export function useEditorActions(): EditorActions {
 	const fn = getContext<EditorActions>(KEY);
 	if (!fn) {
-		return { openNote: () => {}, startNewNote: () => {} };
+		return { openNote: () => {}, startNewNote: () => {}, closeNote: () => {} };
 	}
 	return fn;
 }

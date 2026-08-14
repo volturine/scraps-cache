@@ -19,6 +19,10 @@
 		X,
 		type LucideIcon
 	} from '@lucide/svelte';
+	import { portalToAppFloat } from '$lib/appViewport';
+	import { useEditorActions } from '$lib/editorContext';
+
+	const { closeNote } = useEditorActions();
 
 	let { onNavigate }: { onNavigate?: () => void } = $props();
 	let labelsEditMode = $state(false);
@@ -59,6 +63,7 @@
 	function navigate(view: View, labelId: string | null = null) {
 		const target = destination(view, labelId);
 		if (!target) return;
+		closeNote();
 		uiStore.setView(view, labelId);
 		onNavigate?.();
 		if (target === page.url.pathname) return;
@@ -345,6 +350,7 @@
 
 {#if pendingDelete}
 	<div
+		{@attach portalToAppFloat}
 		class="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center"
 		role="presentation"
 		data-sidebar-stay-open

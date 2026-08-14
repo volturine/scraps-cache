@@ -2,6 +2,7 @@
 	import type { NoteImage } from '$lib/types';
 	import { dataUrlToBlob } from '$lib/imageBlob';
 	import { ChevronLeft } from '@lucide/svelte';
+	import { portalToAppFloat } from '$lib/appViewport';
 
 	let {
 		attachment = null,
@@ -26,9 +27,7 @@
 	);
 	const isPdf = $derived(mime === 'application/pdf');
 
-	function portal(node: HTMLElement) {
-		document.body.appendChild(node);
-	}
+	const portal = portalToAppFloat;
 
 	$effect(() => {
 		const dataUrl = attachment?.dataUrl;
@@ -83,7 +82,7 @@
 	<div {@attach portal}>
 		<div class="fixed inset-0 z-[80] flex flex-col bg-[var(--gkc-bg)] text-[var(--gkc-text)]">
 			<header
-				class="flex shrink-0 items-center gap-3 border-b border-[var(--gkc-border)] px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))]"
+				class="flex shrink-0 items-center gap-3 border-b border-[var(--gkc-border)] px-3 py-2"
 			>
 				<button
 					type="button"
