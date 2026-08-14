@@ -232,6 +232,14 @@
 	function secondsLeft() {
 		return waiting ? Math.max(0, Math.ceil((waiting.expiresAt - now) / 1000)) : 0;
 	}
+	function pairingGroups(value: string): string[] {
+		const formatted = formatPairingCode(value);
+		const parts = formatted.split('-').filter(Boolean);
+		return parts.length ? parts : [formatted];
+	}
+	function expiryRatio(): number {
+		return Math.max(0, Math.min(1, secondsLeft() / 60));
+	}
 	function formatInput(event: Event) {
 		code = formatPairingCode((event.currentTarget as HTMLInputElement).value);
 	}
@@ -319,8 +327,7 @@
 				>
 				{#if syncStore.usage}
 					<div class="text-center text-xs text-[var(--gkc-text-muted)]">
-						{formatBytes(syncStore.usage.ciphertextBytes)} encrypted · {syncStore.usage
-							.envelopeCount} records
+						{formatBytes(syncStore.usage.ciphertextBytes)} stored for this account
 					</div>
 				{/if}
 				<div class="rounded-lg bg-black/5 p-3 text-xs text-[var(--gkc-text-muted)] dark:bg-white/5">
@@ -442,36 +449,60 @@
 				>
 			</div>
 		{:else if mode === 'waiting'}
-			<div class="space-y-4 text-center">
-				<div class="rounded-lg bg-blue-500/5 p-4">
-					<p class="font-medium">Waiting for your other device</p>
-					{#if waiting?.role === 'existing'}
-						<p class="mt-2 text-sm text-[var(--gkc-text-muted)]">
-							Enter this one-time code on the new device.
+			<div class="space-y-5">
+				{#if waiting?.role === 'existing'}
+					<div>
+						<p class="text-xs font-medium tracking-wide text-[var(--gkc-text-muted)]">
+							On the new device
 						</p>
-						<div class="mt-3 flex items-center justify-center gap-2">
-							<code class="text-lg font-bold tracking-wider"
-								>{formatPairingCode(waiting.syncCode)}</code
-							>
-							<button
-								type="button"
-								onclick={() => void copyCode()}
-								class="shrink-0 rounded px-2 py-1 text-xs font-medium touch-manipulation {copyFlash
-									? 'bg-green-600 text-white'
-									: 'text-[var(--gkc-text-muted)] hover:bg-black/10 dark:hover:bg-white/10'}"
-								>{copyFlash ? 'Copied' : 'Copy'}</button
-							>
+						<p class="mt-1 text-sm text-[var(--gkc-text)]">Open Sync and type this code</p>
+					</div>
+					<div
+						class="rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-bg)] px-2 py-5"
+						aria-label="One-time pairing code"
+					>
+						<div class="flex items-center justify-center gap-1">
+							{#each pairingGroups(waiting.syncCode) as group, index (index)}
+								{#if index > 0}
+									<span class="px-0.5 text-[var(--gkc-text-muted)]" aria-hidden="true">·</span>
+								{/if}
+								<span
+									class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--gkc-text)]"
+									>{group}</span
+								>
+							{/each}
 						</div>
-					{:else}
-						<p class="mt-2 text-sm text-[var(--gkc-text-muted)]">
-							On the other device open Sync and choose Connect another device.
+					</div>
+					<button
+						type="button"
+						onclick={() => void copyCode()}
+						class="w-full rounded-lg border border-[var(--gkc-border)] px-3 py-2.5 text-sm font-medium touch-manipulation {copyFlash
+							? 'border-green-600 bg-green-600 text-white'
+							: 'text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/5'}"
+						>{copyFlash ? 'Copied' : 'Copy code'}</button
+					>
+				{:else}
+					<div>
+						<p class="text-xs font-medium tracking-wide text-[var(--gkc-text-muted)]">
+							On the other device
 						</p>
-					{/if}
-					<p class="mt-3 text-2xl font-semibold text-blue-600 tabular-nums">{secondsLeft()}s</p>
+						<p class="mt-1 text-sm text-[var(--gkc-text)]">
+							Open Sync and choose Connect another device
+						</p>
+					</div>
+				{/if}
+				<div class="space-y-1.5">
+					<div class="flex items-center justify-between text-xs text-[var(--gkc-text-muted)]">
+						<span>Expires in</span>
+						<span class="tabular-nums text-[var(--gkc-text)]">{secondsLeft()}s</span>
+					</div>
+					<div class="h-1 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+						<div
+							class="h-full rounded-full bg-blue-600 transition-[width] duration-1000 ease-linear"
+							style={`width: ${expiryRatio() * 100}%`}
+						></div>
+					</div>
 				</div>
-				<p class="text-xs text-[var(--gkc-text-muted)]">
-					Anonymous encrypted rendezvous — expires after 60 seconds.
-				</p>
 				<button
 					type="button"
 					onclick={() => {
@@ -479,7 +510,7 @@
 						waiting = null;
 						mode = syncStore.isLoggedIn ? 'linked' : 'link';
 					}}
-					class="text-xs text-[var(--gkc-text-muted)] touch-manipulation">Cancel</button
+					class="w-full text-sm text-[var(--gkc-text-muted)] touch-manipulation">Cancel</button
 				>
 			</div>
 		{:else if mode === 'choice'}
