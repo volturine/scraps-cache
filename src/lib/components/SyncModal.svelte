@@ -5,6 +5,7 @@
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Cloud, X } from '@lucide/svelte';
+	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose }: { onClose: () => void } = $props();
 	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'choice' | 'linked'>(
@@ -250,6 +251,7 @@
 </script>
 
 <div
+	{@attach portalToAppFloat}
 	class="fixed inset-0 z-50 flex items-center justify-center p-4"
 	transition:fade={{ duration: 150 }}
 >

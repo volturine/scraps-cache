@@ -19,6 +19,7 @@
 		X,
 		type LucideIcon
 	} from '@lucide/svelte';
+	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onNavigate }: { onNavigate?: () => void } = $props();
 	let labelsEditMode = $state(false);
@@ -345,6 +346,7 @@
 
 {#if pendingDelete}
 	<div
+		{@attach portalToAppFloat}
 		class="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center"
 		role="presentation"
 		data-sidebar-stay-open

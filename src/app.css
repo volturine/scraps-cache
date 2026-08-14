@@ -22,6 +22,14 @@
 	--gkc-text: #202124;
 	--gkc-text-muted: #5f6368;
 	--gkc-border: #e0e0e0;
+
+	/* Published by attachAppViewport(); CSS env() is the pre-JS default. */
+	--app-inset-top: env(safe-area-inset-top, 0px);
+	--app-inset-right: env(safe-area-inset-right, 0px);
+	--app-inset-bottom: env(safe-area-inset-bottom, 0px);
+	--app-inset-left: env(safe-area-inset-left, 0px);
+	--app-keyboard-top: 0px;
+	--app-keyboard-bottom: 0px;
 }
 
 .dark {
@@ -75,12 +83,35 @@ html.editor-open .app-shell .scrollable {
 	touch-action: none;
 }
 
-/* viewport-fit=cover + standalone PWA (HTTPS / installed). Safari chrome on
- * http://localhost already reserves the status bar, so this is 0 there. */
+/*
+ * Device safe area + software keyboard live only here. transform makes this
+ * the containing block for position:fixed descendants, so overlays cannot
+ * paint into the notch, home indicator, or keyboard.
+ */
+.app-viewport {
+	position: fixed;
+	top: var(--app-inset-top);
+	right: var(--app-inset-right);
+	bottom: var(--app-inset-bottom);
+	left: var(--app-inset-left);
+	transform: translate(0);
+	overflow: hidden;
+}
+
 .app-shell {
-	padding-top: env(safe-area-inset-top, 0px);
-	padding-left: env(safe-area-inset-left, 0px);
-	padding-right: env(safe-area-inset-right, 0px);
+	isolation: isolate;
+}
+
+/* Keyboard-aware overlay host. Screens and future chrome render into this. */
+.app-float {
+	position: absolute;
+	inset: var(--app-keyboard-top) 0 var(--app-keyboard-bottom);
+	z-index: 1;
+	transform: translate(0);
+	pointer-events: none;
+}
+.app-float > * {
+	pointer-events: auto;
 }
 
 html,

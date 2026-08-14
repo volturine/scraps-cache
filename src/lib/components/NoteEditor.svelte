@@ -44,23 +44,8 @@
 	let focusBodySignal = $state(0);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let editorScroller = $state<HTMLDivElement | null>(null);
-	let visualViewportHeight = $state(0);
-	let visualViewportTop = $state(0);
-	let layoutViewportHeight = $state(0);
-	let layoutViewportWidth = $state(0);
 	let revealFrame: number | null = null;
 	let lastTouchY = 0;
-
-	const keyboardVisible = $derived(
-		isOpen && visualViewportHeight > 0 && visualViewportHeight < layoutViewportHeight - 120
-	);
-	// Dim stays 200lvh so it covers the keyboard accessory. The sheet always
-	// follows the visual viewport: keyboard open → sits above the keys;
-	// keyboard closed in Safari → stays above the toolbar instead of 72lvh
-	// overflowing behind it. In standalone, visual viewport ≈ lvh so 72lvh is unchanged.
-	const editorSheetFrameStyle = $derived(
-		visualViewportHeight > 0 ? `top:${visualViewportTop}px;height:${visualViewportHeight}px;` : ''
-	);
 	const editorDialogClass = 'flex h-full w-full flex-col overflow-hidden rounded-2xl';
 	const editorDialogStyle = $derived(
 		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
@@ -93,7 +78,7 @@
 	}
 
 	function revealFocusedEditorField() {
-		if (!keyboardVisible || !editorDialog || !editorScroller) return;
+		if (!isOpen || !editorDialog || !editorScroller) return;
 		const focused = document.activeElement;
 		if (!(focused instanceof HTMLElement) || !editorDialog.contains(focused)) return;
 		const field = focused.closest(
@@ -103,15 +88,12 @@
 
 		const fieldRect = field.getBoundingClientRect();
 		const scrollerRect = editorScroller.getBoundingClientRect();
-		const visibleBottom = keyboardVisible
-			? Math.min(scrollerRect.bottom, visualViewportTop + visualViewportHeight)
-			: scrollerRect.bottom;
 		const padding = 12;
 		let nextTop = editorScroller.scrollTop;
 		if (fieldRect.top < scrollerRect.top + padding) {
 			nextTop += fieldRect.top - scrollerRect.top - padding;
-		} else if (fieldRect.bottom > visibleBottom - padding) {
-			nextTop += fieldRect.bottom - visibleBottom + padding;
+		} else if (fieldRect.bottom > scrollerRect.bottom - padding) {
+			nextTop += fieldRect.bottom - scrollerRect.bottom + padding;
 		}
 		editorScroller.scrollTop = Math.max(0, nextTop);
 	}
@@ -126,38 +108,14 @@
 
 	onMount(() => {
 		const viewport = window.visualViewport;
-		const updateViewport = () => {
-			const nextViewportHeight = viewport?.height ?? window.innerHeight;
-			visualViewportHeight = nextViewportHeight;
-			visualViewportTop = viewport?.offsetTop ?? 0;
-			// Keep an unoccluded baseline for the current orientation. It must never
-			// be overwritten by the keyboard-shrunken height during a focus handoff.
-			if (layoutViewportWidth !== window.innerWidth || layoutViewportHeight === 0) {
-				layoutViewportWidth = window.innerWidth;
-				layoutViewportHeight = Math.max(window.innerHeight, nextViewportHeight);
-			} else {
-				layoutViewportHeight = Math.max(
-					layoutViewportHeight,
-					window.innerHeight,
-					nextViewportHeight
-				);
-			}
-			queueFocusedEditorReveal();
-		};
-		updateViewport();
-		viewport?.addEventListener('resize', updateViewport);
-		viewport?.addEventListener('scroll', updateViewport);
-		window.addEventListener('resize', updateViewport);
+		const onViewportChange = () => queueFocusedEditorReveal();
+		viewport?.addEventListener('resize', onViewportChange);
+		viewport?.addEventListener('scroll', onViewportChange);
 		return () => {
-			viewport?.removeEventListener('resize', updateViewport);
-			viewport?.removeEventListener('scroll', updateViewport);
-			window.removeEventListener('resize', updateViewport);
+			viewport?.removeEventListener('resize', onViewportChange);
+			viewport?.removeEventListener('scroll', onViewportChange);
 			if (revealFrame !== null) cancelAnimationFrame(revealFrame);
 		};
-	});
-
-	$effect(() => {
-		if (keyboardVisible) queueFocusedEditorReveal();
 	});
 
 	function lockPageScroll() {
@@ -314,7 +272,7 @@
 
 {#if isOpen && note}
 	<div
-		class="fixed left-0 top-0 z-50 h-[200lvh] w-screen bg-transparent"
+		class="fixed inset-0 z-50"
 		role="presentation"
 		onclick={(e) => {
 			// Backdrop click always dismisses, including while a task is focused.
@@ -325,16 +283,10 @@
 			if (e.key === 'Escape') void close();
 		}}
 	>
-		<div
-			class="absolute left-0 right-0 flex h-[100lvh] items-center justify-center p-4"
-			style={editorSheetFrameStyle}
-			role="presentation"
-		>
+		<div class="absolute inset-0 flex items-center justify-center p-4" role="presentation">
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div
-				class="note-sheet-shadow h-[min(72lvh,100%)] max-h-full min-h-0 w-full max-w-2xl rounded-2xl"
-			>
+			<div class="note-sheet-shadow h-[72%] max-h-full min-h-0 w-full max-w-2xl rounded-2xl">
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}

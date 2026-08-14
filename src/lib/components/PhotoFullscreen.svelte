@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { NoteImage } from '$lib/types';
 	import { ChevronLeft, ChevronRight, X } from '@lucide/svelte';
+	import { portalToAppFloat } from '$lib/appViewport';
 
 	let {
 		images,
@@ -23,9 +24,7 @@
 		}, 1800);
 	}
 
-	function portal(node: HTMLElement) {
-		document.body.appendChild(node);
-	}
+	const portal = portalToAppFloat;
 
 	function close() {
 		if (controlsTimer) clearTimeout(controlsTimer);
@@ -89,7 +88,7 @@
 			<img
 				src={images[activeIndex].dataUrl}
 				alt={images[activeIndex].name ?? 'Photo'}
-				class="pointer-events-auto max-h-[100dvh] max-w-full select-none object-contain"
+				class="pointer-events-auto max-h-full max-w-full select-none object-contain"
 				decoding="async"
 				draggable="false"
 			/>
@@ -97,7 +96,7 @@
 		{#if controlsVisible}
 			<button
 				type="button"
-				class="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-[90] grid h-9 w-9 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation"
+				class="fixed right-4 top-4 z-[90] grid h-9 w-9 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation"
 				onclick={close}
 				aria-label="Close photo"
 			>
