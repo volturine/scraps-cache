@@ -81,6 +81,14 @@ export function rememberSafeArea(
 	};
 }
 
+export function appBottomInset(
+	safeBottom: number,
+	onPhone: boolean,
+	fieldFocused: boolean
+): number {
+	return onPhone && fieldFocused ? 0 : safeBottom;
+}
+
 export function readSafeAreaInsets(): Insets {
 	if (typeof document === 'undefined') return { top: 0, right: 0, bottom: 0, left: 0 };
 	const probe = document.createElement('div');
@@ -145,6 +153,9 @@ export function attachAppViewport(_node: HTMLElement) {
 		document.documentElement.classList.toggle('keyboard-open', onPhone && fieldFocused);
 		setInsetVar('--app-inset-top', cachedSafe.top);
 		setInsetVar('--app-inset-right', cachedSafe.right);
+		// Keep installed iPhone and iPad controls above the home indicator. When
+		// the phone keyboard is active, its own occlusion replaces this inset.
+		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, fieldFocused));
 		setInsetVar('--app-inset-left', cachedSafe.left);
 		setInsetVar('--app-keyboard-top', occlusion.top);
 		setInsetVar('--app-keyboard-bottom', occlusion.bottom);

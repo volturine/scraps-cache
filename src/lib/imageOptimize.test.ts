@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitImageDimensions, optimizedImageName } from './imageOptimize';
+import { fitImageDimensions, imageOptimizationRecipe, optimizedImageName } from './imageOptimize';
 
 describe('image optimization geometry', () => {
 	it('fits landscape and portrait images without upscaling', () => {
@@ -16,5 +16,14 @@ describe('image optimization geometry', () => {
 	it('uses a privacy-preserving re-encoded filename', () => {
 		expect(optimizedImageName('holiday.HEIC')).toBe('holiday.webp');
 		expect(optimizedImageName('image')).toBe('image.webp');
+	});
+
+	it('uses a text-legible compressed size and a larger HD recipe', () => {
+		const compressed = imageOptimizationRecipe('compressed');
+		const hd = imageOptimizationRecipe('hd');
+		expect(compressed.maxLongEdge).toBeGreaterThanOrEqual(1600);
+		expect(compressed.maxLongEdge).toBeLessThan(hd.maxLongEdge);
+		expect(compressed.targetBytes).toBeLessThan(hd.targetBytes);
+		expect(compressed.encodingVersion).not.toBe(hd.encodingVersion);
 	});
 });

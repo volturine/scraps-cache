@@ -46,7 +46,7 @@
 	/* Published by attachAppViewport(); CSS env() is the pre-JS default. */
 	--app-inset-top: env(safe-area-inset-top, 0px);
 	--app-inset-right: env(safe-area-inset-right, 0px);
-	--app-inset-bottom: 0px;
+	--app-inset-bottom: env(safe-area-inset-bottom, 0px);
 	--app-inset-left: env(safe-area-inset-left, 0px);
 	--app-keyboard-top: 0px;
 	--app-keyboard-bottom: 0px;
@@ -149,7 +149,7 @@ html.editor-open .app-shell {
 	position: fixed;
 	top: var(--app-inset-top);
 	right: var(--app-inset-right);
-	bottom: 0;
+	bottom: var(--app-inset-bottom);
 	left: var(--app-inset-left);
 	transform: translate(0);
 	overflow: hidden;

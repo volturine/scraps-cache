@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
 	APP_FLOAT_SELECTOR,
 	APP_OVERLAY_SELECTOR,
+	appBottomInset,
 	isKeyboardField,
 	isKeyboardOccluding,
 	keyboardOcclusion,
@@ -12,6 +13,18 @@ import {
 } from './appViewport';
 
 const safe = { top: 59, right: 0, bottom: 34, left: 0 };
+
+describe('appBottomInset', () => {
+	it('keeps the home-indicator safe area on iPad-sized layouts', () => {
+		expect(appBottomInset(20, false, false)).toBe(20);
+		expect(appBottomInset(20, false, true)).toBe(20);
+	});
+
+	it('lets the phone keyboard replace the home-indicator inset', () => {
+		expect(appBottomInset(34, true, true)).toBe(0);
+		expect(appBottomInset(34, true, false)).toBe(34);
+	});
+});
 
 describe('isKeyboardOccluding', () => {
 	it('is false when no field is focused, even if the visual viewport is short', () => {
