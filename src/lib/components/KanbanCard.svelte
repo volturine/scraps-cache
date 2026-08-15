@@ -203,7 +203,9 @@
 			</div>
 		{/if}
 		{#if note.title}
-			<h3 class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--shard-text)]">
+			<h3
+				class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--shard-text)]"
+			>
 				{note.title}
 			</h3>
 		{/if}

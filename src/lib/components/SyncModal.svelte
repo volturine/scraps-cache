@@ -332,7 +332,9 @@
 						{formatBytes(syncStore.usage.ciphertextBytes)} stored for this account
 					</div>
 				{/if}
-				<div class="rounded-lg bg-black/5 p-3 text-xs text-[var(--shard-text-muted)] dark:bg-white/5">
+				<div
+					class="rounded-lg bg-black/5 p-3 text-xs text-[var(--shard-text-muted)] dark:bg-white/5"
+				>
 					Each connection uses a fresh code. The durable sync secret never appears on screen.
 				</div>
 				<button
