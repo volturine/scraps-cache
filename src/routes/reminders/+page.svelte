@@ -5,7 +5,7 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { notificationPermission, requestReminderPermission } from '$lib/reminderNotify';
-	import { ensurePushSubscription } from '$lib/reminderWake';
+	import { registerReminderDevice, reminderPushSupported } from '$lib/reminderWake';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { AlarmClock } from '@lucide/svelte';
 
@@ -16,12 +16,44 @@
 
 	async function enableNotifications() {
 		permission = await requestReminderPermission();
-		await ensurePushSubscription();
-		reminderStore.sync(notesStore.notes);
+		if (permission === 'granted' && (await registerReminderDevice())) {
+			reminderStore.publish(notesStore.notes);
+		}
 	}
 </script>
 
 <div class="pt-4 pb-8">
+	<div class={shell}>
+		{#if permission === 'default'}
+			<div
+				class="mb-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-3 py-2.5"
+			>
+				<p class="text-xs text-[var(--gkc-text-muted)]">
+					Enable notifications on this device. Background alerts also require Sync.
+				</p>
+				<button
+					type="button"
+					class="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+					onclick={() => void enableNotifications()}
+				>
+					Enable
+				</button>
+			</div>
+		{:else if permission === 'denied'}
+			<p
+				class="mb-3 rounded-xl border border-[var(--gkc-border)] px-3 py-2.5 text-xs text-[var(--gkc-text-muted)]"
+			>
+				Notifications are blocked for Shard. Enable them in this browser’s site settings.
+			</p>
+		{:else if permission === 'unsupported' || !reminderPushSupported()}
+			<p
+				class="mb-3 rounded-xl border border-[var(--gkc-border)] px-3 py-2.5 text-xs text-[var(--gkc-text-muted)]"
+			>
+				This browser cannot receive background reminders. On iPhone or iPad, add Shard to the Home
+				Screen and open it there.
+			</p>
+		{/if}
+	</div>
 	{#if reminders.length === 0}
 		<EmptyState
 			icon={AlarmClock}
@@ -36,22 +68,6 @@
 			>
 				Reminders
 			</h2>
-			{#if permission === 'default'}
-				<div
-					class="mb-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-3 py-2.5"
-				>
-					<p class="text-xs text-[var(--gkc-text-muted)]">
-						Allow notifications. Closed-app alerts also need Sync on this device.
-					</p>
-					<button
-						type="button"
-						class="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-						onclick={() => void enableNotifications()}
-					>
-						Enable
-					</button>
-				</div>
-			{/if}
 		</div>
 		<NotesFeed notes={reminders} onOpen={openEditor} />
 	{/if}

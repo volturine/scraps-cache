@@ -55,19 +55,21 @@ export class WakeScheduler {
 		let failed = false;
 		try {
 			const now = this.now();
-			const due = this.store().duePushDevices(now);
+			const due = this.store().claimDueWakes(now);
 			for (const device of due) {
 				const result = await this.send(device);
 				if (result === 'failed') {
+					this.store().releaseWakeClaim(device);
+					recordReminderWake('failed');
 					failed = true;
 					continue;
 				}
 				if (result === 'gone') {
-					this.store().deletePushDevice(device.deviceId);
+					this.store().deletePushDevice(device.accountId, device.deviceId);
 					recordReminderWake('gone');
 					continue;
 				}
-				this.store().markWakesDelivered(device.accountId, device.deviceId, now);
+				this.store().markWakeDelivered(device, now);
 				recordReminderWake('sent');
 				sent += 1;
 			}

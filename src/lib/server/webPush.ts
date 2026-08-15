@@ -21,6 +21,9 @@ function vapidSubject(): string {
 export function getVapidKeys(): { publicKey: string; privateKey: string } {
 	const fromEnvPublic = env.SHARD_VAPID_PUBLIC_KEY?.trim();
 	const fromEnvPrivate = env.SHARD_VAPID_PRIVATE_KEY?.trim();
+	if (Boolean(fromEnvPublic) !== Boolean(fromEnvPrivate)) {
+		throw new Error('Both SHARD_VAPID_PUBLIC_KEY and SHARD_VAPID_PRIVATE_KEY are required');
+	}
 	if (fromEnvPublic && fromEnvPrivate) {
 		return { publicKey: fromEnvPublic, privateKey: fromEnvPrivate };
 	}
@@ -46,7 +49,7 @@ export async function sendReminderTick(device: DueWake): Promise<WakeSendResult>
 				endpoint: device.endpoint,
 				keys: { p256dh: device.p256dh, auth: device.auth }
 			},
-			JSON.stringify({ type: 'reminder-tick' }),
+			JSON.stringify({ type: 'reminder-wake', id: device.wakeId, fireAt: device.fireAt }),
 			{
 				TTL: 86_400,
 				urgency: 'high',

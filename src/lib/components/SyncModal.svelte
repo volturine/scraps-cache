@@ -4,6 +4,9 @@
 	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { reminderStore } from '$lib/stores/reminders.svelte';
+	import { notificationPermission, requestReminderPermission } from '$lib/reminderNotify';
+	import { registerReminderDevice, unregisterReminderDevice } from '$lib/reminderWake';
 	import { Cloud, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
@@ -21,6 +24,7 @@
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let deleteConfirm = $state(false);
+	let reminderPermission = $state(notificationPermission());
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -185,6 +189,21 @@
 		if (!success) error = friendlyError(syncStore.lastError, 'Sync failed');
 	}
 
+	async function enableReminderNotifications() {
+		reminderPermission = await requestReminderPermission();
+		if (reminderPermission !== 'granted') return;
+		if (await registerReminderDevice()) reminderStore.publish(notesStore.notes);
+	}
+
+	async function unlinkDevice() {
+		const account = syncStore.account;
+		await unregisterReminderDevice(account);
+		syncStore.logout();
+		mode = 'menu';
+		error = '';
+		info = '';
+	}
+
 	async function copyCode() {
 		const text = formatPairingCode(waiting?.syncCode ?? '');
 		if (!text) return;
@@ -322,6 +341,30 @@
 					class="shard-button shard-button-primary w-full px-3 py-2.5 text-sm font-medium"
 					>{syncing ? 'Syncing…' : '🔄 Sync now'}</button
 				>
+				<div class="rounded-[var(--shard-radius-md)] border border-[var(--shard-border)] p-3">
+					<div class="flex items-center justify-between gap-3">
+						<div>
+							<p class="text-sm font-medium">Reminder notifications</p>
+							<p class="mt-0.5 text-xs text-[var(--shard-text-muted)]">
+								{reminderPermission === 'granted'
+									? 'Enabled on this device'
+									: reminderPermission === 'denied'
+										? 'Blocked in browser settings'
+										: reminderPermission === 'unsupported'
+											? 'Unavailable here; iOS requires a Home Screen app'
+											: 'Enable after linking so this device receives reminders'}
+							</p>
+						</div>
+						{#if reminderPermission === 'default'}
+							<button
+								type="button"
+								onclick={() => void enableReminderNotifications()}
+								class="shard-button shard-button-primary shrink-0 px-3 py-1.5 text-xs font-medium"
+								>Enable</button
+							>
+						{/if}
+					</div>
+				</div>
 				<button
 					type="button"
 					onclick={() => void startExistingConnection()}
@@ -341,12 +384,7 @@
 				</div>
 				<button
 					type="button"
-					onclick={() => {
-						syncStore.logout();
-						mode = 'menu';
-						error = '';
-						info = '';
-					}}
+					onclick={() => void unlinkDevice()}
 					class="shard-button shard-button-destructive w-full text-sm">Unlink this device</button
 				>
 				{#if deleteConfirm}

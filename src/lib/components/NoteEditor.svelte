@@ -469,18 +469,14 @@
 			}}
 			role="presentation"
 		></div>
-		<div
-			class="safe-gutter pointer-events-none fixed inset-0 z-[61] flex items-center justify-center"
-		>
-			<div class="pointer-events-auto">
-				<ColorPalette
-					color={note.color}
-					onSelect={(c) => {
-						commit({ color: c });
-						paletteOpen = false;
-					}}
-				/>
-			</div>
+		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+			<ColorPalette
+				color={note.color}
+				onSelect={(c) => {
+					commit({ color: c });
+					paletteOpen = false;
+				}}
+			/>
 		</div>
 	{/if}
 
@@ -493,23 +489,18 @@
 			}}
 			role="presentation"
 		></div>
-		<div
-			class="safe-gutter pointer-events-none fixed inset-0 z-[61] flex items-center justify-center"
-		>
-			<div class="pointer-events-auto">
-				<ReminderPicker
-					reminder={note.reminder}
-					onApply={(r) => {
-						commit({ reminder: r });
-						reminderStore.sync(notesStore.notes);
-						reminderStore.flushWakes();
-						void notesStore.flushSync();
-					}}
-					onClose={() => {
-						reminderOpen = false;
-					}}
-				/>
-			</div>
+		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+			<ReminderPicker
+				reminder={note.reminder}
+				onApply={(r) => {
+					commit({ reminder: r });
+					reminderStore.sync(notesStore.notes);
+					void notesStore.flushSync();
+				}}
+				onClose={() => {
+					reminderOpen = false;
+				}}
+			/>
 		</div>
 	{/if}
 
@@ -522,17 +513,13 @@
 			}}
 			role="presentation"
 		></div>
-		<div
-			class="safe-gutter pointer-events-none fixed inset-0 z-[61] flex items-center justify-center"
-		>
-			<div class="pointer-events-auto">
-				<LabelMenu
-					noteId={note.id}
-					onClose={() => {
-						labelOpen = false;
-					}}
-				/>
-			</div>
+		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+			<LabelMenu
+				noteId={note.id}
+				onClose={() => {
+					labelOpen = false;
+				}}
+			/>
 		</div>
 	{/if}
 {/if}

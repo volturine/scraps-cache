@@ -104,8 +104,9 @@ Structured logs use request IDs; prefer redacted identifiers.
 - Malware on the client device or a malicious browser extension
 - XSS in the app itself (defense-in-depth CSP; still treat as critical)
 - Traffic analysis (when you sync, envelope sizes, approximate activity)
-- Reminder **wake times** if Web Push is used (the relay stores `fireAt` per
-  device so it can send an empty tick; it never receives note text)
+- Reminder **wake times** if Web Push is used. The relay stores `fireAt` plus a
+  domain-separated hash of the random note ID and timestamp so it can dedupe
+  delivery independently per device; it never receives note IDs or text.
 - Lost backup passphrase or lost sync key without another device / backup
 - Active MITM if TLS is misconfigured or users accept bad certificates
 - Physical access to an unlocked browser session with IndexedDB data

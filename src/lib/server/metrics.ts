@@ -8,6 +8,7 @@ let syncDeleteSlots = 0;
 let sqliteBusy = 0;
 let reminderWakesSent = 0;
 let reminderWakesGone = 0;
+let reminderWakesFailed = 0;
 
 function routeLabel(pathname: string): string {
 	if (pathname.startsWith('/api/sync/delta')) return '/api/sync/delta';
@@ -41,9 +42,10 @@ export function recordSqliteBusy(): void {
 	sqliteBusy += 1;
 }
 
-export function recordReminderWake(result: 'sent' | 'gone'): void {
+export function recordReminderWake(result: 'sent' | 'gone' | 'failed'): void {
 	if (result === 'sent') reminderWakesSent += 1;
-	else reminderWakesGone += 1;
+	else if (result === 'gone') reminderWakesGone += 1;
+	else reminderWakesFailed += 1;
 }
 
 export function recordSqliteError(error: unknown): void {
@@ -94,7 +96,8 @@ export function renderMetrics(
 		line('shard_backup_duration_milliseconds', backup.durationMs),
 		'# TYPE shard_reminder_wakes_sent_total counter',
 		line('shard_reminder_wakes_sent_total', reminderWakesSent),
-		line('shard_reminder_wakes_gone_total', reminderWakesGone)
+		line('shard_reminder_wakes_gone_total', reminderWakesGone),
+		line('shard_reminder_wakes_failed_total', reminderWakesFailed)
 	);
 	return `${lines.join('\n')}\n`;
 }

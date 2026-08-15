@@ -45,24 +45,29 @@ type LegacyUser = {
 const DEFAULT_MAX_ACCOUNT_BYTES = 1_000_000_000;
 const DEFAULT_MAX_ACCOUNT_ENVELOPES = 50_000;
 export const MAX_PUSH_DEVICES = 32;
-export const MAX_WAKES_PER_DEVICE = 50;
+export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
+export const WAKE_CLAIM_LEASE_MS = 60_000;
 
 export type PushDeviceInput = {
 	deviceId: string;
 	endpoint: string;
 	p256dh: string;
 	auth: string;
-	accountId?: string | null;
+	accountId: string;
 };
 
 export type DueWake = {
 	accountId: string;
 	deviceId: string;
+	wakeId: string;
+	fireAt: number;
 	endpoint: string;
 	p256dh: string;
 	auth: string;
 };
+
+export type ReminderWakeInput = { id: string; fireAt: number };
 
 const LEGACY_MIGRATION_KEY = 'legacy-users-json-v1';
 const USAGE_MIGRATION_KEY = 'account-usage-counters-v1';
@@ -132,33 +137,40 @@ export class SyncStore {
 			);
 			CREATE INDEX IF NOT EXISTS envelopes_account_seq
 				ON envelopes(account_id, seq);
-			CREATE TABLE IF NOT EXISTS push_devices (
-				device_id TEXT PRIMARY KEY,
-				secret_hash TEXT NOT NULL,
+			CREATE TABLE IF NOT EXISTS reminder_push_devices (
+				account_id TEXT NOT NULL,
+				device_id TEXT NOT NULL,
 				endpoint TEXT NOT NULL UNIQUE,
 				p256dh TEXT NOT NULL,
 				auth TEXT NOT NULL,
-				account_id TEXT,
 				updated_at INTEGER NOT NULL,
-				FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE SET NULL
-			);
-			CREATE TABLE IF NOT EXISTS account_wakes (
-				account_id TEXT NOT NULL,
-				source_device_id TEXT NOT NULL,
-				fire_at INTEGER NOT NULL,
-				PRIMARY KEY (account_id, source_device_id, fire_at),
+				PRIMARY KEY (account_id, device_id),
 				FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
 			);
-			CREATE INDEX IF NOT EXISTS account_wakes_due ON account_wakes(fire_at);
-			CREATE TABLE IF NOT EXISTS wake_deliveries (
+			CREATE INDEX IF NOT EXISTS reminder_push_devices_device
+				ON reminder_push_devices(device_id);
+			CREATE TABLE IF NOT EXISTS reminder_wakes_v2 (
+				account_id TEXT NOT NULL,
+				wake_id TEXT NOT NULL,
+				fire_at INTEGER NOT NULL,
+				PRIMARY KEY (account_id, wake_id),
+				FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+			);
+			CREATE INDEX IF NOT EXISTS reminder_wakes_v2_due ON reminder_wakes_v2(fire_at);
+			CREATE TABLE IF NOT EXISTS reminder_wake_deliveries (
 				account_id TEXT NOT NULL,
 				device_id TEXT NOT NULL,
-				fire_at INTEGER NOT NULL,
-				PRIMARY KEY (account_id, device_id, fire_at),
+				wake_id TEXT NOT NULL,
+				claimed_at INTEGER NOT NULL,
+				delivered_at INTEGER,
+				PRIMARY KEY (account_id, device_id, wake_id),
 				FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
 			);
 		`);
 		this.database.exec(`
+			DROP TABLE IF EXISTS wake_deliveries;
+			DROP TABLE IF EXISTS account_wakes;
+			DROP TABLE IF EXISTS push_devices;
 			DROP TABLE IF EXISTS push_wakes;
 			DROP TABLE IF EXISTS reminder_wakes;
 			DROP TABLE IF EXISTS push_subscriptions;
@@ -340,36 +352,37 @@ export class SyncStore {
 			.run(key, value);
 	}
 
-	/** Replace this device's push endpoint and its future wake timestamps. No note ids. */
-	savePushDevice(device: PushDeviceInput, fireAt: number[]): void {
+	/** Register one account-scoped browser endpoint without changing account wakes. */
+	savePushDevice(device: PushDeviceInput): void {
 		this.database.transaction(() => {
 			const existing = this.database
-				.prepare('SELECT 1 AS present FROM push_devices WHERE device_id = ?')
-				.get(device.deviceId) as { present: number } | undefined;
+				.prepare(
+					'SELECT 1 AS present FROM reminder_push_devices WHERE account_id = ? AND device_id = ?'
+				)
+				.get(device.accountId, device.deviceId) as { present: number } | undefined;
 
 			this.database
-				.prepare('DELETE FROM push_devices WHERE endpoint = ? AND device_id != ?')
-				.run(device.endpoint, device.deviceId);
+				.prepare(
+					'DELETE FROM reminder_push_devices WHERE endpoint = ? AND (account_id != ? OR device_id != ?)'
+				)
+				.run(device.endpoint, device.accountId, device.deviceId);
+			this.database
+				.prepare('DELETE FROM reminder_push_devices WHERE device_id = ? AND account_id != ?')
+				.run(device.deviceId, device.accountId);
 
 			if (!existing) {
 				const extras = this.database
-					.prepare('SELECT device_id FROM push_devices ORDER BY updated_at ASC')
-					.all() as Array<{ device_id: string }>;
+					.prepare(
+						'SELECT device_id FROM reminder_push_devices WHERE account_id = ? ORDER BY updated_at ASC'
+					)
+					.all(device.accountId) as Array<{ device_id: string }>;
 				const overflow = extras.length + 1 - MAX_PUSH_DEVICES;
 				if (overflow > 0) {
 					const removeDevice = this.database.prepare(
-						'DELETE FROM push_devices WHERE device_id = ?'
-					);
-					const removeWakes = this.database.prepare(
-						'DELETE FROM account_wakes WHERE source_device_id = ?'
-					);
-					const removeDeliveries = this.database.prepare(
-						'DELETE FROM wake_deliveries WHERE device_id = ?'
+						'DELETE FROM reminder_push_devices WHERE account_id = ? AND device_id = ?'
 					);
 					for (const row of extras.slice(0, overflow)) {
-						removeWakes.run(row.device_id);
-						removeDeliveries.run(row.device_id);
-						removeDevice.run(row.device_id);
+						removeDevice.run(device.accountId, row.device_id);
 					}
 				}
 			}
@@ -377,145 +390,169 @@ export class SyncStore {
 			this.database
 				.prepare(
 					`
-				INSERT INTO push_devices(
-					device_id, secret_hash, endpoint, p256dh, auth, account_id, updated_at
+				INSERT INTO reminder_push_devices(
+					account_id, device_id, endpoint, p256dh, auth, updated_at
 				)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(device_id) DO UPDATE SET
+				VALUES (?, ?, ?, ?, ?, ?)
+				ON CONFLICT(account_id, device_id) DO UPDATE SET
 					endpoint = excluded.endpoint,
 					p256dh = excluded.p256dh,
 					auth = excluded.auth,
-					account_id = COALESCE(excluded.account_id, push_devices.account_id),
 					updated_at = excluded.updated_at
 			`
 				)
 				.run(
+					device.accountId,
 					device.deviceId,
-					'',
 					device.endpoint,
 					device.p256dh,
 					device.auth,
-					device.accountId ?? null,
 					Date.now()
 				);
-
-			if (device.accountId) {
-				this.database
-					.prepare('DELETE FROM account_wakes WHERE account_id = ? AND source_device_id = ?')
-					.run(device.accountId, device.deviceId);
-				const insert = this.database.prepare(
-					`
-					INSERT OR IGNORE INTO account_wakes(account_id, source_device_id, fire_at)
-					VALUES (?, ?, ?)
-				`
-				);
-				const unique = [...new Set(fireAt)].sort((left, right) => left - right);
-				for (const at of unique.slice(0, MAX_WAKES_PER_DEVICE)) {
-					insert.run(device.accountId, device.deviceId, at);
-				}
-			}
 		})();
 	}
 
-	duePushDevices(now: number, limit = 100): DueWake[] {
-		return this.database
-			.prepare(
-				`
-			SELECT DISTINCT
-				d.account_id AS accountId,
-				d.device_id AS deviceId,
-				d.endpoint AS endpoint,
-				d.p256dh AS p256dh,
-				d.auth AS auth
-			FROM account_wakes w
-			INNER JOIN push_devices d ON d.account_id = w.account_id
-			WHERE w.fire_at <= ? AND d.account_id IS NOT NULL
-				AND NOT EXISTS (
-					SELECT 1 FROM wake_deliveries x
-					WHERE x.account_id = d.account_id
-						AND x.device_id = d.device_id
-						AND x.fire_at = w.fire_at
+	replaceReminderWakes(accountId: string, wakes: ReminderWakeInput[]): void {
+		this.database.transaction(() => {
+			this.database.prepare('DELETE FROM reminder_wakes_v2 WHERE account_id = ?').run(accountId);
+			const insert = this.database.prepare(
+				'INSERT INTO reminder_wakes_v2(account_id, wake_id, fire_at) VALUES (?, ?, ?)'
+			);
+			for (const wake of wakes.slice(0, MAX_WAKES_PER_ACCOUNT)) {
+				insert.run(accountId, wake.id, wake.fireAt);
+			}
+			this.database
+				.prepare(
+					`DELETE FROM reminder_wake_deliveries
+					 WHERE account_id = ? AND NOT EXISTS (
+						SELECT 1 FROM reminder_wakes_v2 w
+						WHERE w.account_id = reminder_wake_deliveries.account_id
+							AND w.wake_id = reminder_wake_deliveries.wake_id
+					)`
 				)
-			ORDER BY w.fire_at ASC
-			LIMIT ?
-		`
-			)
-			.all(now, limit) as DueWake[];
+				.run(accountId);
+		})();
 	}
 
-	markWakesDelivered(accountId: string, deviceId: string, now: number): void {
+	claimDueWakes(now: number, limit = 100): DueWake[] {
+		return this.database
+			.transaction(() => {
+				const rows = this.database
+					.prepare(
+						`SELECT
+						d.account_id AS accountId,
+						d.device_id AS deviceId,
+						w.wake_id AS wakeId,
+						w.fire_at AS fireAt,
+						d.endpoint AS endpoint,
+						d.p256dh AS p256dh,
+						d.auth AS auth
+					 FROM reminder_wakes_v2 w
+					 INNER JOIN reminder_push_devices d ON d.account_id = w.account_id
+					 LEFT JOIN reminder_wake_deliveries x
+						ON x.account_id = d.account_id
+						AND x.device_id = d.device_id
+						AND x.wake_id = w.wake_id
+					 WHERE w.fire_at <= ?
+						AND x.delivered_at IS NULL
+						AND (x.claimed_at IS NULL OR x.claimed_at <= ?)
+					 ORDER BY w.fire_at ASC, w.wake_id ASC, d.device_id ASC
+					 LIMIT ?`
+					)
+					.all(now, now - WAKE_CLAIM_LEASE_MS, limit) as DueWake[];
+				const claim = this.database.prepare(
+					`INSERT INTO reminder_wake_deliveries(
+					account_id, device_id, wake_id, claimed_at, delivered_at
+				 ) VALUES (?, ?, ?, ?, NULL)
+				 ON CONFLICT(account_id, device_id, wake_id) DO UPDATE SET
+					claimed_at = excluded.claimed_at,
+					delivered_at = NULL`
+				);
+				for (const row of rows) claim.run(row.accountId, row.deviceId, row.wakeId, now);
+				return rows;
+			})
+			.immediate();
+	}
+
+	markWakeDelivered(wake: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>, now: number): void {
 		this.database
 			.prepare(
-				`
-			INSERT OR IGNORE INTO wake_deliveries(account_id, device_id, fire_at)
-			SELECT ?, ?, fire_at FROM (
-				SELECT DISTINCT fire_at FROM account_wakes
-				WHERE account_id = ? AND fire_at <= ?
+				`UPDATE reminder_wake_deliveries SET delivered_at = ?
+				 WHERE account_id = ? AND device_id = ? AND wake_id = ?`
 			)
-		`
+			.run(now, wake.accountId, wake.deviceId, wake.wakeId);
+	}
+
+	releaseWakeClaim(wake: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>): void {
+		this.database
+			.prepare(
+				`DELETE FROM reminder_wake_deliveries
+				 WHERE account_id = ? AND device_id = ? AND wake_id = ? AND delivered_at IS NULL`
 			)
-			.run(accountId, deviceId, accountId, now);
+			.run(wake.accountId, wake.deviceId, wake.wakeId);
 	}
 
 	pruneStaleWakes(now: number, retainMs = WAKE_RETAIN_MS): void {
 		const cutoff = now - retainMs;
 		this.database.transaction(() => {
-			this.database.prepare('DELETE FROM account_wakes WHERE fire_at < ?').run(cutoff);
-			this.database.prepare('DELETE FROM wake_deliveries WHERE fire_at < ?').run(cutoff);
+			this.database.prepare('DELETE FROM reminder_wakes_v2 WHERE fire_at < ?').run(cutoff);
+			this.database
+				.prepare(
+					`DELETE FROM reminder_wake_deliveries WHERE NOT EXISTS (
+						SELECT 1 FROM reminder_wakes_v2 w
+						WHERE w.account_id = reminder_wake_deliveries.account_id
+							AND w.wake_id = reminder_wake_deliveries.wake_id
+					)`
+				)
+				.run();
 		})();
 	}
 
-	clearDueWakes(accountId: string, now: number): void {
+	deletePushDevice(accountId: string, deviceId: string): void {
 		this.database
-			.prepare('DELETE FROM account_wakes WHERE account_id = ? AND fire_at <= ?')
-			.run(accountId, now);
-	}
-
-	deletePushDevice(deviceId: string): void {
-		this.database.transaction(() => {
-			this.database.prepare('DELETE FROM account_wakes WHERE source_device_id = ?').run(deviceId);
-			this.database.prepare('DELETE FROM wake_deliveries WHERE device_id = ?').run(deviceId);
-			this.database.prepare('DELETE FROM push_devices WHERE device_id = ?').run(deviceId);
-		})();
+			.prepare('DELETE FROM reminder_push_devices WHERE account_id = ? AND device_id = ?')
+			.run(accountId, deviceId);
 	}
 
 	nextWakeAt(now = Date.now()): number | null {
-		if (this.duePushDevices(now, 1).length > 0) return now;
+		const due = this.database
+			.prepare(
+				`SELECT 1 AS present FROM reminder_wakes_v2 w
+				 INNER JOIN reminder_push_devices d ON d.account_id = w.account_id
+				 LEFT JOIN reminder_wake_deliveries x
+					ON x.account_id = d.account_id AND x.device_id = d.device_id AND x.wake_id = w.wake_id
+				 WHERE w.fire_at <= ? AND x.delivered_at IS NULL
+					AND (x.claimed_at IS NULL OR x.claimed_at <= ?)
+				 LIMIT 1`
+			)
+			.get(now, now - WAKE_CLAIM_LEASE_MS) as { present: number } | undefined;
+		if (due) return now;
 		const row = this.database
-			.prepare('SELECT MIN(fire_at) AS fireAt FROM account_wakes WHERE fire_at > ?')
+			.prepare('SELECT MIN(fire_at) AS fireAt FROM reminder_wakes_v2 WHERE fire_at > ?')
 			.get(now) as { fireAt: number | null } | undefined;
 		return row?.fireAt ?? null;
 	}
 
-	countPushDevices(): number {
-		const row = this.database.prepare('SELECT COUNT(*) AS count FROM push_devices').get() as {
+	countPushDevices(accountId?: string): number {
+		const row = (
+			accountId
+				? this.database
+						.prepare('SELECT COUNT(*) AS count FROM reminder_push_devices WHERE account_id = ?')
+						.get(accountId)
+				: this.database.prepare('SELECT COUNT(*) AS count FROM reminder_push_devices').get()
+		) as {
 			count: number;
 		};
 		return row.count;
 	}
 
-	listWakeTimes(accountId: string, sourceDeviceId?: string): number[] {
-		const rows = (
-			sourceDeviceId
-				? this.database
-						.prepare(
-							`
-						SELECT DISTINCT fire_at AS fireAt FROM account_wakes
-						WHERE account_id = ? AND source_device_id = ?
-						ORDER BY fire_at ASC
-					`
-						)
-						.all(accountId, sourceDeviceId)
-				: this.database
-						.prepare(
-							`
-						SELECT DISTINCT fire_at AS fireAt FROM account_wakes
-						WHERE account_id = ?
-						ORDER BY fire_at ASC
-					`
-						)
-						.all(accountId)
-		) as Array<{ fireAt: number }>;
+	listWakeTimes(accountId: string): number[] {
+		const rows = this.database
+			.prepare(
+				`SELECT fire_at AS fireAt FROM reminder_wakes_v2
+				 WHERE account_id = ? ORDER BY fire_at ASC, wake_id ASC`
+			)
+			.all(accountId) as Array<{ fireAt: number }>;
 		return rows.map((row) => row.fireAt);
 	}
 

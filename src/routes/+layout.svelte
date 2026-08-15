@@ -40,12 +40,12 @@
 
 	onMount(() => {
 		attachSyncCloudIndicator(syncStore);
-		notesStore.onAfterSync = () => reminderStore.sync(notesStore.notes);
+		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
 		if (mobile.current) uiStore.sidebarOpen = false;
-		void notesStore.init().then(() => {
+		void notesStore.init().then(async () => {
 			openNoteFromQuery();
 			reminderStore.sync(notesStore.notes);
-			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
+			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
 		});
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;
@@ -59,7 +59,7 @@
 			if (import.meta.env.PROD) {
 				// Version query forces browsers to re-fetch sw.js after deploys.
 				void navigator.serviceWorker
-					.register('/sw.js?v=7')
+					.register('/sw.js', { updateViaCache: 'none' })
 					.then((reg) => reg.update())
 					.then(() => reminderStore.sync(notesStore.notes))
 					.catch(() => undefined);

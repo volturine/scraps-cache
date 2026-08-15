@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { isHttpsEndpoint, isPushSubscription, parseFireAt } from './pushWakes';
-import { MAX_WAKES_PER_DEVICE } from './syncStore';
+import { isHttpsEndpoint, isPushSubscription, parseReminderWakes } from './pushWakes';
+import { MAX_WAKES_PER_ACCOUNT } from './syncStore';
+
+const wakeId = (character: string) => character.repeat(43);
 
 describe('blind wake request validation', () => {
 	it('accepts an https push endpoint and subscription keys', () => {
@@ -14,14 +16,40 @@ describe('blind wake request validation', () => {
 		).toBe(true);
 	});
 
-	it('keeps only future wake timestamps and rejects oversized batches', () => {
-		expect(parseFireAt([50, 150, 150], 100)).toEqual([50, 150, 150]);
-		expect(parseFireAt(['150'], 100)).toBeNull();
+	it('validates, sorts, and retains recently due opaque wakes', () => {
 		expect(
-			parseFireAt(
-				Array.from({ length: MAX_WAKES_PER_DEVICE + 1 }, (_, i) => i + 200),
+			parseReminderWakes(
+				[
+					{ id: wakeId('b'), fireAt: 150 },
+					{ id: wakeId('a'), fireAt: 50 }
+				],
 				100
 			)
-		).toBe(null);
+		).toEqual([
+			{ id: wakeId('a'), fireAt: 50 },
+			{ id: wakeId('b'), fireAt: 150 }
+		]);
+		expect(parseReminderWakes([{ id: 'not-opaque', fireAt: 150 }], 100)).toBeNull();
+		expect(
+			parseReminderWakes(
+				Array.from({ length: MAX_WAKES_PER_ACCOUNT + 1 }, (_, index) => ({
+					id: index.toString(36).padStart(43, 'a').slice(-43),
+					fireAt: index + 200
+				})),
+				100
+			)
+		).toBeNull();
+	});
+
+	it('rejects duplicate wake ids instead of conflating reminders', () => {
+		expect(
+			parseReminderWakes(
+				[
+					{ id: wakeId('a'), fireAt: 100 },
+					{ id: wakeId('a'), fireAt: 200 }
+				],
+				100
+			)
+		).toBeNull();
 	});
 });

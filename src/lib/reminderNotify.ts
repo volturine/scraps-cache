@@ -1,4 +1,5 @@
-// Local reminder display. The relay may store wake timestamps, never note text.
+// Local reminder display. The relay receives only opaque wake ids and timestamps.
+import { sha256 } from '@noble/hashes/sha2.js';
 import { formatReminder } from './utils';
 
 export type ReminderNote = {
@@ -10,17 +11,33 @@ export type ReminderNote = {
 	trashed: boolean;
 };
 
+export type ReminderWake = {
+	id: string;
+	fireAt: number;
+};
+
 export type ReminderAlert = {
+	wakeId: string;
 	noteId: string;
 	reminder: number;
 	title: string;
 };
 
-const FIRED_KEY = 'gkc-fired-reminders';
 const CHECKLIST_PREFIX = /^(?:\s*(?:[-*•]\s+)?)?\[[ xX]?\]\s*/;
+const WAKE_DOMAIN = 'shard-reminder-wake:v1\0';
+export const REMINDER_WAKE_ID_RE = /^[A-Za-z0-9_-]{43}$/;
+export const RELAY_WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
+export const MAX_RELAY_WAKES = 1_000;
 
-export function reminderNotifyKey(noteId: string, reminder: number): string {
-	return `${noteId}:${reminder}`;
+function bytesToBase64Url(bytes: Uint8Array): string {
+	let binary = '';
+	for (const byte of bytes) binary += String.fromCharCode(byte);
+	return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+
+/** Stable across synced devices without exposing the random note id to the relay. */
+export function reminderWakeId(noteId: string, reminder: number): string {
+	return bytesToBase64Url(sha256(new TextEncoder().encode(`${WAKE_DOMAIN}${noteId}\0${reminder}`)));
 }
 
 export function reminderPreview(note: Pick<ReminderNote, 'title' | 'body'>): string {
@@ -39,27 +56,23 @@ export function dueReminderNotes(notes: ReminderNote[], now: number): ReminderNo
 	);
 }
 
-export const RELAY_WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
-
-export function futureWakeTimes(notes: ReminderNote[], now: number, limit = 50): number[] {
-	const times = new Set<number>();
-	for (const note of notes) {
-		if (note.archived || note.trashed || note.reminder == null || note.reminder <= now) continue;
-		times.add(note.reminder);
-	}
-	return [...times].sort((left, right) => left - right).slice(0, limit);
-}
-
-/** Timestamps the relay may store: upcoming, plus due times still within the retain window. */
-export function relayWakeTimes(notes: ReminderNote[], now: number, limit = 50): number[] {
+/** Upcoming wakes plus recently due wakes, sorted so the relay cap retains the nearest work. */
+export function relayReminderWakes(
+	notes: ReminderNote[],
+	now: number,
+	limit = MAX_RELAY_WAKES
+): ReminderWake[] {
 	const earliest = now - RELAY_WAKE_RETAIN_MS;
-	const times = new Set<number>();
+	const wakes = new Map<string, ReminderWake>();
 	for (const note of notes) {
-		if (note.archived || note.trashed || note.reminder == null) continue;
-		if (note.reminder <= earliest) continue;
-		times.add(note.reminder);
+		if (note.archived || note.trashed || note.reminder == null || note.reminder <= earliest)
+			continue;
+		const id = reminderWakeId(note.id, note.reminder);
+		wakes.set(id, { id, fireAt: note.reminder });
 	}
-	return [...times].sort((left, right) => left - right).slice(0, limit);
+	return [...wakes.values()]
+		.sort((left, right) => left.fireAt - right.fireAt || left.id.localeCompare(right.id))
+		.slice(0, limit);
 }
 
 export function nextReminderAt(notes: ReminderNote[], now: number): number | null {
@@ -78,45 +91,13 @@ export function unfiredDueReminders(
 ): ReminderNote[] {
 	const seen = fired instanceof Set ? fired : new Set(fired);
 	return dueReminderNotes(notes, now).filter(
-		(note) => !seen.has(reminderNotifyKey(note.id, note.reminder as number))
+		(note) => !seen.has(reminderWakeId(note.id, note.reminder as number))
 	);
 }
 
-export function pruneFiredReminders(notes: ReminderNote[], fired: Iterable<string>): Set<string> {
-	const known = new Map(notes.map((note) => [note.id, note]));
-	const next = new Set<string>();
-	for (const key of fired) {
-		const split = key.lastIndexOf(':');
-		if (split < 0) continue;
-		const id = key.slice(0, split);
-		const reminder = Number(key.slice(split + 1));
-		if (!Number.isFinite(reminder)) continue;
-		const note = known.get(id);
-		if (!note) {
-			next.add(key);
-			continue;
-		}
-		if (note.reminder === reminder) next.add(key);
-	}
-	return next;
-}
-
-export function readFiredReminders(): Set<string> {
-	if (typeof localStorage === 'undefined') return new Set();
-	try {
-		const raw = localStorage.getItem(FIRED_KEY);
-		if (!raw) return new Set();
-		const parsed = JSON.parse(raw) as unknown;
-		if (!Array.isArray(parsed)) return new Set();
-		return new Set(parsed.filter((item): item is string => typeof item === 'string'));
-	} catch {
-		return new Set();
-	}
-}
-
-export function writeFiredReminders(fired: Iterable<string>): void {
-	if (typeof localStorage === 'undefined') return;
-	localStorage.setItem(FIRED_KEY, JSON.stringify([...fired]));
+/** Drop only obsolete pre-wake-id values; unknown wake ids may represent generic alerts. */
+export function pruneFiredReminders(_notes: ReminderNote[], fired: Iterable<string>): Set<string> {
+	return new Set([...fired].filter((key) => REMINDER_WAKE_ID_RE.test(key)));
 }
 
 export function notificationPermission(): NotificationPermission | 'unsupported' {
@@ -141,9 +122,9 @@ export async function showReminderNotification(
 	if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
 	const payload: NotificationOptions = {
 		body: formatReminder(alert.reminder),
-		tag: `shard-reminder:${alert.noteId}`,
+		tag: `shard-reminder:${alert.wakeId}`,
 		icon: '/icon-192.png',
-		data: { type: 'reminder', noteId: alert.noteId }
+		data: { type: 'reminder', noteId: alert.noteId, wakeId: alert.wakeId }
 	};
 	try {
 		const registration = await navigator.serviceWorker?.ready.catch(() => undefined);

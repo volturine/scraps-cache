@@ -14,7 +14,7 @@
 		role="region"
 		aria-label="Due reminders"
 	>
-		{#each alerts as alert (alert.noteId + ':' + alert.reminder)}
+		{#each alerts as alert (alert.wakeId)}
 			<div
 				class="pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-3 py-3 shadow-2xl"
 				role="alert"

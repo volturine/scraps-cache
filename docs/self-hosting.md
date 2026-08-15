@@ -149,6 +149,10 @@ Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
 Compose maps `SHARD_ADDRESS_HEADER` → `ADDRESS_HEADER` and
 `SHARD_XFF_DEPTH` → `XFF_DEPTH`.
 
+Provide both VAPID key variables or neither. When omitted, Shard generates a
+pair once and persists it in the sync SQLite database. Changing the pair causes
+browsers to replace their subscription the next time Shard opens.
+
 ### Docker Compose helpers
 
 | Variable                |                 Default | Purpose                                                       |

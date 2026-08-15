@@ -10,74 +10,118 @@ import {
 	ACCOUNT_ID_RE,
 	DEVICE_ID_RE,
 	isPushSubscription,
-	parseFireAt
+	parseReminderWakes
 } from '$lib/server/pushWakes';
 
-const MAX_REQUEST_BYTES = 8_000;
+const MAX_REQUEST_BYTES = 128_000;
 
-/** Blind wake list: timestamps only. The relay never receives note ids or text. */
-export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const addressLimit = publicApiLimiter.check(`push-ip:${clientAddress(getClientAddress)}`, {
+type Credentials = { accountId?: unknown; authSecret?: unknown };
+
+function validCredentials(body: Credentials): body is { accountId: string; authSecret: string } {
+	return (
+		typeof body.accountId === 'string' &&
+		ACCOUNT_ID_RE.test(body.accountId) &&
+		typeof body.authSecret === 'string' &&
+		body.authSecret.length >= 32 &&
+		body.authSecret.length <= 256
+	);
+}
+
+function authenticate(body: Credentials): { accountId: string } | null {
+	if (!validCredentials(body)) return null;
+	const credentialHash = getSyncStore().getCredentialHash(body.accountId);
+	if (!credentialHash || !sameSyncSecret(credentialHash, body.authSecret)) return null;
+	return { accountId: body.accountId };
+}
+
+function checkAddressLimit(getClientAddress: () => string) {
+	return publicApiLimiter.check(`push-ip:${clientAddress(getClientAddress)}`, {
 		capacity: 40,
 		refillWindowMs: 60_000
 	});
-	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
+}
 
-	let body: {
-		accountId?: unknown;
-		authSecret?: unknown;
-		deviceId?: unknown;
-		subscription?: unknown;
-		fireAt?: unknown;
-	};
+/** Register or refresh this device without changing the account wake snapshot. */
+export const POST: RequestHandler = async ({ request, getClientAddress }) => {
+	const addressLimit = checkAddressLimit(getClientAddress);
+	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
+	let body: Credentials & { deviceId?: unknown; subscription?: unknown };
 	try {
 		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 	} catch {
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
-
 	if (typeof body.deviceId !== 'string' || !DEVICE_ID_RE.test(body.deviceId)) {
 		return json({ error: 'A device id is required' }, { status: 400 });
-	}
-	if (
-		typeof body.accountId !== 'string' ||
-		!ACCOUNT_ID_RE.test(body.accountId) ||
-		typeof body.authSecret !== 'string' ||
-		body.authSecret.length < 32 ||
-		body.authSecret.length > 256
-	) {
-		return json({ error: 'Sync account credentials are required' }, { status: 400 });
 	}
 	if (!isPushSubscription(body.subscription)) {
 		return json({ error: 'A push subscription is required' }, { status: 400 });
 	}
-	const fireAt = parseFireAt(body.fireAt, Date.now());
-	if (!fireAt) return json({ error: 'Invalid wake times' }, { status: 400 });
-
+	const account = authenticate(body);
+	if (!account) return json({ error: 'Invalid sync account credentials' }, { status: 404 });
 	const deviceLimit = publicApiLimiter.check(`push-device:${body.deviceId}`, {
 		capacity: 20,
 		refillWindowMs: 60_000
 	});
 	if (!deviceLimit.allowed) return rateLimitResponse(deviceLimit);
-
 	try {
-		const store = getSyncStore();
-		const credentialHash = store.getCredentialHash(body.accountId);
-		if (!credentialHash || !sameSyncSecret(credentialHash, body.authSecret)) {
-			return json({ error: 'Invalid sync account credentials' }, { status: 404 });
-		}
-		store.savePushDevice(
-			{
-				deviceId: body.deviceId,
-				endpoint: body.subscription.endpoint,
-				p256dh: body.subscription.keys.p256dh,
-				auth: body.subscription.keys.auth,
-				accountId: body.accountId
-			},
-			fireAt
-		);
+		getSyncStore().savePushDevice({
+			accountId: account.accountId,
+			deviceId: body.deviceId,
+			endpoint: body.subscription.endpoint,
+			p256dh: body.subscription.keys.p256dh,
+			auth: body.subscription.keys.auth
+		});
 		wakeScheduler.nudge();
-		return json({ ok: true, wakes: fireAt.length });
+		return json({ ok: true });
+	} catch (error) {
+		recordSqliteError(error);
+		return json({ error: 'Push registration is temporarily unavailable' }, { status: 503 });
+	}
+};
+
+/** Replace the account-wide opaque wake snapshot after client sync reconciliation. */
+export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
+	const addressLimit = checkAddressLimit(getClientAddress);
+	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
+	let body: Credentials & { wakes?: unknown };
+	try {
+		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
+	} catch {
+		return json({ error: 'Invalid JSON body' }, { status: 400 });
+	}
+	const account = authenticate(body);
+	if (!account) return json({ error: 'Invalid sync account credentials' }, { status: 404 });
+	const wakes = parseReminderWakes(body.wakes, Date.now());
+	if (!wakes) return json({ error: 'Invalid reminder wakes' }, { status: 400 });
+	try {
+		getSyncStore().replaceReminderWakes(account.accountId, wakes);
+		wakeScheduler.nudge();
+		return json({ ok: true, wakes: wakes.length });
+	} catch (error) {
+		recordSqliteError(error);
+		return json({ error: 'Reminder scheduling is temporarily unavailable' }, { status: 503 });
+	}
+};
+
+/** Stop deliveries for this browser while retaining other devices and account wakes. */
+export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
+	const addressLimit = checkAddressLimit(getClientAddress);
+	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
+	let body: Credentials & { deviceId?: unknown };
+	try {
+		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
+	} catch {
+		return json({ error: 'Invalid JSON body' }, { status: 400 });
+	}
+	if (typeof body.deviceId !== 'string' || !DEVICE_ID_RE.test(body.deviceId)) {
+		return json({ error: 'A device id is required' }, { status: 400 });
+	}
+	const account = authenticate(body);
+	if (!account) return json({ error: 'Invalid sync account credentials' }, { status: 404 });
+	try {
+		getSyncStore().deletePushDevice(account.accountId, body.deviceId);
+		return new Response(null, { status: 204 });
 	} catch (error) {
 		recordSqliteError(error);
 		return json({ error: 'Push registration is temporarily unavailable' }, { status: 503 });

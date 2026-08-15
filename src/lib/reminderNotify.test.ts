@@ -1,18 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	dueReminderNotes,
-	futureWakeTimes,
 	nextReminderAt,
-	relayWakeTimes,
-	RELAY_WAKE_RETAIN_MS,
 	pruneFiredReminders,
-	readFiredReminders,
-	reminderNotifyKey,
+	relayReminderWakes,
+	RELAY_WAKE_RETAIN_MS,
 	reminderPreview,
+	reminderWakeId,
 	requestReminderPermission,
 	showReminderNotification,
-	unfiredDueReminders,
-	writeFiredReminders
+	unfiredDueReminders
 } from './reminderNotify';
 
 function note(
@@ -26,7 +23,7 @@ function note(
 	}> = {}
 ) {
 	return {
-		id: 'n1',
+		id: '550e8400-e29b-41d4-a716-446655440000',
 		title: 'Groceries',
 		body: '',
 		reminder: 100,
@@ -37,69 +34,54 @@ function note(
 }
 
 describe('reminderPreview', () => {
-	it('prefers the title', () => {
+	it('uses title, body fallback, and an untitled fallback', () => {
 		expect(reminderPreview({ title: ' Buy milk ', body: 'ignored' })).toBe('Buy milk');
-	});
-
-	it('falls back to the first non-empty body line without checklist markup', () => {
-		expect(reminderPreview({ title: '  ', body: '\n[ ] Pick up oat milk\nmore' })).toBe(
+		expect(reminderPreview({ title: '', body: '\n[ ] Pick up oat milk\nmore' })).toBe(
 			'Pick up oat milk'
 		);
-	});
-
-	it('uses Untitled note when there is no text', () => {
 		expect(reminderPreview({ title: '', body: '   \n[ ]   ' })).toBe('Untitled note');
 	});
 });
 
-describe('due and upcoming reminders', () => {
+describe('reminder wake identity and scheduling', () => {
 	const now = 1_000;
 
-	it('treats a reminder at exactly now as due', () => {
-		expect(dueReminderNotes([note({ reminder: now })], now)).toHaveLength(1);
+	it('derives one stable opaque id per note and scheduled time', () => {
+		const first = reminderWakeId('note-a', 10);
+		expect(first).toMatch(/^[A-Za-z0-9_-]{43}$/);
+		expect(reminderWakeId('note-a', 10)).toBe(first);
+		expect(reminderWakeId('note-a', 11)).not.toBe(first);
+		expect(reminderWakeId('note-b', 10)).not.toBe(first);
 	});
 
-	it('ignores future, archived, and trashed notes', () => {
-		expect(
-			dueReminderNotes(
-				[
-					note({ id: 'future', reminder: now + 1 }),
-					note({ id: 'arch', reminder: now, archived: true }),
-					note({ id: 'trash', reminder: now, trashed: true }),
-					note({ id: 'none', reminder: null })
-				],
-				now
-			)
-		).toEqual([]);
+	it('keeps distinct reminders at the same timestamp', () => {
+		const wakes = relayReminderWakes(
+			[note({ id: 'note-a', reminder: now + 10 }), note({ id: 'note-b', reminder: now + 10 })],
+			now
+		);
+		expect(wakes).toHaveLength(2);
+		expect(new Set(wakes.map((wake) => wake.id)).size).toBe(2);
+		expect(wakes.map((wake) => wake.fireAt)).toEqual([now + 10, now + 10]);
 	});
 
-	it('lists unique future wake times without note ids', () => {
-		expect(
-			futureWakeTimes(
-				[
-					note({ id: 'a', reminder: now + 20 }),
-					note({ id: 'b', reminder: now + 10 }),
-					note({ id: 'c', reminder: now + 20 }),
-					note({ id: 'past', reminder: now }),
-					note({ id: 'arch', reminder: now + 5, archived: true })
-				],
-				now
-			)
-		).toEqual([now + 10, now + 20]);
+	it('uploads upcoming and recently due wakes but excludes stale and hidden notes', () => {
+		const wakes = relayReminderWakes(
+			[
+				note({ id: 'due', reminder: now }),
+				note({ id: 'soon', reminder: now + 10 }),
+				note({ id: 'old', reminder: now - RELAY_WAKE_RETAIN_MS }),
+				note({ id: 'arch', reminder: now, archived: true })
+			],
+			now
+		);
+		expect(wakes.map((wake) => wake.fireAt)).toEqual([now, now + 10]);
 	});
 
-	it('uploads due reminder times so other devices can still be woken', () => {
-		expect(
-			relayWakeTimes(
-				[
-					note({ id: 'due', reminder: now }),
-					note({ id: 'soon', reminder: now + 10 }),
-					note({ id: 'old', reminder: now - RELAY_WAKE_RETAIN_MS }),
-					note({ id: 'arch', reminder: now, archived: true })
-				],
-				now
-			)
-		).toEqual([now, now + 10]);
+	it('detects due reminders and skips a fired wake id', () => {
+		const due = note({ reminder: now });
+		expect(dueReminderNotes([due], now)).toEqual([due]);
+		expect(unfiredDueReminders([due], [reminderWakeId(due.id, now)], now)).toEqual([]);
+		expect(unfiredDueReminders([due], [], now)).toEqual([due]);
 	});
 
 	it('finds the soonest future reminder', () => {
@@ -112,39 +94,9 @@ describe('due and upcoming reminders', () => {
 		expect(nextReminderAt([note({ reminder: now })], now)).toBeNull();
 	});
 
-	it('skips reminders that already fired for this note and time', () => {
-		const due = note({ reminder: now });
-		expect(unfiredDueReminders([due], [reminderNotifyKey(due.id, now)], now)).toEqual([]);
-		expect(unfiredDueReminders([due], [], now)).toEqual([due]);
-	});
-});
-
-describe('pruneFiredReminders', () => {
-	it('drops a key when the reminder was cleared or rescheduled', () => {
-		const oldKey = reminderNotifyKey('n1', 100);
-		const nextKey = reminderNotifyKey('n1', 200);
-		expect([...pruneFiredReminders([note({ reminder: null })], [oldKey])]).toEqual([]);
-		expect([...pruneFiredReminders([note({ reminder: 200 })], [oldKey, nextKey])]).toEqual([
-			nextKey
-		]);
-	});
-
-	it('keeps keys for notes that are not loaded yet', () => {
-		const key = reminderNotifyKey('missing', 100);
-		expect([...pruneFiredReminders([], [key])]).toEqual([key]);
-	});
-});
-
-describe('fired reminder persistence', () => {
-	afterEach(() => {
-		localStorage.removeItem('gkc-fired-reminders');
-	});
-
-	it('round-trips keys and ignores corrupt storage', () => {
-		writeFiredReminders(['a:1', 'b:2']);
-		expect([...readFiredReminders()]).toEqual(['a:1', 'b:2']);
-		localStorage.setItem('gkc-fired-reminders', '{');
-		expect(readFiredReminders().size).toBe(0);
+	it('keeps opaque fired ids, including ones for notes not downloaded yet', () => {
+		const id = reminderWakeId('missing', 100);
+		expect([...pruneFiredReminders([], ['legacy:100', id])]).toEqual([id]);
 	});
 });
 
@@ -156,28 +108,26 @@ describe('system notifications', () => {
 
 	it('requests permission only while it is still default', async () => {
 		const requestPermission = vi.fn().mockResolvedValue('granted');
-		vi.stubGlobal('Notification', {
-			permission: 'default',
-			requestPermission
-		});
+		vi.stubGlobal('Notification', { permission: 'default', requestPermission });
 		await expect(requestReminderPermission()).resolves.toBe('granted');
 		expect(requestPermission).toHaveBeenCalledOnce();
 	});
 
-	it('shows a tagged notification with the note title', async () => {
+	it('uses the wake id as the notification dedupe tag', async () => {
 		const show = vi.fn().mockResolvedValue(undefined);
 		vi.stubGlobal('Notification', { permission: 'granted' });
 		vi.stubGlobal('navigator', {
 			serviceWorker: { ready: Promise.resolve({ showNotification: show }) }
 		});
+		const wakeId = reminderWakeId('n1', 1);
 		await expect(
-			showReminderNotification({ noteId: 'n1', reminder: 1, title: 'Groceries' })
+			showReminderNotification({ wakeId, noteId: 'n1', reminder: 1, title: 'Groceries' })
 		).resolves.toBe(true);
 		expect(show).toHaveBeenCalledWith(
 			'Groceries',
 			expect.objectContaining({
-				tag: 'shard-reminder:n1',
-				data: { type: 'reminder', noteId: 'n1' }
+				tag: `shard-reminder:${wakeId}`,
+				data: { type: 'reminder', noteId: 'n1', wakeId }
 			})
 		);
 	});
@@ -185,7 +135,12 @@ describe('system notifications', () => {
 	it('does not show a system notification without permission', async () => {
 		vi.stubGlobal('Notification', { permission: 'denied' });
 		await expect(
-			showReminderNotification({ noteId: 'n1', reminder: 1, title: 'Groceries' })
+			showReminderNotification({
+				wakeId: reminderWakeId('n1', 1),
+				noteId: 'n1',
+				reminder: 1,
+				title: 'Groceries'
+			})
 		).resolves.toBe(false);
 	});
 });

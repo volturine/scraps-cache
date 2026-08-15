@@ -1,12 +1,20 @@
-import { relayWakeTimes, type ReminderNote } from '$lib/reminderNotify';
-import { syncStore } from '$lib/stores/sync.svelte';
+import { relayReminderWakes, type ReminderNote, type ReminderWake } from '$lib/reminderNotify';
+import { syncStore, type SyncAccount } from '$lib/stores/sync.svelte';
 import { uid } from '$lib/utils';
 
 const DEVICE_KEY = 'gkc-push-device';
-
 let cachedVapidKey: string | null = null;
 
-function deviceId(): string {
+export function reminderPushSupported(): boolean {
+	return (
+		typeof window !== 'undefined' &&
+		typeof Notification !== 'undefined' &&
+		'serviceWorker' in navigator &&
+		'PushManager' in window
+	);
+}
+
+export function reminderDeviceId(): string {
 	if (typeof localStorage === 'undefined') return uid().padEnd(16, 'x');
 	const existing = localStorage.getItem(DEVICE_KEY);
 	if (existing && /^[A-Za-z0-9_-]{16,128}$/.test(existing)) return existing;
@@ -17,12 +25,18 @@ function deviceId(): string {
 	return next;
 }
 
-function applicationServerKey(publicKey: string): BufferSource {
+function applicationServerKey(publicKey: string): Uint8Array<ArrayBuffer> {
 	const padding = '='.repeat((4 - (publicKey.length % 4)) % 4);
 	const raw = atob((publicKey + padding).replace(/-/g, '+').replace(/_/g, '/'));
-	const bytes = new Uint8Array(raw.length);
+	const bytes = new Uint8Array(new ArrayBuffer(raw.length));
 	for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
 	return bytes;
+}
+
+function sameKey(left: ArrayBuffer | null, right: Uint8Array<ArrayBuffer>): boolean {
+	if (!left) return false;
+	const bytes = new Uint8Array(left);
+	return bytes.length === right.length && bytes.every((value, index) => value === right[index]);
 }
 
 export async function preloadVapidPublicKey(): Promise<string | null> {
@@ -39,31 +53,33 @@ export async function preloadVapidPublicKey(): Promise<string | null> {
 }
 
 async function waitForRegistration(timeoutMs = 8_000): Promise<ServiceWorkerRegistration | null> {
-	if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+	if (!reminderPushSupported()) return null;
 	const existing = await navigator.serviceWorker.getRegistration().catch(() => undefined);
 	if (existing) return existing;
 	return Promise.race([
 		navigator.serviceWorker.ready.catch(() => null),
-		new Promise<null>((resolve) => {
-			setTimeout(() => resolve(null), timeoutMs);
-		})
+		new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs))
 	]);
 }
 
-/** Subscribe in the same user-gesture as the permission prompt (required on iOS). */
+/** Subscribe from the explicit permission gesture; rotate subscriptions when VAPID changes. */
 export async function ensurePushSubscription(): Promise<boolean> {
-	if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
+	if (!reminderPushSupported() || Notification.permission !== 'granted') return false;
 	const registration = await waitForRegistration();
 	if (!registration?.pushManager) return false;
-	if (await registration.pushManager.getSubscription()) return true;
-
 	const publicKey = cachedVapidKey ?? (await preloadVapidPublicKey());
 	if (!publicKey) return false;
-
+	const expectedKey = applicationServerKey(publicKey);
+	let subscription = await registration.pushManager.getSubscription();
+	if (subscription && !sameKey(subscription.options.applicationServerKey, expectedKey)) {
+		await subscription.unsubscribe().catch(() => false);
+		subscription = null;
+	}
+	if (subscription) return true;
 	try {
 		await registration.pushManager.subscribe({
 			userVisibleOnly: true,
-			applicationServerKey: applicationServerKey(publicKey)
+			applicationServerKey: expectedKey
 		});
 		return true;
 	} catch {
@@ -71,35 +87,82 @@ export async function ensurePushSubscription(): Promise<boolean> {
 	}
 }
 
-/** Register this device for contentless reminder ticks. Requires sync login. */
-export async function syncReminderWakes(notes: ReminderNote[]): Promise<boolean> {
-	if (!syncStore.account) return false;
-	if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
-	if (!(await ensurePushSubscription())) return false;
-
+async function subscriptionBody(): Promise<{
+	endpoint: string;
+	keys: { p256dh: string; auth: string };
+} | null> {
+	if (!(await ensurePushSubscription())) return null;
 	const registration = await waitForRegistration();
 	const subscription = await registration?.pushManager.getSubscription();
 	const json = subscription?.toJSON();
-	if (!json?.endpoint || !json.keys?.p256dh || !json.keys.auth) return false;
+	if (!json?.endpoint || !json.keys?.p256dh || !json.keys.auth) return null;
+	return {
+		endpoint: json.endpoint,
+		keys: { p256dh: json.keys.p256dh, auth: json.keys.auth }
+	};
+}
 
+/** Register this device without changing the account's authoritative wake list. */
+export async function registerReminderDevice(): Promise<boolean> {
 	const account = syncStore.account;
+	if (!account) return false;
+	const subscription = await subscriptionBody();
+	if (!subscription) return false;
 	try {
 		const response = await fetch('/api/sync/push/wakes', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				deviceId: deviceId(),
+				deviceId: reminderDeviceId(),
 				accountId: account.accountId,
 				authSecret: account.authSecret,
-				subscription: {
-					endpoint: json.endpoint,
-					keys: { p256dh: json.keys.p256dh, auth: json.keys.auth }
-				},
-				fireAt: relayWakeTimes(notes, Date.now())
+				subscription
 			})
 		});
 		return response.ok;
 	} catch {
 		return false;
+	}
+}
+
+/** Replace account wakes only from note state that completed a cloud sync. */
+export async function publishReminderWakes(notes: ReminderNote[]): Promise<ReminderWake[] | null> {
+	const account = syncStore.account;
+	if (!account) return null;
+	const wakes = relayReminderWakes(notes, Date.now());
+	try {
+		const response = await fetch('/api/sync/push/wakes', {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				accountId: account.accountId,
+				authSecret: account.authSecret,
+				wakes
+			})
+		});
+		return response.ok ? wakes : null;
+	} catch {
+		return null;
+	}
+}
+
+export async function unregisterReminderDevice(account: SyncAccount | null): Promise<void> {
+	const registration = await waitForRegistration().catch(() => null);
+	const subscription = await registration?.pushManager.getSubscription().catch(() => null);
+	await subscription?.unsubscribe().catch(() => false);
+	if (!account) return;
+	try {
+		await fetch('/api/sync/push/wakes', {
+			method: 'DELETE',
+			headers: { 'Content-Type': 'application/json' },
+			keepalive: true,
+			body: JSON.stringify({
+				accountId: account.accountId,
+				authSecret: account.authSecret,
+				deviceId: reminderDeviceId()
+			})
+		});
+	} catch {
+		/* The local unsubscribe is authoritative for this browser. */
 	}
 }
