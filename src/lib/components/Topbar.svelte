@@ -285,13 +285,6 @@
 			class="hidden"
 		/>
 	</div>
-
-	<div
-		class="hidden h-9 w-9 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 items-center justify-center text-sm font-bold text-white sm:flex"
-		title="You"
-	>
-		K
-	</div>
 </header>
 
 <svelte:window onkeydown={handleKeydown} onclick={handleWindowClick} />

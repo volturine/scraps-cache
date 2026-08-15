@@ -25,7 +25,7 @@
 			(label) => !board.columns.some((column) => column.labelId === label.id)
 		)
 	);
-	/** Tags that can be used in the backlog filter (not already a column). */
+	/** Labels that can be used in the backlog filter (not already a column). */
 	const backlogFilterTags = $derived(unusedTags);
 	const backlogFilter = $derived(board.backlogFilter ?? defaultBacklogFilter());
 	const backlogFilterActive = $derived(backlogFilter.mode === 'custom');
@@ -67,7 +67,7 @@
 
 	function columnName(column: KanbanColumn): string {
 		if (column.labelId === null) return 'Backlog';
-		return notesStore.labels.find((label) => label.id === column.labelId)?.name ?? 'Deleted tag';
+		return notesStore.labels.find((label) => label.id === column.labelId)?.name ?? 'Deleted label';
 	}
 
 	function addTagColumn(event: Event) {
@@ -113,9 +113,9 @@
 	function backlogFilterSummary(): string {
 		if (backlogFilter.mode !== 'custom') return 'All non-column notes';
 		const parts: string[] = [];
-		if (backlogFilter.includeUntagged) parts.push('No tags');
+		if (backlogFilter.includeUntagged) parts.push('No labels');
 		for (const id of backlogFilter.labelIds) {
-			parts.push(notesStore.labels.find((label) => label.id === id)?.name ?? 'Deleted tag');
+			parts.push(notesStore.labels.find((label) => label.id === id)?.name ?? 'Deleted label');
 		}
 		return parts.length ? parts.join(', ') : 'Nothing selected';
 	}
@@ -224,7 +224,7 @@
 				<section
 					data-kanban-column={column.id}
 					class="w-[min(19rem,calc(100vw-2rem))] shrink-0 rounded-2xl bg-black/[0.035] p-2 dark:bg-white/[0.055]"
-					aria-label={`${columnName(column)} Kanban column`}
+					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
 					ondragover={(event) => event.preventDefault()}
 					ondrop={(event) => nativeDrop(event, column.id)}
 				>
@@ -250,8 +250,8 @@
 								type="button"
 								onclick={() => kanbanStore.removeTagColumn(board.id, column.id)}
 								class="grid h-7 w-7 place-items-center rounded-lg text-[var(--shard-text-muted)] hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
-								aria-label={`Remove ${columnName(column)} column`}
-								title="Remove column"
+								aria-label={`Remove ${columnName(column)} label column`}
+								title="Remove label column"
 							>
 								<X class="h-3.5 w-3.5" aria-hidden="true" />
 							</button>
@@ -265,7 +265,7 @@
 							aria-label="Backlog filter options"
 						>
 							<p class="text-[11px] leading-snug text-[var(--shard-text-muted)]">
-								Choose which notes show in Backlog. Notes already in a tag column are never listed
+								Choose which notes show in Backlog. Notes already in a label column are never listed
 								here.
 							</p>
 							<label
@@ -281,7 +281,7 @@
 								<span>
 									<span class="font-medium text-[var(--shard-text)]">All non-column notes</span>
 									<span class="mt-0.5 block text-[var(--shard-text-muted)]"
-										>Default: everything not in a tag column</span
+										>Default: everything not in a label column</span
 									>
 								</span>
 							</label>
@@ -308,7 +308,7 @@
 											checked={backlogFilter.includeUntagged}
 											onchange={toggleBacklogUntagged}
 										/>
-										<span class="text-[var(--shard-text)]">No tags</span>
+										<span class="text-[var(--shard-text)]">No labels</span>
 									</label>
 									{#each backlogFilterTags as label (label.id)}
 										<label
@@ -324,7 +324,8 @@
 									{/each}
 									{#if backlogFilterTags.length === 0}
 										<p class="px-1 py-1 text-[var(--shard-text-muted)]">
-											No other tags available. Create tags on notes, or remove a tag column first.
+											No other labels available. Create labels on notes, or remove a label column
+											first.
 										</p>
 									{/if}
 								</div>
@@ -357,12 +358,12 @@
 			{#if unusedTags.length > 0}
 				<div class="w-[min(19rem,calc(100vw-2rem))] shrink-0 pt-1">
 					<select
-						aria-label="Add a tag column"
+						aria-label="Add a label column"
 						value=""
 						onchange={addTagColumn}
 						class="w-full rounded-xl border border-dashed border-[var(--shard-border)] bg-transparent px-3 py-2.5 text-left text-sm font-medium text-[var(--shard-text-muted)] outline-none hover:bg-black/[0.035] dark:hover:bg-white/[0.055]"
 					>
-						<option value="">+ Add tag column</option>
+						<option value="">+ Add label column</option>
 						{#each unusedTags as label (label.id)}
 							<option value={label.id}>{label.name}</option>
 						{/each}
