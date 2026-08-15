@@ -2,6 +2,7 @@
 export const KEYBOARD_HEIGHT_THRESHOLD_PX = 120;
 
 export const APP_FLOAT_SELECTOR = '[data-app-float]';
+export const APP_OVERLAY_SELECTOR = '[data-app-overlay]';
 export const PHONE_MEDIA = '(max-width: 767px)';
 
 export type Insets = { top: number; right: number; bottom: number; left: number };
@@ -183,4 +184,12 @@ export function attachAppViewport(_node: HTMLElement) {
 export function portalToAppFloat(node: HTMLElement) {
 	const host = document.querySelector(APP_FLOAT_SELECTOR) ?? document.body;
 	host.appendChild(node);
+	return () => node.remove();
+}
+
+/** Render a global dialog above navigation and remove it with its owner. */
+export function portalToAppOverlay(node: HTMLElement) {
+	const host = document.querySelector(APP_OVERLAY_SELECTOR) ?? document.body;
+	host.appendChild(node);
+	return () => node.remove();
 }

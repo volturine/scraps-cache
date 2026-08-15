@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
 	APP_FLOAT_SELECTOR,
+	APP_OVERLAY_SELECTOR,
 	isKeyboardField,
 	isKeyboardOccluding,
 	keyboardOcclusion,
 	portalToAppFloat,
+	portalToAppOverlay,
 	readSafeAreaInsets,
 	rememberSafeArea
 } from './appViewport';
@@ -126,13 +128,27 @@ describe('portalToAppFloat', () => {
 		document.body.replaceChildren();
 	});
 
-	it('appends overlays to the app float host when it exists', () => {
+	it('appends floating content to its host and removes it during cleanup', () => {
 		const host = document.createElement('div');
 		host.setAttribute('data-app-float', '');
 		document.body.append(host);
 		const node = document.createElement('div');
-		portalToAppFloat(node);
+		const cleanup = portalToAppFloat(node);
 		expect(host.contains(node)).toBe(true);
 		expect(document.querySelector(APP_FLOAT_SELECTOR)).toBe(host);
+		cleanup();
+		expect(host.contains(node)).toBe(false);
+	});
+
+	it('places global dialogs in the app overlay above navigation', () => {
+		const host = document.createElement('div');
+		host.setAttribute('data-app-overlay', '');
+		document.body.append(host);
+		const node = document.createElement('div');
+		const cleanup = portalToAppOverlay(node);
+		expect(host.contains(node)).toBe(true);
+		expect(document.querySelector(APP_OVERLAY_SELECTOR)).toBe(host);
+		cleanup();
+		expect(host.contains(node)).toBe(false);
 	});
 });
