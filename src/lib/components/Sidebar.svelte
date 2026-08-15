@@ -26,6 +26,7 @@
 
 	let { onNavigate }: { onNavigate?: () => void } = $props();
 	let labelsEditMode = $state(false);
+	let creatingLabel = $state(false);
 	let newLabelName = $state('');
 	let renamingId = $state<string | null>(null);
 	let renamingName = $state('');
@@ -99,21 +100,33 @@
 		renamingId = null;
 		newLabelName = '';
 		pendingDelete = null;
-		queueMicrotask(() => newLabelInput?.focus());
 	}
 
 	function exitEditMode() {
 		labelsEditMode = false;
+		creatingLabel = false;
 		renamingId = null;
 		newLabelName = '';
 		pendingDelete = null;
 	}
 
-	function createLabel() {
-		const label = notesStore.createLabel(newLabelName);
-		if (!label) return;
+	function startCreateLabel() {
+		labelsEditMode = true;
+		creatingLabel = true;
+		renamingId = null;
 		newLabelName = '';
 		queueMicrotask(() => newLabelInput?.focus());
+	}
+
+	function finishCreateLabel() {
+		notesStore.createLabel(newLabelName);
+		newLabelName = '';
+		creatingLabel = false;
+	}
+
+	function cancelCreateLabel() {
+		newLabelName = '';
+		creatingLabel = false;
 	}
 
 	function startRename(label: Label) {
@@ -225,13 +238,13 @@
 			{/if}
 		</div>
 
-		{#if labelsEditMode}
+		{#if labelsEditMode && creatingLabel}
 			<div class="mb-1 flex items-center gap-3 rounded-xl px-4 py-2" data-sidebar-stay-open>
 				<span
 					class="grid h-7 w-7 shrink-0 place-items-center text-[var(--shard-text-muted)]"
 					aria-hidden="true"
 				>
-					<Plus class="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+					<Tag class="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
 				</span>
 				<input
 					bind:this={newLabelInput}
@@ -239,32 +252,37 @@
 					type="text"
 					placeholder="New label"
 					class="min-w-0 flex-1 bg-transparent text-sm text-[var(--shard-text)] outline-none placeholder:text-[var(--shard-text-muted)]"
+					onblur={finishCreateLabel}
 					onkeydown={(event) => {
-						if (event.key === 'Enter') createLabel();
-						if (event.key === 'Escape') exitEditMode();
+						if (event.key === 'Enter') finishCreateLabel();
+						if (event.key === 'Escape') cancelCreateLabel();
 					}}
 				/>
-				<button
-					type="button"
-					onclick={createLabel}
-					disabled={!newLabelName.trim()}
-					class="shrink-0 text-xs font-medium text-[var(--shard-text-muted)] transition-colors hover:text-[var(--shard-text)] disabled:opacity-35"
-				>
-					Add
-				</button>
 			</div>
+		{:else if labelsEditMode}
+			<button
+				type="button"
+				onclick={startCreateLabel}
+				data-sidebar-stay-open
+				class="mb-1 flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+			>
+				<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
+					<Plus class="h-4 w-4" strokeWidth={1.75} />
+				</span>
+				<span>New label</span>
+			</button>
 		{/if}
 
 		{#if notesStore.labels.length === 0 && !labelsEditMode}
 			<button
 				type="button"
-				onclick={enterEditMode}
+				onclick={startCreateLabel}
 				class="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 			>
 				<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-					<Tag class="h-4 w-4" strokeWidth={1.75} />
+					<Plus class="h-4 w-4" strokeWidth={1.75} />
 				</span>
-				<span>Create a label</span>
+				<span>New label</span>
 			</button>
 		{:else}
 			<div class="flex flex-col gap-0.5">
