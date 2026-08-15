@@ -1,4 +1,5 @@
 import { fireEvent, render } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
 
@@ -22,5 +23,23 @@ describe('BodyEditor empty task Enter behavior', () => {
 		await fireEvent.keyDown(tasks[1], { key: 'Enter' });
 
 		expect(container.querySelectorAll('[data-checklist-toggle]')).toHaveLength(2);
+	});
+});
+
+describe('BodyEditor task focus chrome', () => {
+	it('shows Add sub-task on the focused root and drops it when focus leaves', async () => {
+		const { container, rerender } = render(BodyEditor, {
+			props: { body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate', focusLine: 0 }
+		});
+		await tick();
+
+		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
+		expect(container.querySelector('[data-add-subtask]')).not.toBeNull();
+
+		await rerender({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate', focusLine: null });
+		await tick();
+
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
+		expect(container.querySelector('[data-add-subtask]')).toBeNull();
 	});
 });

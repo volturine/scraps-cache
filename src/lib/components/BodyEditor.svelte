@@ -562,6 +562,11 @@
 	$effect(() => {
 		if (focusLine === null) {
 			handledInlineFocusLine = null;
+			if (draftTaskId !== null) {
+				lines = lines.filter((line) => line.id !== draftTaskId);
+				draftTaskId = null;
+			}
+			focusedRootId = null;
 			return;
 		}
 		if (focusLine === handledInlineFocusLine) return;
@@ -595,6 +600,7 @@
 
 {#snippet taskRow(line: Line, i: number)}
 	<div
+		data-task-row
 		class="flex w-full min-w-0 items-start gap-2 py-0.5"
 		style={line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
 	>
