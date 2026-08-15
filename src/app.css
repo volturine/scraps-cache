@@ -137,6 +137,17 @@ html.editor-open .app-shell {
 	pointer-events: auto;
 }
 
+/* Global dialogs must sit above the mobile sidebar as well as the canvas. */
+.app-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 100;
+	pointer-events: none;
+}
+.app-overlay > * {
+	pointer-events: auto;
+}
+
 html,
 body {
 	min-height: 100lvh;
