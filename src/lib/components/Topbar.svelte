@@ -4,6 +4,7 @@
 	import { downloadJSON } from '$lib/utils';
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import SyncModal from './SyncModal.svelte';
+	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import { useEditorActions } from '$lib/editorContext';
 	import {
@@ -212,7 +213,7 @@
 		</button>
 		{#if settingsOpen}
 			<div
-				class="absolute right-0 top-12 z-30 w-48 rounded-lg border border-[var(--shard-border)] bg-[var(--shard-surface)] py-1 shadow-lg"
+				class="absolute right-0 top-12 z-30 w-64 rounded-lg border border-[var(--shard-border)] bg-[var(--shard-surface)] py-1 shadow-lg"
 			>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
@@ -269,6 +270,7 @@
 						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Import backup
 					</button>
+					<ReminderNotificationSettings />
 				{/if}
 				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">
 						{backupImportError}
