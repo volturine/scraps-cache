@@ -183,6 +183,7 @@
 			syncOpen = true;
 		}}
 		aria-label="Sync settings"
+		data-shard-sync-control
 	>
 		<Cloud class="h-5 w-5" data-shard-sync-icon aria-hidden="true" />
 	</button>
