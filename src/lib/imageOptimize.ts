@@ -1,8 +1,35 @@
-const MAX_LONG_EDGE = 2560;
-const TARGET_BYTES = 4 * 1024 * 1024;
-const INITIAL_QUALITY = 0.82;
-const MIN_QUALITY = 0.68;
-const ENCODING_VERSION = 1;
+export type ImageQuality = 'compressed' | 'hd';
+
+export type ImageOptimizationRecipe = {
+	maxLongEdge: number;
+	targetBytes: number;
+	initialQuality: number;
+	minQuality: number;
+	encodingVersion: number;
+};
+
+const IMAGE_RECIPES: Record<ImageQuality, ImageOptimizationRecipe> = {
+	// 1600 px keeps a photographed A4 page legible while dramatically reducing
+	// storage and sync traffic for ordinary camera photos.
+	compressed: {
+		maxLongEdge: 1600,
+		targetBytes: 700 * 1024,
+		initialQuality: 0.74,
+		minQuality: 0.6,
+		encodingVersion: 2
+	},
+	hd: {
+		maxLongEdge: 2560,
+		targetBytes: 4 * 1024 * 1024,
+		initialQuality: 0.86,
+		minQuality: 0.72,
+		encodingVersion: 3
+	}
+};
+
+export function imageOptimizationRecipe(quality: ImageQuality): ImageOptimizationRecipe {
+	return IMAGE_RECIPES[quality];
+}
 
 export type OptimizedImage = {
 	blob: Blob;
@@ -17,7 +44,7 @@ type Drawable = CanvasImageSource & { width: number; height: number; close?: () 
 export function fitImageDimensions(
 	width: number,
 	height: number,
-	maxLongEdge = MAX_LONG_EDGE
+	maxLongEdge = IMAGE_RECIPES.hd.maxLongEdge
 ): { width: number; height: number } {
 	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
 		throw new Error('Image has invalid dimensions');
@@ -67,11 +94,15 @@ async function loadDrawable(source: Blob): Promise<Drawable> {
  * Re-encode a browser-decodable image before persistence.
  * Canvas output removes source metadata, including embedded GPS/EXIF blocks.
  */
-export async function optimizeImageBlob(source: Blob): Promise<OptimizedImage> {
+export async function optimizeImageBlob(
+	source: Blob,
+	quality: ImageQuality
+): Promise<OptimizedImage> {
+	const recipe = imageOptimizationRecipe(quality);
 	const drawable = await loadDrawable(source);
 	try {
-		let dimensions = fitImageDimensions(drawable.width, drawable.height);
-		let quality = INITIAL_QUALITY;
+		let dimensions = fitImageDimensions(drawable.width, drawable.height, recipe.maxLongEdge);
+		let encodeQuality = recipe.initialQuality;
 		let encoded: Blob | null = null;
 
 		for (let attempt = 0; attempt < 8; attempt++) {
@@ -83,13 +114,13 @@ export async function optimizeImageBlob(source: Blob): Promise<OptimizedImage> {
 			context.imageSmoothingEnabled = true;
 			context.imageSmoothingQuality = 'high';
 			context.drawImage(drawable, 0, 0, dimensions.width, dimensions.height);
-			encoded = await canvasBlob(canvas, quality);
+			encoded = await canvasBlob(canvas, encodeQuality);
 			canvas.width = 1;
 			canvas.height = 1;
-			if (encoded.size <= TARGET_BYTES) break;
+			if (encoded.size <= recipe.targetBytes) break;
 
-			if (quality > MIN_QUALITY) {
-				quality = Math.max(MIN_QUALITY, quality - 0.05);
+			if (encodeQuality > recipe.minQuality) {
+				encodeQuality = Math.max(recipe.minQuality, encodeQuality - 0.05);
 			} else {
 				dimensions = fitImageDimensions(
 					Math.max(1, Math.round(dimensions.width * 0.82)),
@@ -105,7 +136,7 @@ export async function optimizeImageBlob(source: Blob): Promise<OptimizedImage> {
 			width: dimensions.width,
 			height: dimensions.height,
 			byteSize: encoded.size,
-			encodingVersion: ENCODING_VERSION
+			encodingVersion: recipe.encodingVersion
 		};
 	} finally {
 		drawable.close?.();

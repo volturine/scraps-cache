@@ -12,6 +12,7 @@
 		openAttachment
 	} from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
+	import type { ImageQuality } from '$lib/imageOptimize';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
 	import { formatStorageError } from '$lib/imageBlob';
@@ -54,6 +55,7 @@
 	let focusedImageIndex = $state<number | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
 	let attachError = $state('');
+	let filesAwaitingQuality = $state<File[] | null>(null);
 
 	const imageAttachments = $derived(images.filter(isImageAttachment));
 	const photos = $derived(imageAttachments.filter((attachment) => !!displayImageSrc(attachment)));
@@ -118,7 +120,7 @@
 			() => {
 				const picked = Array.from(input.files ?? []);
 				cleanup();
-				if (picked.length > 0) void addFiles(picked);
+				if (picked.length > 0) handlePickedFiles(picked);
 			},
 			{ once: true }
 		);
@@ -129,10 +131,31 @@
 		input.click();
 	}
 
-	async function addFiles(picked: File[]) {
+	function looksLikePhoto(file: File): boolean {
+		return (
+			file.type.toLowerCase().startsWith('image/') ||
+			/\.(?:avif|dng|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(file.name)
+		);
+	}
+
+	function handlePickedFiles(picked: File[]) {
+		if (picked.some(looksLikePhoto)) {
+			filesAwaitingQuality = picked;
+			return;
+		}
+		void addFiles(picked, 'compressed');
+	}
+
+	function chooseImageQuality(quality: ImageQuality) {
+		const picked = filesAwaitingQuality;
+		filesAwaitingQuality = null;
+		if (picked) void addFiles(picked, quality);
+	}
+
+	async function addFiles(picked: File[], imageQuality: ImageQuality) {
 		attachError = '';
 		try {
-			const added = await Promise.all(picked.map(fileToNoteImage));
+			const added = await Promise.all(picked.map((file) => fileToNoteImage(file, imageQuality)));
 			const knownHashes = new Set(
 				await Promise.all(images.map((image) => image.contentHash || sha256(image.dataUrl)))
 			);
@@ -226,9 +249,6 @@
 			></div>
 		{/each}
 	</div>
-	<p class="px-3 pb-2 text-[10px] text-[var(--shard-text-muted)]">
-		Photos are privacy-optimized before saving; originals are not retained.
-	</p>
 {/if}
 
 {#if files.length > 0}
@@ -275,6 +295,64 @@
 		focusedAttachment = null;
 	}}
 />
+
+{#if filesAwaitingQuality}
+	<div
+		class="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"
+		role="presentation"
+		onclick={(event) => {
+			if (event.target === event.currentTarget) filesAwaitingQuality = null;
+		}}
+	>
+		<div
+			class="shard-dialog w-full max-w-sm p-4 text-[var(--shard-text)]"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="photo-quality-title"
+		>
+			<div class="mb-3 flex items-start justify-between gap-3">
+				<div>
+					<h2 id="photo-quality-title" class="text-base font-semibold">Photo quality</h2>
+					<p class="mt-0.5 text-xs text-[var(--shard-text-muted)]">
+						Choose once for {filesAwaitingQuality.length === 1
+							? 'this attachment'
+							: `these ${filesAwaitingQuality.length} attachments`}.
+					</p>
+				</div>
+				<button
+					type="button"
+					class="icon-btn h-9 w-9 shrink-0 p-2 touch-manipulation"
+					onclick={() => (filesAwaitingQuality = null)}
+					aria-label="Cancel attachments"
+				>
+					<X class="h-4 w-4" aria-hidden="true" />
+				</button>
+			</div>
+			<div class="grid grid-cols-2 gap-2">
+				<button
+					type="button"
+					class="shard-button shard-button-primary min-h-20 px-3 py-3 text-left"
+					onclick={() => chooseImageQuality('compressed')}
+				>
+					<span class="block text-sm font-semibold">Compressed</span>
+					<span class="mt-1 block text-[11px] leading-4 opacity-85">
+						Small file · A4 text stays readable
+					</span>
+				</button>
+				<button
+					type="button"
+					class="shard-button shard-button-secondary min-h-20 px-3 py-3 text-left"
+					onclick={() => chooseImageQuality('hd')}
+				>
+					<span class="block text-sm font-semibold">HD</span>
+					<span class="mt-1 block text-[11px] leading-4 text-[var(--shard-text-muted)]">
+						Sharper image · larger file
+					</span>
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <footer
 	class="flex shrink-0 items-center justify-between gap-2 border-t border-black/5 px-3 py-2 dark:border-white/10"

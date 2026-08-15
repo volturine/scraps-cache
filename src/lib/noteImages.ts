@@ -3,7 +3,7 @@ import type { NoteImage } from './types';
 import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
 import { dataUrlToBlob } from './imageBlob';
 import { makeImageThumbDataUrl } from './imageThumb';
-import { optimizeImageBlob, optimizedImageName } from './imageOptimize';
+import { optimizeImageBlob, optimizedImageName, type ImageQuality } from './imageOptimize';
 import { sha256 } from './syncHash';
 
 /** Browser-renderable image (preview / fullscreen). Excludes raw DNG before convert. */
@@ -50,7 +50,7 @@ export function fileIconLabel(mime: string, name?: string): string {
  * DNG → embedded JPEG for preview; photos keep full bytes plus a small thumb; non-images as-is.
  * No size cap (same as photos).
  */
-export async function fileToNoteImage(file: File): Promise<NoteImage> {
+export async function fileToNoteImage(file: File, imageQuality: ImageQuality): Promise<NoteImage> {
 	let image: Blob = file;
 	let mime = file.type || 'application/octet-stream';
 	let name = file.name;
@@ -85,7 +85,7 @@ export async function fileToNoteImage(file: File): Promise<NoteImage> {
 		{ width: number; height: number; byteSize: number; encodingVersion: number } | undefined;
 	if (isImageMime(mime)) {
 		try {
-			const result = await optimizeImageBlob(image);
+			const result = await optimizeImageBlob(image, imageQuality);
 			image = result.blob;
 			mime = 'image/webp';
 			name = optimizedImageName(name);
