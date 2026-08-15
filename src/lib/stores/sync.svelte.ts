@@ -10,6 +10,7 @@ import {
 	planDeletableKeys,
 	reconcileBaseline,
 	referencedAttachmentIds,
+	syncRoundHasMore,
 	syncControlKeys
 } from '$lib/syncEngine';
 import {
@@ -622,6 +623,11 @@ class SyncStore {
 				mergedNotes = withoutTombstoned(mergedNotes, mergedTombstones);
 				mergedLabels = withoutTombstoned(mergedLabels, mergedLabelTombstones);
 				mergedBoards = withoutTombstoned(mergedBoards, mergedBoardTombstones);
+				const appliedTombstoneMaps = {
+					notes: mergedTombstones,
+					labels: mergedLabelTombstones,
+					boards: mergedBoardTombstones
+				};
 				const mergedRecords = await buildSyncRecords(
 					mergedNotes,
 					mergedLabels,
@@ -639,7 +645,12 @@ class SyncStore {
 					uploaded: uploadedFingerprints,
 					remote: remoteFingerprints,
 					merged: fingerprintMapFrom(mergedRecords),
-					currentKeys: currentRecordKeys(mergedNotes, mergedLabels, mergedBoards, tombstoneMaps),
+					currentKeys: currentRecordKeys(
+						mergedNotes,
+						mergedLabels,
+						mergedBoards,
+						appliedTombstoneMaps
+					),
 					referencedAttachments: referencedAttachmentIds(mergedNotes, mergedTombstones)
 				});
 				baseline = reconciled.baseline;
@@ -658,7 +669,22 @@ class SyncStore {
 				]);
 
 				const remainingUploads = !pullOnly && changedAttachments.length > ATTACHMENT_UPLOAD_BUDGET;
-				hasMore = response.data.hasMore === true || remainingUploads;
+				const pendingDeletes =
+					downloadsDrained &&
+					planDeletableKeys({
+						recordIds,
+						notes: mergedNotes,
+						labels: mergedLabels,
+						boards: mergedBoards,
+						tombstones: appliedTombstoneMaps,
+						pullOnly,
+						catchUpComplete: true
+					}).length > 0;
+				hasMore = syncRoundHasMore({
+					remoteHasMore: response.data.hasMore === true,
+					remainingUploads,
+					pendingDeletes
+				});
 			}
 
 			if (poisonCount > 0) {

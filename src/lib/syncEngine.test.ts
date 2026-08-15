@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Note } from '$lib/types';
-import { planDeletableKeys, reconcileBaseline } from './syncEngine';
+import { planDeletableKeys, reconcileBaseline, syncRoundHasMore } from './syncEngine';
 
 function note(id: string, imageIds: string[] = []): Note {
 	return {
@@ -63,6 +63,37 @@ describe('incremental sync engine', () => {
 			catchUpComplete: true
 		});
 		expect(planned).toEqual([]);
+	});
+
+	it('runs another round when catch-up reveals an orphaned photo slot', () => {
+		const pendingDeletes =
+			planDeletableKeys({
+				recordIds: { 'attachment:pic': 'env-1', 'note:n1': 'env-2' },
+				notes: [],
+				labels: [],
+				boards: [],
+				tombstones: { notes: { n1: 2 }, labels: {}, boards: {} },
+				pullOnly: false,
+				catchUpComplete: true
+			}).length > 0;
+
+		expect(
+			syncRoundHasMore({
+				remoteHasMore: false,
+				remainingUploads: false,
+				pendingDeletes
+			})
+		).toBe(true);
+	});
+
+	it('stops after the cleanup round removes the orphaned slot id', () => {
+		expect(
+			syncRoundHasMore({
+				remoteHasMore: false,
+				remainingUploads: false,
+				pendingDeletes: false
+			})
+		).toBe(false);
 	});
 
 	it('re-uploads when local merge beats a stale remote fingerprint', () => {

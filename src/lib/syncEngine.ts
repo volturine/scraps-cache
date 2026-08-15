@@ -74,6 +74,15 @@ export function planDeletableKeys(input: {
 	return deletable.slice(0, 500);
 }
 
+/** A drained pull may reveal orphaned slots, which require one more relay round to delete. */
+export function syncRoundHasMore(options: {
+	remoteHasMore: boolean;
+	remainingUploads: boolean;
+	pendingDeletes: boolean;
+}): boolean {
+	return options.remoteHasMore || options.remainingUploads || options.pendingDeletes;
+}
+
 export function reconcileBaseline(input: {
 	previous: Record<string, string>;
 	uploaded: Record<string, string>;
