@@ -141,7 +141,7 @@
 		aria-hidden="true"
 	></div>
 	<div
-		class="wheel-picker scrollable absolute inset-0 z-10 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+		class="wheel-picker scrollable absolute inset-0 z-10 overflow-y-auto outline-none"
 		style="height: {ITEM_H * VISIBLE}px"
 		role="listbox"
 		tabindex="0"

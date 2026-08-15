@@ -229,7 +229,7 @@
 					type="button"
 					onclick={enterEditMode}
 					data-sidebar-stay-open
-					class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--shard-text-muted)] transition-colors hover:bg-black/8 hover:text-[var(--shard-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:hover:bg-white/10 dark:focus-visible:ring-white/15"
+					class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--shard-text-muted)] transition-colors hover:bg-black/8 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
 					aria-label="Edit labels"
 					title="Edit labels"
 				>
