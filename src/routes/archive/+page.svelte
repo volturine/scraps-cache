@@ -3,6 +3,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { Archive } from '@lucide/svelte';
 
 	const { openNote: openEditor } = useEditorActions();
@@ -16,12 +17,10 @@
 	</div>
 
 	{#if archived.length === 0}
-		<div
-			class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--shard-text-muted)]"
-		>
-			<Archive class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
-			<div class="text-sm">Your archived notes appear here.</div>
-		</div>
+		<EmptyState
+			icon={Archive}
+			description="Archive notes you want to keep without showing them in Notes."
+		/>
 	{:else}
 		<NotesFeed notes={archived} onOpen={openEditor} />
 	{/if}

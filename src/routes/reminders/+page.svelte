@@ -3,21 +3,22 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { AlarmClock } from '@lucide/svelte';
 
-	const { openNote: openEditor } = useEditorActions();
+	const { openNote: openEditor, startNewNote } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
 	const shell = $derived(notesShellClass());
 </script>
 
 <div class="pt-4 pb-8">
 	{#if reminders.length === 0}
-		<div
-			class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--shard-text-muted)]"
-		>
-			<AlarmClock class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
-			<div class="text-sm">No reminders yet. Add one from a note.</div>
-		</div>
+		<EmptyState
+			icon={AlarmClock}
+			description="Create a note, then add a reminder when you need to return to it."
+			actionLabel="Create note"
+			onAction={startNewNote}
+		/>
 	{:else}
 		<div class={shell}>
 			<h2
