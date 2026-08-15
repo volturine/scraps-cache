@@ -22,7 +22,26 @@
 	--shard-text: #202124;
 	--shard-text-muted: #5f6368;
 	--shard-border: #e0e0e0;
+	--shard-accent: #2563eb;
+	--shard-accent-hover: #1d4ed8;
+	--shard-accent-foreground: #ffffff;
 	--shard-focus: #1d4ed8;
+	--shard-success: #15803d;
+	--shard-success-foreground: #ffffff;
+	--shard-success-subtle: #dcfce7;
+	--shard-warning: #b45309;
+	--shard-warning-subtle: #fef3c7;
+	--shard-danger: #dc2626;
+	--shard-danger-foreground: #ffffff;
+	--shard-danger-subtle: #fee2e2;
+	--shard-interactive-hover: rgba(0, 0, 0, 0.05);
+	--shard-interactive-active: rgba(0, 0, 0, 0.1);
+	--shard-radius-sm: 0.375rem;
+	--shard-radius-md: 0.5rem;
+	--shard-radius-lg: 0.75rem;
+	--shard-radius-xl: 1rem;
+	--shard-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.14);
+	--shard-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.24);
 
 	/* Published by attachAppViewport(); CSS env() is the pre-JS default. */
 	--app-inset-top: env(safe-area-inset-top, 0px);
@@ -72,7 +91,22 @@
 	--shard-text: #e8eaed;
 	--shard-text-muted: #9aa0a6;
 	--shard-border: #3c4043;
+	--shard-accent: #60a5fa;
+	--shard-accent-hover: #93c5fd;
+	--shard-accent-foreground: #172554;
 	--shard-focus: #93c5fd;
+	--shard-success: #4ade80;
+	--shard-success-foreground: #052e16;
+	--shard-success-subtle: #14351f;
+	--shard-warning: #fbbf24;
+	--shard-warning-subtle: #3d2e0b;
+	--shard-danger: #f87171;
+	--shard-danger-foreground: #450a0a;
+	--shard-danger-subtle: #3b1717;
+	--shard-interactive-hover: rgba(255, 255, 255, 0.08);
+	--shard-interactive-active: rgba(255, 255, 255, 0.12);
+	--shard-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
+	--shard-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.55);
 }
 
 html {
@@ -162,6 +196,110 @@ body {
 :focus-visible {
 	outline: 2px solid var(--shard-focus) !important;
 	outline-offset: 2px;
+}
+
+/* Shared interactive primitives. Components compose sizing and layout around these roles.
+ * Button treatments: primary = accent action, secondary = outlined choice,
+ * quiet = low-emphasis action, destructive = irreversible action. */
+.shard-dialog,
+.shard-popover {
+	border: 1px solid var(--shard-border);
+	background: var(--shard-surface);
+}
+.shard-dialog {
+	border-radius: var(--shard-radius-xl);
+	box-shadow: var(--shard-elevation-dialog);
+}
+.shard-popover {
+	border-radius: var(--shard-radius-lg);
+	box-shadow: var(--shard-elevation-popover);
+}
+.shard-button,
+.shard-input {
+	border-radius: var(--shard-radius-md);
+	transition:
+		background-color 120ms ease,
+		border-color 120ms ease,
+		color 120ms ease;
+}
+.shard-button {
+	border: 1px solid transparent;
+	touch-action: manipulation;
+}
+.shard-button:disabled,
+.shard-input:disabled {
+	opacity: 0.55;
+}
+.shard-button-primary {
+	background: var(--shard-accent);
+	color: var(--shard-accent-foreground);
+}
+.shard-button-primary:hover:not(:disabled) {
+	background: var(--shard-accent-hover);
+}
+.shard-button-secondary {
+	border-color: var(--shard-border);
+	background: var(--shard-bg);
+	color: var(--shard-text);
+}
+.shard-button-quiet {
+	color: var(--shard-text-muted);
+}
+.shard-button-secondary:hover:not(:disabled),
+.shard-button-quiet:hover:not(:disabled) {
+	background: var(--shard-interactive-hover);
+	color: var(--shard-text);
+}
+.shard-button-destructive {
+	color: var(--shard-danger);
+}
+.shard-button-destructive-solid {
+	background: var(--shard-danger);
+	color: var(--shard-danger-foreground);
+}
+.shard-button-destructive-solid:hover:not(:disabled) {
+	filter: brightness(0.92);
+}
+.shard-input {
+	border: 1px solid var(--shard-border);
+	background: var(--shard-bg);
+	color: var(--shard-text);
+}
+.shard-input:focus {
+	border-color: var(--shard-focus);
+	outline: 2px solid var(--shard-focus);
+	outline-offset: 1px;
+}
+.shard-input[aria-invalid='true'] {
+	border-color: var(--shard-danger);
+}
+.shard-status-success,
+.shard-status-warning,
+.shard-status-accent,
+.shard-status-danger {
+	border: 1px solid currentColor;
+}
+.shard-status-success {
+	background: var(--shard-success-subtle);
+	color: var(--shard-success);
+}
+.shard-status-warning {
+	background: var(--shard-warning-subtle);
+	color: var(--shard-warning);
+}
+.shard-status-accent {
+	background: color-mix(in srgb, var(--shard-accent) 14%, var(--shard-surface));
+	color: var(--shard-accent);
+}
+.shard-status-danger {
+	background: var(--shard-danger-subtle);
+	color: var(--shard-danger);
+}
+.shard-progress-track {
+	background: var(--shard-interactive-active);
+}
+.shard-progress-value {
+	background: var(--shard-accent);
 }
 
 /* Respect system motion preferences while retaining the final UI state. */
@@ -279,13 +417,10 @@ body {
 	font-size: 1.375rem;
 	font-weight: 700;
 	line-height: 1;
-	color: #16a34a;
+	color: var(--shard-success);
 }
 .labels-edit-add:disabled {
 	opacity: 0.35;
-}
-.dark .labels-edit-add {
-	color: #4ade80;
 }
 .labels-edit-input {
 	width: 100%;
@@ -298,8 +433,9 @@ body {
 	color: var(--shard-text);
 }
 .labels-edit-input:focus {
-	outline: none;
-	box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+	border-color: var(--shard-focus);
+	outline: 2px solid var(--shard-focus);
+	outline-offset: 1px;
 }
 .labels-edit-delete {
 	display: inline-flex;
@@ -311,10 +447,7 @@ body {
 	color: var(--shard-text-muted);
 }
 .labels-edit-delete:hover {
-	color: #dc2626;
-}
-.dark .labels-edit-delete:hover {
-	color: #f87171;
+	color: var(--shard-danger);
 }
 
 /* Hide scrollbar on the sidebar for a cleaner look. */
@@ -396,19 +529,13 @@ body {
 
 @media (hover: hover) and (pointer: fine) {
 	.icon-btn:hover {
-		background-color: rgba(0, 0, 0, 0.07);
-	}
-	.dark .icon-btn:hover {
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: var(--shard-interactive-hover);
 	}
 }
 
 @media (hover: hover) and (pointer: fine) {
 	.icon-btn:active {
-		background-color: rgba(0, 0, 0, 0.1);
-	}
-	.dark .icon-btn:active {
-		background-color: rgba(255, 255, 255, 0.12);
+		background-color: var(--shard-interactive-active);
 	}
 }
 
