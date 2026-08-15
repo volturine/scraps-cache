@@ -197,6 +197,19 @@ body {
 	outline-offset: 2px;
 }
 
+/* Text editors already expose focus through their caret and field chrome. The global
+ * ring turns into a large blue selection rectangle around multiline fields on iOS. */
+:where(
+	input:not([type]),
+	input[type='text'],
+	input[type='search'],
+	input[type='password'],
+	textarea,
+	[contenteditable]
+):focus-visible {
+	outline: none !important;
+}
+
 /* Shared interactive primitives. Components compose sizing and layout around these roles.
  * Button treatments: primary = accent action, secondary = outlined choice,
  * quiet = low-emphasis action, destructive = irreversible action. */
