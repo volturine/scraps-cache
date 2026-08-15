@@ -359,22 +359,6 @@
 		return index;
 	}
 
-	function addMainTask() {
-		// A blank sub-task is intentionally unsaved. Starting a new root task must
-		// not strand the editor behind that transient row.
-		if (draftTaskId !== null) {
-			const draftIndex = lines.findIndex((line) => line.id === draftTaskId);
-			if (draftIndex >= 0) lines.splice(draftIndex, 1);
-			draftTaskId = null;
-		}
-		const draft = newLine('', true);
-		lines.push(draft);
-		draftTaskId = draft.id;
-		focusedRootId = draft.id;
-		onFocusTask?.(lines.length - 1);
-		focusLineNow(lines.length - 1, 0, draft.id);
-	}
-
 	function addSubtask(rootIndex: number) {
 		const root = lines[rootIndex];
 		// Two levels only: a sub-task cannot have sub-tasks.
@@ -495,7 +479,7 @@
 	}
 
 	/**
-	 * Focus a task/text row after state mutations that create new DOM (Enter / Add task).
+	 * Focus a task/text row after state mutations that create new DOM (Enter / Add sub-task).
 	 * Uses flushSync so the new textarea exists and receives focus inside the same
 	 * user-gesture (keydown/click). Deferred focus (tick/rAF alone) fails on mobile
 	 * and leaves the caret on the previous task.
@@ -695,15 +679,4 @@
 			></textarea>
 		{/if}
 	{/each}
-	{#if lines.some((line) => line.isCheck && line.indent === 0)}
-		<button
-			type="button"
-			data-add-task
-			class="mt-1 flex items-center gap-1.5 rounded px-1 py-1 text-left text-xs text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] dark:hover:bg-white/10"
-			onclick={addMainTask}
-		>
-			<span class="text-base leading-none" aria-hidden="true">+</span>
-			Add task
-		</button>
-	{/if}
 </div>
