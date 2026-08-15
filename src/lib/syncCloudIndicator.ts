@@ -1,7 +1,7 @@
 /** DOM-only cloud indicator: spins for the whole sync, with a short minimum
  * so instant syncs read as a deliberate pulse instead of a flicker. */
 
-const ROOT_CLASS = 'gkc-sync-active';
+const ROOT_CLASS = 'shard-sync-active';
 const MIN_SPIN_MS = 900;
 
 let inFlight = 0;

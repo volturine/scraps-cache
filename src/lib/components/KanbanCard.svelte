@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { KEEP_COLORS, KEEP_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
+	import { NOTE_COLORS, NOTE_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
 	import { activateOnKeyboard } from '$lib/utils';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
@@ -25,7 +25,7 @@
 	);
 
 	function background(color: NoteColor): string {
-		return uiStore.effectiveDark ? KEEP_DARK_COLORS[color] : KEEP_COLORS[color];
+		return uiStore.effectiveDark ? NOTE_DARK_COLORS[color] : NOTE_COLORS[color];
 	}
 
 	function interactiveTarget(target: EventTarget | null): boolean {
@@ -203,7 +203,7 @@
 			</div>
 		{/if}
 		{#if note.title}
-			<h3 class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--gkc-text)]">
+			<h3 class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--shard-text)]">
 				{note.title}
 			</h3>
 		{/if}
@@ -214,7 +214,7 @@
 		<div class="flex flex-wrap gap-1 px-3 pb-3">
 			{#each labelsForNote as label (label.id)}
 				<span
-					class="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-[var(--gkc-text-muted)] dark:bg-white/10"
+					class="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-[var(--shard-text-muted)] dark:bg-white/10"
 					>{label.name}</span
 				>
 			{/each}

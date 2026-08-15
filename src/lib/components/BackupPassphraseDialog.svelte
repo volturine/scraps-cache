@@ -50,21 +50,21 @@
 	}}
 >
 	<div
-		class="w-full max-w-sm overflow-hidden rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] shadow-2xl"
+		class="w-full max-w-sm overflow-hidden rounded-2xl border border-[var(--shard-border)] bg-[var(--shard-surface)] shadow-2xl"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="backup-dialog-title"
 	>
-		<div class="border-b border-[var(--gkc-border)] px-5 py-4">
+		<div class="border-b border-[var(--shard-border)] px-5 py-4">
 			<p
-				class="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--gkc-text-muted)]"
+				class="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--shard-text-muted)]"
 			>
 				Encrypted on this device
 			</p>
-			<h2 id="backup-dialog-title" class="text-lg font-semibold text-[var(--gkc-text)]">
+			<h2 id="backup-dialog-title" class="text-lg font-semibold text-[var(--shard-text)]">
 				{exporting ? 'Protect this backup' : 'Unlock this backup'}
 			</h2>
-			<p class="mt-1 text-sm leading-relaxed text-[var(--gkc-text-muted)]">
+			<p class="mt-1 text-sm leading-relaxed text-[var(--shard-text-muted)]">
 				{exporting
 					? 'Shard cannot recover this passphrase. Store it separately from the backup file.'
 					: 'The passphrase and decrypted notes stay in this browser.'}
@@ -73,7 +73,7 @@
 
 		<form class="space-y-4 px-5 py-5" onsubmit={submit}>
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium text-[var(--gkc-text-muted)]"
+				<span class="mb-1.5 block text-xs font-medium text-[var(--shard-text-muted)]"
 					>Backup passphrase</span
 				>
 				<input
@@ -81,13 +81,13 @@
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}
 					disabled={busy}
-					class="w-full rounded-lg border border-[var(--gkc-border)] bg-transparent px-3 py-2.5 text-sm text-[var(--gkc-text)] outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+					class="w-full rounded-lg border border-[var(--shard-border)] bg-transparent px-3 py-2.5 text-sm text-[var(--shard-text)] outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
 				/>
 			</label>
 
 			{#if exporting}
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium text-[var(--gkc-text-muted)]"
+					<span class="mb-1.5 block text-xs font-medium text-[var(--shard-text-muted)]"
 						>Confirm passphrase</span
 					>
 					<input
@@ -95,7 +95,7 @@
 						autocomplete="new-password"
 						bind:value={confirmation}
 						disabled={busy}
-						class="w-full rounded-lg border border-[var(--gkc-border)] bg-transparent px-3 py-2.5 text-sm text-[var(--gkc-text)] outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+						class="w-full rounded-lg border border-[var(--shard-border)] bg-transparent px-3 py-2.5 text-sm text-[var(--shard-text)] outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
 					/>
 				</label>
 			{/if}
@@ -109,7 +109,7 @@
 					type="button"
 					onclick={onClose}
 					disabled={busy}
-					class="rounded-lg px-3 py-2 text-sm text-[var(--gkc-text-muted)] hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10"
+					class="rounded-lg px-3 py-2 text-sm text-[var(--shard-text-muted)] hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10"
 					>Cancel</button
 				>
 				<button

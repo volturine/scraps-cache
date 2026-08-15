@@ -87,8 +87,8 @@ export interface Label {
 	updatedAt: number;
 }
 
-/** Map of color -> hex used by Google Keep. */
-export const KEEP_COLORS: Record<NoteColor, string> = {
+/** Map of color -> hex used by Shard. */
+export const NOTE_COLORS: Record<NoteColor, string> = {
 	default: '#ffffff',
 	red: '#f28b82',
 	orange: '#f6aea0',
@@ -104,7 +104,7 @@ export const KEEP_COLORS: Record<NoteColor, string> = {
 };
 
 /** Ordered list for the palette popover. */
-export const KEEP_COLOR_ORDER: NoteColor[] = [
+export const NOTE_COLOR_ORDER: NoteColor[] = [
 	'default',
 	'red',
 	'orange',
@@ -119,7 +119,7 @@ export const KEEP_COLOR_ORDER: NoteColor[] = [
 	'gray'
 ];
 
-export const KEEP_DARK_COLORS: Record<NoteColor, string> = {
+export const NOTE_DARK_COLORS: Record<NoteColor, string> = {
 	default: '#1f1f1f',
 	red: '#5a3636',
 	orange: '#5a4a3f',

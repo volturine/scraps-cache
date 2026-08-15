@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { KEEP_COLORS, KEEP_DARK_COLORS, KEEP_COLOR_ORDER, type NoteColor } from '$lib/types';
+	import { NOTE_COLORS, NOTE_DARK_COLORS, NOTE_COLOR_ORDER, type NoteColor } from '$lib/types';
 	import { uiStore } from '$lib/stores/ui.svelte';
 
 	let {
@@ -11,14 +11,14 @@
 	} = $props();
 
 	function bgColor(c: NoteColor): string {
-		return uiStore.effectiveDark ? KEEP_DARK_COLORS[c] : KEEP_COLORS[c];
+		return uiStore.effectiveDark ? NOTE_DARK_COLORS[c] : NOTE_COLORS[c];
 	}
 </script>
 
 <div
-	class="grid grid-cols-4 gap-3 rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
+	class="grid grid-cols-4 gap-3 rounded-xl border border-[var(--shard-border)] bg-[var(--shard-surface)] p-4 shadow-2xl"
 >
-	{#each KEEP_COLOR_ORDER as c (c)}
+	{#each NOTE_COLOR_ORDER as c (c)}
 		<button
 			type="button"
 			onclick={() => onSelect(c)}

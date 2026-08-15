@@ -19,7 +19,7 @@
 <div class="pt-4 pb-8">
 	{#if filteredPinned.length > 0}
 		<div class={shell}>
-			<h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+			<h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]">
 				Pinned
 			</h2>
 		</div>
@@ -29,7 +29,7 @@
 	{#if filteredOthers.length > 0 && filteredPinned.length > 0}
 		<div class={shell}>
 			<h2
-				class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]"
+				class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]"
 			>
 				Others
 			</h2>
@@ -38,7 +38,7 @@
 
 	{#if filteredOthers.length === 0 && filteredPinned.length === 0}
 		<div
-			class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]"
+			class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--shard-text-muted)]"
 		>
 			<StickyNote class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
 			<div class="text-sm">No notes here yet.</div>

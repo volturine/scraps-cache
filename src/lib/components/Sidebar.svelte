@@ -179,10 +179,10 @@
 				item.view
 			)
 				? 'nav-active'
-				: 'text-[var(--gkc-text-muted)]'}"
+				: 'text-[var(--shard-text-muted)]'}"
 		>
 			<span
-				class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text)]"
+				class="grid h-7 w-7 shrink-0 place-items-center text-[var(--shard-text)]"
 				aria-hidden="true"
 			>
 				<NavIcon class="h-[18px] w-[18px]" strokeWidth={1.75} />
@@ -199,7 +199,7 @@
 	<section class="mt-5" data-labels-edit aria-label="Labels">
 		<div class="mb-1 flex h-8 items-center gap-2 pl-4 pr-2">
 			<span
-				class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--gkc-text-muted)]"
+				class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--shard-text-muted)]"
 				>Labels</span
 			>
 			{#if labelsEditMode}
@@ -207,7 +207,7 @@
 					type="button"
 					onclick={exitEditMode}
 					data-sidebar-stay-open
-					class="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] dark:hover:bg-white/10"
+					class="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
 				>
 					Done
 				</button>
@@ -216,7 +216,7 @@
 					type="button"
 					onclick={enterEditMode}
 					data-sidebar-stay-open
-					class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--gkc-text-muted)] transition-colors hover:bg-black/8 hover:text-[var(--gkc-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:hover:bg-white/10 dark:focus-visible:ring-white/15"
+					class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--shard-text-muted)] transition-colors hover:bg-black/8 hover:text-[var(--shard-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:hover:bg-white/10 dark:focus-visible:ring-white/15"
 					aria-label="Edit labels"
 					title="Edit labels"
 				>
@@ -228,7 +228,7 @@
 		{#if labelsEditMode}
 			<div class="mb-1 flex items-center gap-3 rounded-xl px-4 py-2" data-sidebar-stay-open>
 				<span
-					class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]"
+					class="grid h-7 w-7 shrink-0 place-items-center text-[var(--shard-text-muted)]"
 					aria-hidden="true"
 				>
 					<Plus class="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
@@ -238,7 +238,7 @@
 					bind:value={newLabelName}
 					type="text"
 					placeholder="New label"
-					class="min-w-0 flex-1 bg-transparent text-sm text-[var(--gkc-text)] outline-none placeholder:text-[var(--gkc-text-muted)]"
+					class="min-w-0 flex-1 bg-transparent text-sm text-[var(--shard-text)] outline-none placeholder:text-[var(--shard-text-muted)]"
 					onkeydown={(event) => {
 						if (event.key === 'Enter') createLabel();
 						if (event.key === 'Escape') exitEditMode();
@@ -248,7 +248,7 @@
 					type="button"
 					onclick={createLabel}
 					disabled={!newLabelName.trim()}
-					class="shrink-0 text-xs font-medium text-[var(--gkc-text-muted)] transition-colors hover:text-[var(--gkc-text)] disabled:opacity-35"
+					class="shrink-0 text-xs font-medium text-[var(--shard-text-muted)] transition-colors hover:text-[var(--shard-text)] disabled:opacity-35"
 				>
 					Add
 				</button>
@@ -259,7 +259,7 @@
 			<button
 				type="button"
 				onclick={enterEditMode}
-				class="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+				class="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 			>
 				<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
 					<Tag class="h-4 w-4" strokeWidth={1.75} />
@@ -275,7 +275,7 @@
 							data-sidebar-stay-open
 						>
 							<span
-								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]"
+								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--shard-text-muted)]"
 								aria-hidden="true"
 							>
 								<Tag class="h-4 w-4" strokeWidth={1.75} />
@@ -284,7 +284,7 @@
 								bind:this={renameInput}
 								bind:value={renamingName}
 								type="text"
-								class="min-w-0 flex-1 bg-transparent text-sm font-medium text-[var(--gkc-text)] outline-none"
+								class="min-w-0 flex-1 bg-transparent text-sm font-medium text-[var(--shard-text)] outline-none"
 								onblur={() => saveRename(label)}
 								onkeydown={(event) => {
 									if (event.key === 'Enter') saveRename(label);
@@ -295,7 +295,7 @@
 					{:else if labelsEditMode}
 						<div class="flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2">
 							<span
-								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--gkc-text-muted)]"
+								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--shard-text-muted)]"
 								aria-hidden="true"
 							>
 								<Tag class="h-4 w-4" strokeWidth={1.75} />
@@ -304,7 +304,7 @@
 								type="button"
 								onclick={() => startRename(label)}
 								data-sidebar-stay-open
-								class="min-w-0 flex-1 truncate text-left text-sm font-medium text-[var(--gkc-text)]"
+								class="min-w-0 flex-1 truncate text-left text-sm font-medium text-[var(--shard-text)]"
 								title="Rename"
 							>
 								{label.name}
@@ -313,7 +313,7 @@
 								type="button"
 								onclick={() => requestDelete(label)}
 								data-sidebar-stay-open
-								class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--gkc-text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+								class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--shard-text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
 								aria-label={`Delete ${label.name}`}
 								title="Delete"
 							>
@@ -329,7 +329,7 @@
 								label.id
 							)
 								? 'nav-active'
-								: 'text-[var(--gkc-text-muted)]'}"
+								: 'text-[var(--shard-text-muted)]'}"
 						>
 							<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
 								<Tag class="h-4 w-4" strokeWidth={1.75} />
@@ -359,17 +359,17 @@
 		}}
 	>
 		<div
-			class="w-full max-w-sm rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-4 shadow-2xl"
+			class="w-full max-w-sm rounded-2xl border border-[var(--shard-border)] bg-[var(--shard-surface)] p-4 shadow-2xl"
 			role="dialog"
 			tabindex="-1"
 			aria-modal="true"
 			aria-labelledby="label-delete-title"
 			data-sidebar-stay-open
 		>
-			<h2 id="label-delete-title" class="text-base font-semibold text-[var(--gkc-text)]">
+			<h2 id="label-delete-title" class="text-base font-semibold text-[var(--shard-text)]">
 				Delete “{pendingDelete.name}”?
 			</h2>
-			<p class="mt-1.5 text-sm leading-snug text-[var(--gkc-text-muted)]">
+			<p class="mt-1.5 text-sm leading-snug text-[var(--shard-text-muted)]">
 				{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
 					This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
 						pendingDelete.id
@@ -384,7 +384,7 @@
 				<button
 					type="button"
 					onclick={confirmDeleteLabelOnly}
-					class="rounded-xl bg-black/[0.06] px-3 py-2.5 text-sm font-medium text-[var(--gkc-text)] transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
+					class="rounded-xl bg-black/[0.06] px-3 py-2.5 text-sm font-medium text-[var(--shard-text)] transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
 				>
 					Delete label only
 				</button>
@@ -398,7 +398,7 @@
 				<button
 					type="button"
 					onclick={cancelDelete}
-					class="rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					class="rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 				>
 					Cancel
 				</button>

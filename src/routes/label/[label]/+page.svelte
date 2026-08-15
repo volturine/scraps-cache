@@ -22,27 +22,27 @@
 	<div class="pt-4 pb-8">
 		{#if !label}
 			<div
-				class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]"
+				class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--shard-text-muted)]"
 			>
 				<Tag class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
 				<div class="text-sm">Label not found.</div>
 			</div>
 		{:else if notes.length === 0}
 			<div
-				class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]"
+				class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--shard-text-muted)]"
 			>
 				<Tag class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
 				<div class="text-sm">No notes with this label yet.</div>
 			</div>
 		{:else}
 			<div class={shell}>
-				<h1 class="mb-4 px-2 text-xl font-medium text-[var(--gkc-text)]">{label.name}</h1>
+				<h1 class="mb-4 px-2 text-xl font-medium text-[var(--shard-text)]">{label.name}</h1>
 			</div>
 
 			{#if pinned.length > 0}
 				<div class={shell}>
 					<h2
-						class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]"
+						class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]"
 					>
 						Pinned
 					</h2>
@@ -53,7 +53,7 @@
 			{#if pinned.length > 0 && others.length > 0}
 				<div class={shell}>
 					<h2
-						class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]"
+						class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]"
 					>
 						Others
 					</h2>

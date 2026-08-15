@@ -4,24 +4,24 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-	--keep-default: #ffffff;
-	--keep-red: #f28b82;
-	--keep-orange: #f6aea0;
-	--keep-yellow: #f7d875;
-	--keep-green: #b3e2a1;
-	--keep-teal: #98e9d9;
-	--keep-blue: #a9d5f4;
-	--keep-darkblue: #9bb8f3;
-	--keep-purple: #c6b3f2;
-	--keep-pink: #f9c2d8;
-	--keep-brown: #d6c5b0;
-	--keep-gray: #f0f0f0;
+	--note-default: #ffffff;
+	--note-red: #f28b82;
+	--note-orange: #f6aea0;
+	--note-yellow: #f7d875;
+	--note-green: #b3e2a1;
+	--note-teal: #98e9d9;
+	--note-blue: #a9d5f4;
+	--note-darkblue: #9bb8f3;
+	--note-purple: #c6b3f2;
+	--note-pink: #f9c2d8;
+	--note-brown: #d6c5b0;
+	--note-gray: #f0f0f0;
 
-	--gkc-bg: #ffffff;
-	--gkc-surface: #f8f9fa;
-	--gkc-text: #202124;
-	--gkc-text-muted: #5f6368;
-	--gkc-border: #e0e0e0;
+	--shard-bg: #ffffff;
+	--shard-surface: #f8f9fa;
+	--shard-text: #202124;
+	--shard-text-muted: #5f6368;
+	--shard-border: #e0e0e0;
 
 	/* Published by attachAppViewport(); CSS env() is the pre-JS default. */
 	--app-inset-top: env(safe-area-inset-top, 0px);
@@ -53,28 +53,28 @@
 }
 
 .dark {
-	--keep-default: #1f1f1f;
-	--keep-red: #5a3636;
-	--keep-orange: #5a4a3f;
-	--keep-yellow: #5a5240;
-	--keep-green: #3a4a3a;
-	--keep-teal: #2f4a4a;
-	--keep-blue: #2f3a4f;
-	--keep-darkblue: #2d3850;
-	--keep-purple: #3d3756;
-	--keep-pink: #4f3e4e;
-	--keep-brown: #4f4a44;
-	--keep-gray: #3c3c3c;
+	--note-default: #1f1f1f;
+	--note-red: #5a3636;
+	--note-orange: #5a4a3f;
+	--note-yellow: #5a5240;
+	--note-green: #3a4a3a;
+	--note-teal: #2f4a4a;
+	--note-blue: #2f3a4f;
+	--note-darkblue: #2d3850;
+	--note-purple: #3d3756;
+	--note-pink: #4f3e4e;
+	--note-brown: #4f4a44;
+	--note-gray: #3c3c3c;
 
-	--gkc-bg: #1a1a1a;
-	--gkc-surface: #242424;
-	--gkc-text: #e8eaed;
-	--gkc-text-muted: #9aa0a6;
-	--gkc-border: #3c4043;
+	--shard-bg: #1a1a1a;
+	--shard-surface: #242424;
+	--shard-text: #e8eaed;
+	--shard-text-muted: #9aa0a6;
+	--shard-border: #3c4043;
 }
 
 html {
-	background-color: var(--gkc-bg);
+	background-color: var(--shard-bg);
 	color-scheme: light;
 }
 html.dark {
@@ -142,12 +142,12 @@ body {
 	margin: 0;
 	overflow: hidden;
 	overscroll-behavior: none;
-	background-color: var(--gkc-bg);
+	background-color: var(--shard-bg);
 }
 
 body {
-	background-color: var(--gkc-bg);
-	color: var(--gkc-text);
+	background-color: var(--shard-bg);
+	color: var(--shard-text);
 	font-family: 'Google Sans', 'Roboto', system-ui, Arial, sans-serif;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
@@ -260,11 +260,11 @@ body {
 	width: 100%;
 	min-width: 0;
 	border-radius: 0.375rem;
-	border: 1px solid var(--gkc-border);
-	background: var(--gkc-bg);
+	border: 1px solid var(--shard-border);
+	background: var(--shard-bg);
 	padding: 0.375rem 0.5rem;
 	font-size: 0.875rem;
-	color: var(--gkc-text);
+	color: var(--shard-text);
 }
 .labels-edit-input:focus {
 	outline: none;
@@ -277,7 +277,7 @@ body {
 	width: 2rem;
 	height: 2rem;
 	flex-shrink: 0;
-	color: var(--gkc-text-muted);
+	color: var(--shard-text-muted);
 }
 .labels-edit-delete:hover {
 	color: #dc2626;
@@ -382,7 +382,7 @@ body {
 }
 
 .icon-btn:focus-visible {
-	outline: 2px solid var(--gkc-accent, #3b82f6);
+	outline: 2px solid var(--shard-accent, #3b82f6);
 	outline-offset: 2px;
 }
 
@@ -405,11 +405,11 @@ body {
 
 /* Cloud sync spin — class on <html> so Svelte re-renders don't reset the animation.
  * Own keyframes: Tailwind tree-shakes its `spin` keyframes unless `animate-spin` is used. */
-@keyframes gkc-spin {
+@keyframes shard-spin {
 	to {
 		transform: rotate(360deg);
 	}
 }
-html.gkc-sync-active [data-gkc-sync-icon] {
-	animation: gkc-spin 1s linear infinite;
+html.shard-sync-active [data-shard-sync-icon] {
+	animation: shard-spin 1s linear infinite;
 }

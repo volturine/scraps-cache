@@ -5,7 +5,7 @@
 	import { noteToPlainText, noteAttachments } from '$lib/checklistBody';
 	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 	import type { NoteColor, NoteImage } from '$lib/types';
-	import { KEEP_COLORS, KEEP_DARK_COLORS } from '$lib/types';
+	import { NOTE_COLORS, NOTE_DARK_COLORS } from '$lib/types';
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import LabelMenu from './LabelMenu.svelte';
@@ -230,7 +230,7 @@
 	}
 
 	function bgColor(c: NoteColor): string {
-		return uiStore.effectiveDark ? KEEP_DARK_COLORS[c] : KEEP_COLORS[c];
+		return uiStore.effectiveDark ? NOTE_DARK_COLORS[c] : NOTE_COLORS[c];
 	}
 
 	function commit(patch: Record<string, unknown>) {
@@ -400,7 +400,7 @@
 									focusBodySignal++;
 								}
 							}}
-							class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--gkc-text)] placeholder:text-[var(--gkc-text-muted)] outline-none"
+							class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--shard-text)] placeholder:text-[var(--shard-text-muted)] outline-none"
 						/>
 
 						<BodyEditor

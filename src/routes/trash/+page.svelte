@@ -21,7 +21,7 @@
 <div class="pt-4 pb-8">
 	{#if trashed.length === 0}
 		<div
-			class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--gkc-text-muted)]"
+			class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--shard-text-muted)]"
 		>
 			<Trash2 class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
 			<div class="text-sm">No notes in trash. Notes here are deleted forever after 7 days.</div>
@@ -29,13 +29,13 @@
 	{:else}
 		<div class={shell}>
 			<div class="mb-3 flex items-center gap-3 px-2">
-				<h2 class="text-xs font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]">
+				<h2 class="text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]">
 					Trash
 				</h2>
-				<span class="text-xs text-[var(--gkc-text-muted)] opacity-60">{trashed.length}</span>
+				<span class="text-xs text-[var(--shard-text-muted)] opacity-60">{trashed.length}</span>
 				<div class="flex-1"></div>
 				{#if confirmEmpty}
-					<span class="text-xs text-[var(--gkc-text-muted)]">Delete all?</span>
+					<span class="text-xs text-[var(--shard-text-muted)]">Delete all?</span>
 					<button
 						type="button"
 						onclick={emptyTrash}
@@ -45,14 +45,14 @@
 					<button
 						type="button"
 						onclick={() => (confirmEmpty = false)}
-						class="rounded-full px-3 py-1 text-xs text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+						class="rounded-full px-3 py-1 text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 						>No</button
 					>
 				{:else}
 					<button
 						type="button"
 						onclick={() => (confirmEmpty = true)}
-						class="rounded-full px-3 py-1 text-xs text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+						class="rounded-full px-3 py-1 text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 						>Empty</button
 					>
 				{/if}
