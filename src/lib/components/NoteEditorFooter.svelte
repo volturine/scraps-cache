@@ -15,7 +15,17 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
 	import { formatStorageError } from '$lib/imageBlob';
-	import { Archive, Check, Copy, Palette, Paperclip, Tag, Trash2, X } from '@lucide/svelte';
+	import {
+		Archive,
+		Check,
+		Copy,
+		MoreHorizontal,
+		Palette,
+		Paperclip,
+		Tag,
+		Trash2,
+		X
+	} from '@lucide/svelte';
 
 	let {
 		images = $bindable<NoteImage[]>([]),
@@ -54,6 +64,8 @@
 	let focusedImageIndex = $state<number | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
 	let attachError = $state('');
+	let actionsOpen = $state(false);
+	let actionsContainer = $state<HTMLElement | null>(null);
 
 	const imageAttachments = $derived(images.filter(isImageAttachment));
 	const photos = $derived(imageAttachments.filter((attachment) => !!displayImageSrc(attachment)));
@@ -184,7 +196,15 @@
 		const idx = photoIndexById.get(id);
 		if (idx != null) focusedImageIndex = idx;
 	}
+
+	function closeActionsOnOutsideClick(event: MouseEvent) {
+		const target = event.target;
+		if (actionsOpen && target instanceof Node && !actionsContainer?.contains(target))
+			actionsOpen = false;
+	}
 </script>
+
+<svelte:window onclick={closeActionsOnOutsideClick} />
 
 {#if attachError}
 	<p class="px-3 pb-1 text-xs text-red-600 dark:text-red-400">{attachError}</p>
@@ -300,7 +320,7 @@
 		</button>
 	</div>
 
-	<div class="flex max-w-[calc(100%-5.5rem)] flex-wrap items-center justify-end gap-1">
+	<div class="flex max-w-[calc(100%-5.5rem)] items-center justify-end gap-1">
 		<button
 			type="button"
 			class="icon-btn h-10 w-10 p-2 touch-manipulation"
@@ -310,42 +330,70 @@
 		>
 			<Palette class="h-5 w-5" aria-hidden="true" />
 		</button>
-		{#if showCopy}
-			<button
-				type="button"
-				class="icon-btn h-10 w-10 p-2 touch-manipulation"
-				title="Copy note"
-				aria-label="Copy note"
-				onclick={() => onCopy?.()}
-			>
-				{#if copyFlash}
-					<Check class="h-5 w-5" aria-hidden="true" />
-				{:else}
-					<Copy class="h-5 w-5" aria-hidden="true" />
+		{#if showCopy || showArchive || showDelete}
+			<div class="relative" bind:this={actionsContainer}>
+				<button
+					type="button"
+					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					title="More note actions"
+					aria-label="More note actions"
+					aria-haspopup="menu"
+					aria-expanded={actionsOpen}
+					onclick={() => (actionsOpen = !actionsOpen)}
+				>
+					<MoreHorizontal class="h-5 w-5" aria-hidden="true" />
+				</button>
+				{#if actionsOpen}
+					<div
+						class="absolute bottom-12 right-0 z-30 w-44 rounded-lg border border-[var(--shard-border)] bg-[var(--shard-surface)] py-1 shadow-lg"
+						role="menu"
+						aria-label="Secondary note actions"
+					>
+						{#if showCopy}
+							<button
+								type="button"
+								class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
+								role="menuitem"
+								onclick={() => {
+									onCopy?.();
+									actionsOpen = false;
+								}}
+							>
+								{#if copyFlash}
+									<Check class="h-4 w-4" aria-hidden="true" />
+									Copied
+								{:else}
+									<Copy class="h-4 w-4" aria-hidden="true" />
+									Copy note
+								{/if}
+							</button>
+						{/if}
+						{#if showArchive}
+							<button
+								type="button"
+								class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
+								role="menuitem"
+								onclick={() => onArchive?.()}
+							>
+								<Archive class="h-4 w-4" aria-hidden="true" />
+								{archived ? 'Unarchive' : 'Archive'}
+							</button>
+						{/if}
+						{#if showDelete}
+							<div class="my-1 border-t border-[var(--shard-border)]" role="separator"></div>
+							<button
+								type="button"
+								class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-500/10 dark:text-red-400"
+								role="menuitem"
+								onclick={() => onDelete?.()}
+							>
+								<Trash2 class="h-4 w-4" aria-hidden="true" />
+								Move to trash
+							</button>
+						{/if}
+					</div>
 				{/if}
-			</button>
-		{/if}
-		{#if showArchive}
-			<button
-				type="button"
-				class="icon-btn h-10 w-10 p-2 touch-manipulation"
-				title={archived ? 'Unarchive' : 'Archive'}
-				aria-label={archived ? 'Unarchive' : 'Archive'}
-				onclick={() => onArchive?.()}
-			>
-				<Archive class="h-5 w-5" aria-hidden="true" />
-			</button>
-		{/if}
-		{#if showDelete}
-			<button
-				type="button"
-				class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400"
-				title="Delete note"
-				aria-label="Delete note"
-				onclick={() => onDelete?.()}
-			>
-				<Trash2 class="h-5 w-5" aria-hidden="true" />
-			</button>
+			</div>
 		{/if}
 		{#if onClose}
 			<button

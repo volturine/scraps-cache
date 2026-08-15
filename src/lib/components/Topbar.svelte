@@ -18,9 +18,9 @@
 		LayoutGrid,
 		List,
 		Menu,
+		MoreHorizontal,
 		Moon,
 		Search,
-		Settings,
 		Sun,
 		Upload,
 		X
@@ -29,7 +29,7 @@
 	const { startNewNote, closeNote } = useEditorActions();
 
 	let fileInputEl: HTMLInputElement | null = $state(null);
-	let settingsOpen = $state(false);
+	let actionsOpen = $state(false);
 	let syncOpen = $state(false);
 	let importingBackup = $state(false);
 	let backupImportError = $state('');
@@ -38,7 +38,7 @@
 	let pendingEncryptedBackup = $state<EncryptedShardBackup | null>(null);
 
 	function startBackupExport() {
-		settingsOpen = false;
+		actionsOpen = false;
 		backupImportError = '';
 		backupDialogMode = 'export';
 	}
@@ -64,7 +64,7 @@
 				if (!result.success) throw new Error(result.error || 'Could not restore that backup.');
 				pendingEncryptedBackup = null;
 				backupDialogMode = null;
-				settingsOpen = false;
+				actionsOpen = false;
 			}
 		} catch (error) {
 			backupImportError = error instanceof Error ? error.message : 'Backup operation failed.';
@@ -88,10 +88,10 @@
 				if (isEncryptedShardBackup(data)) {
 					pendingEncryptedBackup = data;
 					backupDialogMode = 'import';
-					settingsOpen = false;
+					actionsOpen = false;
 				} else if (window.confirm('This is an older unencrypted backup. Restore it anyway?')) {
 					const result = await notesStore.importBackup(data);
-					if (result.success) settingsOpen = false;
+					if (result.success) actionsOpen = false;
 					else backupImportError = result.error || 'Could not import that backup.';
 				}
 			} catch (err) {
@@ -121,21 +121,21 @@
 			e.preventDefault();
 			startNewNote();
 		}
-		// Escape closes settings
+		// Escape closes the secondary-actions menu.
 		if (e.key === 'Escape') {
 			if (importingBackup) return;
-			settingsOpen = false;
+			actionsOpen = false;
 		}
 	}
 
-	// Close settings when clicking outside the settings dropdown.
-	let settingsContainer: HTMLElement | null = $state(null);
+	// Close secondary actions when clicking outside their menu.
+	let actionsContainer: HTMLElement | null = $state(null);
 
 	function handleWindowClick(e: MouseEvent) {
-		if (!settingsOpen || importingBackup) return;
+		if (!actionsOpen || importingBackup) return;
 		const target = e.target as HTMLElement;
-		if (settingsContainer && !settingsContainer.contains(target)) {
-			settingsOpen = false;
+		if (actionsContainer && !actionsContainer.contains(target)) {
+			actionsOpen = false;
 		}
 	}
 </script>
@@ -147,9 +147,9 @@
 >
 	<button
 		class="icon-btn h-10 w-10 p-2"
-		title="Toggle sidebar"
+		title={uiStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
 		onclick={() => uiStore.toggleSidebar()}
-		aria-label="Toggle sidebar"
+		aria-label={uiStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
 	>
 		<Menu class="h-5 w-5" aria-hidden="true" />
 	</button>
@@ -175,44 +175,22 @@
 		{/if}
 	</div>
 
-	<button
-		type="button"
-		class="icon-btn h-10 w-10 p-2"
-		title="Sync settings"
-		onclick={() => {
-			syncOpen = true;
-		}}
-		aria-label="Sync settings"
-		data-shard-sync-control
-	>
-		<Cloud class="h-5 w-5" data-shard-sync-icon aria-hidden="true" />
-	</button>
-
-	<button
-		class="icon-btn h-10 w-10 p-2"
-		title="Toggle layout"
-		onclick={() => uiStore.toggleLayout()}
-		aria-label="Toggle layout"
-	>
-		{#if uiStore.layout === 'grid'}
-			<List class="h-5 w-5" aria-hidden="true" />
-		{:else}
-			<LayoutGrid class="h-5 w-5" aria-hidden="true" />
-		{/if}
-	</button>
-
-	<div class="relative" bind:this={settingsContainer}>
+	<div class="relative" bind:this={actionsContainer}>
 		<button
 			class="icon-btn h-10 w-10 p-2"
-			title="Settings"
-			onclick={() => (settingsOpen = !settingsOpen)}
-			aria-label="Settings"
+			title="More actions"
+			onclick={() => (actionsOpen = !actionsOpen)}
+			aria-label="More actions"
+			aria-haspopup="menu"
+			aria-expanded={actionsOpen}
 		>
-			<Settings class="h-5 w-5" aria-hidden="true" />
+			<MoreHorizontal class="h-5 w-5" aria-hidden="true" />
 		</button>
-		{#if settingsOpen}
+		{#if actionsOpen}
 			<div
-				class="absolute right-0 top-12 z-30 w-48 rounded-lg border border-[var(--shard-border)] bg-[var(--shard-surface)] py-1 shadow-lg"
+				class="absolute right-0 top-12 z-30 w-52 rounded-lg border border-[var(--shard-border)] bg-[var(--shard-surface)] py-1 shadow-lg"
+				role="menu"
+				aria-label="Secondary actions"
 			>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
@@ -241,9 +219,38 @@
 					<button
 						type="button"
 						onclick={() => {
+							actionsOpen = false;
+							syncOpen = true;
+						}}
+						class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						role="menuitem"
+						data-shard-sync-control
+					>
+						<Cloud class="h-4 w-4 shrink-0" data-shard-sync-icon aria-hidden="true" />
+						Sync settings
+					</button>
+					<button
+						type="button"
+						onclick={() => uiStore.toggleLayout()}
+						class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						role="menuitem"
+					>
+						{#if uiStore.layout === 'grid'}
+							<List class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Switch to list view
+						{:else}
+							<LayoutGrid class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Switch to grid view
+						{/if}
+					</button>
+					<div class="my-1 border-t border-[var(--shard-border)]" role="separator"></div>
+					<button
+						type="button"
+						onclick={() => {
 							uiStore.toggleDark();
 						}}
 						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						role="menuitem"
 					>
 						{#if uiStore.effectiveDark}
 							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -257,6 +264,7 @@
 						type="button"
 						onclick={startBackupExport}
 						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						role="menuitem"
 					>
 						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Export backup
@@ -265,6 +273,7 @@
 						type="button"
 						onclick={() => fileInputEl?.click()}
 						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						role="menuitem"
 					>
 						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Import backup
@@ -275,7 +284,7 @@
 					</p>{/if}
 			</div>
 		{/if}
-		<!-- Keep the real input inside settingsContainer: its programmatic click must not
+		<!-- Keep the real input inside actionsContainer: its programmatic click must not
 		     be mistaken for an outside click that hides the import progress UI. -->
 		<input
 			bind:this={fileInputEl}
