@@ -104,6 +104,9 @@ Structured logs use request IDs; prefer redacted identifiers.
 - Malware on the client device or a malicious browser extension
 - XSS in the app itself (defense-in-depth CSP; still treat as critical)
 - Traffic analysis (when you sync, envelope sizes, approximate activity)
+- Reminder **wake times** if Web Push is used. The relay stores `fireAt` plus a
+  domain-separated hash of the random note ID and timestamp so it can dedupe
+  delivery independently per device; it never receives note IDs or text.
 - Lost backup passphrase or lost sync key without another device / backup
 - Active MITM if TLS is misconfigured or users accept bad certificates
 - Physical access to an unlocked browser session with IndexedDB data
@@ -125,11 +128,12 @@ app is in use; browser storage isolation is the boundary.
 
 ## Related source
 
-| Topic                    | Files                         |
-| ------------------------ | ----------------------------- |
-| Pairing + payload crypto | `src/lib/syncPairing.ts`      |
-| Backup crypto            | `src/lib/backupCrypto.ts`     |
-| Relay storage            | `src/lib/server/syncStore.ts` |
-| Rate limits              | `src/lib/server/rateLimit.ts` |
-| CSP                      | `svelte.config.js`            |
-| Security headers         | `src/hooks.server.ts`         |
+| Topic                    | Files                                           |
+| ------------------------ | ----------------------------------------------- |
+| Pairing + payload crypto | `src/lib/syncPairing.ts`                        |
+| Backup crypto            | `src/lib/backupCrypto.ts`                       |
+| Relay storage            | `src/lib/server/syncStore.ts`                   |
+| Reminder wakes           | `src/lib/server/wakeScheduler.ts`, `webPush.ts` |
+| Rate limits              | `src/lib/server/rateLimit.ts`                   |
+| CSP                      | `svelte.config.js`                              |
+| Security headers         | `src/hooks.server.ts`                           |

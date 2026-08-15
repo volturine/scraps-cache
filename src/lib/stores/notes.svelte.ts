@@ -48,6 +48,16 @@ import { formatStorageError } from '$lib/imageBlob';
 import type { NoteImage } from '$lib/types';
 import { normalizeBackup, type BackupImportProgress, type ShardBackup } from '$lib/backup';
 
+/** True when closing the editor should throw the note away. */
+export function noteIsBlank(note: Note): boolean {
+	return (
+		!note.title.trim() &&
+		!(note.body ?? '').trim() &&
+		note.reminder == null &&
+		!noteAttachments(note).some((attachment) => attachment.dataUrl.length > 0)
+	);
+}
+
 export class NotesStore {
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
@@ -61,6 +71,8 @@ export class NotesStore {
 	private visibleAttachmentQueue = new AttachmentHydrationQueue((noteId) =>
 		this.ensureNoteAttachments(noteId)
 	);
+	/** Called after cloud notes replace local state. Used to refresh reminder wakes. */
+	onAfterSync: (() => void) | null = null;
 
 	constructor() {
 		this.notes = readNotesMirror();
@@ -282,12 +294,7 @@ export class NotesStore {
 
 	discardIfEmpty(id: string): void {
 		const n = this.notes.find((x) => x.id === id);
-		if (!n) return;
-		const empty =
-			!n.title.trim() &&
-			!(n.body ?? '').trim() &&
-			!noteAttachments(n).some((attachment) => attachment.dataUrl.length > 0);
-		if (!empty) return;
+		if (!n || !noteIsBlank(n)) return;
 		this.deleteNoteForever(id);
 	}
 
@@ -786,9 +793,18 @@ export class NotesStore {
 	private scheduleSyncPush() {
 		if (this.syncFlight) this.syncFollowupRequested = true;
 		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
-		this.syncPushTimer = setTimeout(async () => {
+		this.syncPushTimer = setTimeout(() => {
 			if (!this.dirty) return;
-			const synced = await this.syncWithCloud();
+			void this.flushSync();
+		}, 5000);
+	}
+
+	flushSync(): Promise<boolean> {
+		if (this.syncPushTimer) {
+			clearTimeout(this.syncPushTimer);
+			this.syncPushTimer = null;
+		}
+		return this.syncWithCloud().then(async (synced) => {
 			const leftover = synced ? await getSyncOutboxKeys().catch(() => []) : [];
 			if (synced && leftover.length === 0) {
 				this.dirty = false;
@@ -796,7 +812,8 @@ export class NotesStore {
 				this.dirty = true;
 				this.scheduleSyncPush();
 			}
-		}, 5000);
+			return synced;
+		});
 	}
 
 	// Replace this device's local data with the already-linked account without uploading any
@@ -840,6 +857,7 @@ export class NotesStore {
 			this.mirrorToLS();
 			this.dirty = false;
 			this.lastPersistError = null;
+			this.onAfterSync?.();
 			return true;
 		} catch (err) {
 			this.recordPersistenceError('Could not replace this device with cloud notes', err);
@@ -993,6 +1011,7 @@ export class NotesStore {
 				...(labelsChanged ? [bulkPutLabels(mergedLabels)] : [])
 			]);
 			this.lastPersistError = null;
+			this.onAfterSync?.();
 			return true;
 		} catch (err) {
 			this.recordPersistenceError('Cloud sync reconciliation failed', err);

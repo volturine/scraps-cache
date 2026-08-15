@@ -431,6 +431,31 @@ export async function setSyncState<T>(key: string, value: T): Promise<void> {
 	await db.put(SYNC_STATE_STORE, value, key);
 }
 
+const FIRED_REMINDERS_KEY = 'gkc-fired-reminders';
+
+export async function getFiredReminderKeys(): Promise<string[]> {
+	const stored = await getSyncState<unknown>(FIRED_REMINDERS_KEY);
+	if (!Array.isArray(stored)) return [];
+	return stored.filter((item): item is string => typeof item === 'string');
+}
+
+export async function setFiredReminderKeys(keys: Iterable<string>): Promise<void> {
+	await setSyncState(FIRED_REMINDERS_KEY, [...keys]);
+}
+
+/** Merge one delivered wake atomically so pages and the service worker cannot lose each other's ids. */
+export async function markFiredReminderKey(key: string): Promise<void> {
+	const db = await getDB();
+	const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
+	const stored = await tx.store.get(FIRED_REMINDERS_KEY);
+	const keys = new Set(
+		Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []
+	);
+	keys.add(key);
+	await tx.store.put([...keys], FIRED_REMINDERS_KEY);
+	await tx.done;
+}
+
 export async function deleteSyncState(key: string): Promise<void> {
 	const db = await getDB();
 	await db.delete(SYNC_STATE_STORE, key);

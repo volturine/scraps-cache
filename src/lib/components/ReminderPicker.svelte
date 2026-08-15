@@ -2,6 +2,8 @@
 	import { SvelteDate } from 'svelte/reactivity';
 	import WheelPicker from './WheelPicker.svelte';
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
+	import { requestReminderPermission } from '$lib/reminderNotify';
+	import { ensurePushSubscription } from '$lib/reminderWake';
 
 	let {
 		reminder,
@@ -99,7 +101,14 @@
 	const hours24 = $derived(selected.getHours());
 	const minutes = $derived(selected.getMinutes());
 	const selectedMonth = $derived(selected.getMonth());
+	const selectedDay = $derived(selected.getDate());
 	const selectedYear = $derived(selected.getFullYear());
+	const dayItems = $derived(
+		Array.from({ length: daysInMonth(selectedYear, selectedMonth) }, (_, index) => ({
+			value: index + 1,
+			label: String(index + 1).padStart(2, '0')
+		}))
+	);
 
 	const yearItems = $derived.by(() => {
 		const nowYear = new Date().getFullYear();
@@ -124,7 +133,9 @@
 		selected = d;
 	}
 
-	function save() {
+	async function save() {
+		await requestReminderPermission();
+		await ensurePushSubscription();
 		apply(selected.getTime());
 	}
 	function clear() {
@@ -169,6 +180,9 @@
 			<AlarmClock class="h-4 w-4 shrink-0" aria-hidden="true" />
 			<span class="min-w-0 truncate">{willSaveLabel}</span>
 		</div>
+		<div class="mt-1 text-[11px] leading-snug text-[var(--gkc-text-muted)]">
+			Notifies on this device. Closed-app alerts need Sync on this device.
+		</div>
 	</div>
 
 	<div class="mb-4 border-t border-[var(--shard-border)] pt-4">
@@ -191,7 +205,7 @@
 					? 'bg-[var(--shard-bg)]'
 					: ''}"
 				onclick={() => (monthYearOpen = !monthYearOpen)}
-				aria-label="Choose month and year"
+				aria-label="Choose date"
 				aria-expanded={monthYearOpen}
 			>
 				<span class="truncate">{dateLabel}</span>
@@ -211,14 +225,21 @@
 				class="mb-1 flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
 			>
 				<WheelPicker
-					class="w-[9.5rem]"
+					class="w-12"
+					items={dayItems}
+					value={selectedDay}
+					onChange={(day) => setDateParts({ day })}
+					ariaLabel="Day"
+				/>
+				<WheelPicker
+					class="w-[7.75rem]"
 					items={MONTH_ITEMS}
 					value={selectedMonth}
 					onChange={(month) => setDateParts({ month })}
 					ariaLabel="Month"
 				/>
 				<WheelPicker
-					class="w-[4.75rem]"
+					class="w-[4.5rem]"
 					items={yearItems}
 					value={selectedYear}
 					onChange={(year) => setDateParts({ year })}

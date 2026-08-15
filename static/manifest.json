@@ -3,6 +3,7 @@
 	"short_name": "Shard",
 	"description": "Offline-first notes with optional end-to-end encrypted sync",
 	"start_url": "/",
+	"scope": "/",
 	"display": "standalone",
 	"background_color": "#ffffff",
 	"theme_color": "#ffffff",

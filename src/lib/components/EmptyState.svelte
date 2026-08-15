@@ -20,7 +20,7 @@
 	{#if actionLabel && href}
 		<a
 			{href}
-			class="mt-3 rounded-full border border-[var(--shard-border)] px-3 py-1.5 text-sm font-medium text-[var(--shard-text)] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:hover:bg-white/10 dark:focus-visible:ring-white/30"
+			class="mt-3 rounded-full border border-[var(--shard-border)] px-3 py-1.5 text-sm font-medium text-[var(--shard-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 		>
 			{actionLabel}
 		</a>
@@ -28,7 +28,7 @@
 		<button
 			type="button"
 			onclick={onAction}
-			class="mt-3 rounded-full border border-[var(--shard-border)] px-3 py-1.5 text-sm font-medium text-[var(--shard-text)] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:hover:bg-white/10 dark:focus-visible:ring-white/30"
+			class="mt-3 rounded-full border border-[var(--shard-border)] px-3 py-1.5 text-sm font-medium text-[var(--shard-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 		>
 			{actionLabel}
 		</button>

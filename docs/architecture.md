@@ -53,11 +53,16 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 | Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                 | Export/import encrypted `.shard-backup`               |
 | Images         | `src/lib/imageOptimize.ts`                             | Resize, WebP, strip EXIF before store/sync            |
 | App viewport   | `src/lib/appViewport.ts`                               | Safe area + keyboard frame; overlay host              |
+| Reminder wakes | `src/lib/server/wakeScheduler.ts`, `webPush.ts`        | Contentless Web Push ticks; SW reads notes locally    |
 
 ### Local data model (conceptual)
 
 - **Notes** — title, body (plain text + checklist lines), color, pins, archive,
   trash, reminder timestamp, label IDs, attachments.
+- **Reminder wakes** — optional account-scoped opaque wake IDs and `fireAt`
+  timestamps. Each enabled device has independent delivery state, and a device
+  does not need the encrypted note before receiving a generic alert. The relay
+  never receives note IDs or text.
 - **Labels** — named tags with update timestamps for conflict resolution.
 - **Boards** — kanban structures + tombstones for cross-device deletion.
 - **Sync outbox** — changed record keys scheduled for upload (not a full
@@ -84,6 +89,7 @@ verifies `accountId` + `authSecret` but cannot decrypt envelopes.
 | Delta API      | `src/routes/api/sync/delta/`            | Upload/download encrypted records, slot deletes  |
 | Register       | `src/routes/api/sync/register/`         | Create account credentials                       |
 | Pairing        | `src/routes/api/sync/pair/*`            | Rendezvous for PAKE shares (no plaintext key)    |
+| Reminder wakes | `src/routes/api/sync/push/*`            | Device subscriptions + opaque wake ticks         |
 | Account delete | `src/routes/api/sync/account/`          | Wipe cloud ciphertext for an account             |
 | Rate limits    | `src/lib/server/rateLimit.ts`           | In-memory token buckets (single-node)            |
 | Backups        | `src/lib/server/backupManager.ts`       | Online SQLite snapshot + integrity check         |

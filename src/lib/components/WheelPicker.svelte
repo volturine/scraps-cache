@@ -141,7 +141,7 @@
 		aria-hidden="true"
 	></div>
 	<div
-		class="wheel-picker scrollable absolute inset-0 z-10 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+		class="wheel-picker scrollable absolute inset-0 z-10 overflow-y-auto outline-none"
 		style="height: {ITEM_H * VISIBLE}px"
 		role="listbox"
 		tabindex="0"
@@ -180,6 +180,8 @@
 	.wheel-picker {
 		scrollbar-width: none;
 		-ms-overflow-style: none;
+		-webkit-overflow-scrolling: touch;
+		touch-action: pan-y;
 		scroll-snap-type: y mandatory;
 		overscroll-behavior: contain;
 		-webkit-mask-image: linear-gradient(

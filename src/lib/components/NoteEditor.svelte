@@ -8,11 +8,13 @@
 	import { NOTE_COLORS, NOTE_DARK_COLORS } from '$lib/types';
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
+	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import LinkPreview from './LinkPreview.svelte';
 	import { extractHttpUrls } from '$lib/linkPreview';
+	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Bell, ChevronLeft, Pin } from '@lucide/svelte';
@@ -31,8 +33,10 @@
 
 	const note = $derived(noteId ? notesStore.notes.find((n) => n.id === noteId) : null);
 	const isOpen = $derived(noteId !== null && note !== null);
-	const reminderOverdue = $derived(note?.reminder != null && isReminderOverdue(note.reminder));
-	const reminderLabel = $derived(formatReminder(note?.reminder ?? null));
+	const reminderOverdue = $derived(
+		note?.reminder != null && isReminderOverdue(note.reminder, appClock.now)
+	);
+	const reminderLabel = $derived(formatReminder(note?.reminder ?? null, appClock.now));
 
 	let taskFocusLine = $state<number | null>(null);
 
@@ -150,9 +154,10 @@
 
 	function allowEditorBodyScroll(event: TouchEvent): boolean {
 		const target = event.target;
-		if (!(target instanceof Element) || !editorDialog?.contains(target)) return false;
+		if (!(target instanceof Element)) return false;
 		const scroller = target.closest('.scrollable');
-		if (!(scroller instanceof HTMLElement) || !editorDialog.contains(scroller)) return false;
+		if (!(scroller instanceof HTMLElement)) return false;
+		if (!editorDialog?.contains(scroller) && !scroller.closest('[data-editor-popup]')) return false;
 		if (scroller.scrollHeight <= scroller.clientHeight + 1) return false;
 		const y = event.touches[0]?.clientY ?? lastTouchY;
 		const dy = y - lastTouchY;
@@ -465,7 +470,7 @@
 			}}
 			role="presentation"
 		></div>
-		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<ColorPalette
 				color={note.color}
 				onSelect={(c) => {
@@ -485,10 +490,14 @@
 			}}
 			role="presentation"
 		></div>
-		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<ReminderPicker
 				reminder={note.reminder}
-				onApply={(r) => commit({ reminder: r })}
+				onApply={(r) => {
+					commit({ reminder: r });
+					reminderStore.sync(notesStore.notes);
+					void notesStore.flushSync();
+				}}
 				onClose={() => {
 					reminderOpen = false;
 				}}
@@ -505,7 +514,7 @@
 			}}
 			role="presentation"
 		></div>
-		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<LabelMenu
 				noteId={note.id}
 				onClose={() => {

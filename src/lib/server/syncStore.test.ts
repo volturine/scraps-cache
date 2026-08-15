@@ -7,6 +7,7 @@ import { SyncQuotaExceededError, SyncStore } from './syncStore';
 const stores: SyncStore[] = [];
 const directories: string[] = [];
 const slot = (character: string) => character.repeat(64);
+const wake = (character: string, fireAt: number) => ({ id: character.repeat(43), fireAt });
 
 function createStore(options?: ConstructorParameters<typeof SyncStore>[1]): {
 	store: SyncStore;
@@ -159,12 +160,117 @@ describe('SQLite sync store', () => {
 		expect(removed.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0 });
 	});
 
+	it('stores and claims opaque reminder wakes independently by id', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice({
+			deviceId: 'device-aaaaaaaaaaaa',
+			endpoint: 'https://push.example/sub-a',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16),
+			accountId: 'account'
+		});
+		store.replaceReminderWakes('account', [wake('b', 5_000), wake('a', 1_000), wake('c', 9_000)]);
+		expect(store.listWakeTimes('account')).toEqual([1_000, 5_000, 9_000]);
+		const claimed = store.claimDueWakes(1_000);
+		expect(claimed).toEqual([
+			expect.objectContaining({
+				accountId: 'account',
+				deviceId: 'device-aaaaaaaaaaaa',
+				wakeId: 'a'.repeat(43),
+				fireAt: 1_000
+			})
+		]);
+		expect(store.claimDueWakes(1_000)).toEqual([]);
+		store.markWakeDelivered(claimed[0], 1_000);
+		expect(store.claimDueWakes(1_000)).toEqual([]);
+		expect(store.nextWakeAt(1_000)).toBe(5_000);
+	});
+
+	it('fans each account wake out once to every registered device', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice({
+			deviceId: 'device-phone000000',
+			endpoint: 'https://push.example/phone',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16),
+			accountId: 'account'
+		});
+		store.savePushDevice({
+			deviceId: 'device-tablet00000',
+			endpoint: 'https://push.example/tablet',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16),
+			accountId: 'account'
+		});
+		store.replaceReminderWakes('account', [wake('a', 1_000)]);
+		const claimed = store.claimDueWakes(1_000);
+		expect(claimed.map((device) => device.deviceId).sort()).toEqual([
+			'device-phone000000',
+			'device-tablet00000'
+		]);
+		for (const delivery of claimed) store.markWakeDelivered(delivery, 1_000);
+		expect(store.claimDueWakes(1_000)).toEqual([]);
+	});
+
+	it('keeps account wakes separate from registration and replaces them authoritatively', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.replaceReminderWakes('account', [wake('a', 1_000)]);
+		store.savePushDevice({
+			deviceId: 'device-empty000000',
+			endpoint: 'https://push.example/empty',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16),
+			accountId: 'account'
+		});
+		expect(store.listWakeTimes('account')).toEqual([1_000]);
+		store.replaceReminderWakes('account', [wake('b', 2_000)]);
+		expect(store.listWakeTimes('account')).toEqual([2_000]);
+	});
+
+	it('keeps at most 32 push devices per account', () => {
+		const { store } = createStore();
+		store.createAccount('account-a', 'credential-a');
+		store.createAccount('account-b', 'credential-b');
+		for (let index = 0; index < 33; index++) {
+			store.savePushDevice({
+				accountId: 'account-a',
+				deviceId: `device-${String(index).padStart(12, '0')}`,
+				endpoint: `https://push.example/sub-${index}`,
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16)
+			});
+		}
+		store.savePushDevice({
+			accountId: 'account-b',
+			deviceId: 'device-other000000',
+			endpoint: 'https://push.example/other',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16)
+		});
+		expect(store.countPushDevices('account-a')).toBe(32);
+		expect(store.countPushDevices('account-b')).toBe(1);
+		expect(store.countPushDevices()).toBe(33);
+	});
+
 	it('deletes an account and all of its opaque envelopes', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
 		store.sync('account', 0, [{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }], 10);
+		store.savePushDevice({
+			accountId: 'account',
+			deviceId: 'device-aaaaaaaaaaaa',
+			endpoint: 'https://push.example/account',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16)
+		});
+		store.replaceReminderWakes('account', [wake('a', 1_000)]);
 		expect(store.deleteAccount('account')).toBe(true);
 		expect(store.getCredentialHash('account')).toBeNull();
+		expect(store.countPushDevices()).toBe(0);
+		expect(store.listWakeTimes('account')).toEqual([]);
 		expect(store.aggregateUsage()).toEqual({
 			accounts: 0,
 			envelopeCount: 0,

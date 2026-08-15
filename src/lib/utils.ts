@@ -9,10 +9,10 @@ export function uid(): string {
 }
 
 /** Format epoch ms as a human-friendly relative-ish string. */
-export function formatReminder(ts: number | null): string {
+export function formatReminder(ts: number | null, nowMs = Date.now()): string {
 	if (ts == null) return '';
 	const d = new Date(ts);
-	const now = new Date();
+	const now = new Date(nowMs);
 	const sameDay = d.toDateString() === now.toDateString();
 	const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 	if (sameDay) return `Today, ${time}`;

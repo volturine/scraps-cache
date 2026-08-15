@@ -4,6 +4,7 @@
 	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { unregisterReminderDevice } from '$lib/reminderWake';
 	import { Cloud, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
@@ -185,6 +186,15 @@
 		if (!success) error = friendlyError(syncStore.lastError, 'Sync failed');
 	}
 
+	async function unlinkDevice() {
+		const account = syncStore.account;
+		await unregisterReminderDevice(account);
+		syncStore.logout();
+		mode = 'menu';
+		error = '';
+		info = '';
+	}
+
 	async function copyCode() {
 		const text = formatPairingCode(waiting?.syncCode ?? '');
 		if (!text) return;
@@ -334,19 +344,9 @@
 						{formatBytes(syncStore.usage.ciphertextBytes)} stored for this account
 					</div>
 				{/if}
-				<div
-					class="rounded-[var(--shard-radius-md)] bg-[var(--shard-interactive-hover)] p-3 text-xs text-[var(--shard-text-muted)]"
-				>
-					Each connection uses a fresh code. The durable sync secret never appears on screen.
-				</div>
 				<button
 					type="button"
-					onclick={() => {
-						syncStore.logout();
-						mode = 'menu';
-						error = '';
-						info = '';
-					}}
+					onclick={() => void unlinkDevice()}
 					class="shard-button shard-button-destructive w-full text-sm">Unlink this device</button
 				>
 				{#if deleteConfirm}

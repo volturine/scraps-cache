@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import { AlarmClock } from '@lucide/svelte';
 
@@ -10,8 +11,8 @@
 		variant?: 'strip' | 'chip' | 'inline';
 	} = $props();
 
-	const overdue = $derived(isReminderOverdue(reminder));
-	const label = $derived(formatReminder(reminder));
+	const overdue = $derived(isReminderOverdue(reminder, appClock.now));
+	const label = $derived(formatReminder(reminder, appClock.now));
 	const aria = $derived(overdue ? `Overdue reminder, ${label}` : `Reminder, ${label}`);
 
 	const STYLES = {

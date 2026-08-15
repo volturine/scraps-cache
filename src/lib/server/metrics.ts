@@ -6,9 +6,13 @@ let syncRequests = 0;
 let syncUploadEnvelopes = 0;
 let syncDeleteSlots = 0;
 let sqliteBusy = 0;
+let reminderWakesSent = 0;
+let reminderWakesGone = 0;
+let reminderWakesFailed = 0;
 
 function routeLabel(pathname: string): string {
 	if (pathname.startsWith('/api/sync/delta')) return '/api/sync/delta';
+	if (pathname.startsWith('/api/sync/push/')) return '/api/sync/push/*';
 	if (pathname.startsWith('/api/sync/pair/')) return '/api/sync/pair/*';
 	if (pathname.startsWith('/api/sync/')) return '/api/sync/*';
 	if (pathname.startsWith('/health/')) return pathname;
@@ -36,6 +40,12 @@ export function recordSyncBatch(uploadCount: number, deleteCount: number): void 
 
 export function recordSqliteBusy(): void {
 	sqliteBusy += 1;
+}
+
+export function recordReminderWake(result: 'sent' | 'gone' | 'failed'): void {
+	if (result === 'sent') reminderWakesSent += 1;
+	else if (result === 'gone') reminderWakesGone += 1;
+	else reminderWakesFailed += 1;
 }
 
 export function recordSqliteError(error: unknown): void {
@@ -83,7 +93,11 @@ export function renderMetrics(
 		line('shard_backup_last_attempt_timestamp_seconds', backup.lastAttemptAt / 1000),
 		line('shard_backup_last_success_timestamp_seconds', backup.lastSuccessAt / 1000),
 		line('shard_backup_failures_total', backup.failures),
-		line('shard_backup_duration_milliseconds', backup.durationMs)
+		line('shard_backup_duration_milliseconds', backup.durationMs),
+		'# TYPE shard_reminder_wakes_sent_total counter',
+		line('shard_reminder_wakes_sent_total', reminderWakesSent),
+		line('shard_reminder_wakes_gone_total', reminderWakesGone),
+		line('shard_reminder_wakes_failed_total', reminderWakesFailed)
 	);
 	return `${lines.join('\n')}\n`;
 }

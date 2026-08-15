@@ -181,7 +181,6 @@ html.editor-open .app-shell {
 .app-overlay > * {
 	pointer-events: auto;
 }
-
 html,
 body {
 	min-height: 100lvh;
@@ -192,10 +191,9 @@ body {
 	background-color: var(--shard-bg);
 }
 
-/* Keep keyboard focus visible even where component utilities remove the browser outline. */
-:focus-visible {
-	outline: 2px solid var(--shard-focus) !important;
-	outline-offset: 2px;
+/* Focus is communicated by the control state/caret without an extra browser ring. */
+:focus {
+	outline: none !important;
 }
 
 /* Shared interactive primitives. Components compose sizing and layout around these roles.
@@ -264,11 +262,6 @@ body {
 	border: 1px solid var(--shard-border);
 	background: var(--shard-bg);
 	color: var(--shard-text);
-}
-.shard-input:focus {
-	border-color: var(--shard-focus);
-	outline: 2px solid var(--shard-focus);
-	outline-offset: 1px;
 }
 .shard-input[aria-invalid='true'] {
 	border-color: var(--shard-danger);
@@ -432,11 +425,6 @@ body {
 	font-size: 0.875rem;
 	color: var(--shard-text);
 }
-.labels-edit-input:focus {
-	border-color: var(--shard-focus);
-	outline: 2px solid var(--shard-focus);
-	outline-offset: 1px;
-}
 .labels-edit-delete {
 	display: inline-flex;
 	align-items: center;
@@ -537,11 +525,6 @@ body {
 	.icon-btn:active {
 		background-color: var(--shard-interactive-active);
 	}
-}
-
-.icon-btn:focus-visible {
-	outline: 2px solid var(--shard-focus);
-	outline-offset: 2px;
 }
 
 /* Hide elements on phone screens (under 640px) */
