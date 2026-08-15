@@ -262,7 +262,7 @@
 		aria-label="Close sync dialog"
 	></button>
 	<div
-		class="relative w-full max-w-md rounded-xl border border-[var(--shard-border)] bg-[var(--shard-surface)] p-6 shadow-2xl"
+		class="shard-dialog relative w-full max-w-md p-6"
 		role="dialog"
 		tabindex="-1"
 		aria-modal="true"
@@ -291,7 +291,9 @@
 				{#if syncStore.progress}
 					{@const progress = syncStore.progress}
 					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-					<div class="rounded-lg bg-black/5 p-3 text-sm dark:bg-white/5">
+					<div
+						class="rounded-[var(--shard-radius-md)] bg-[var(--shard-interactive-hover)] p-3 text-sm"
+					>
 						<div class="mb-1 flex justify-between text-[var(--shard-text-muted)]">
 							<span
 								>{progress.phase === 'upload'
@@ -303,28 +305,28 @@
 									: ''}</span
 							>
 						</div>
-						<div class="h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+						<div class="shard-progress-track h-2 overflow-hidden rounded-full">
 							<div
-								class="h-full rounded-full bg-blue-600 transition-[width] duration-150"
+								class="shard-progress-value h-full rounded-full transition-[width] duration-150"
 								style={`width: ${progress.totalBytes ? percent : 100}%`}
 							></div>
 						</div>
 					</div>
 				{:else if syncing}<p class="text-sm text-[var(--shard-text-muted)]">Syncing…</p>{/if}
 				{#if info}<p class="text-sm text-[var(--shard-text-muted)]">{info}</p>{/if}
-				{#if error}<p class="text-sm text-red-600">{error}</p>{/if}
+				{#if error}<p class="text-sm text-[var(--shard-danger)]">{error}</p>{/if}
 				<button
 					type="button"
 					onclick={() => void syncNow()}
 					disabled={loading || syncing}
-					class="w-full rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-medium text-white disabled:opacity-50 touch-manipulation"
+					class="shard-button shard-button-primary w-full px-3 py-2.5 text-sm font-medium"
 					>{syncing ? 'Syncing…' : '🔄 Sync now'}</button
 				>
 				<button
 					type="button"
 					onclick={() => void startExistingConnection()}
 					disabled={loading || syncing}
-					class="w-full rounded-lg border border-[var(--shard-border)] px-3 py-2.5 text-sm touch-manipulation"
+					class="shard-button shard-button-secondary w-full px-3 py-2.5 text-sm"
 					>Connect another device</button
 				>
 				{#if syncStore.usage}
@@ -333,7 +335,7 @@
 					</div>
 				{/if}
 				<div
-					class="rounded-lg bg-black/5 p-3 text-xs text-[var(--shard-text-muted)] dark:bg-white/5"
+					class="rounded-[var(--shard-radius-md)] bg-[var(--shard-interactive-hover)] p-3 text-xs text-[var(--shard-text-muted)]"
 				>
 					Each connection uses a fresh code. The durable sync secret never appears on screen.
 				</div>
@@ -345,11 +347,11 @@
 						error = '';
 						info = '';
 					}}
-					class="w-full text-sm text-red-600 touch-manipulation">Unlink this device</button
+					class="shard-button shard-button-destructive w-full text-sm">Unlink this device</button
 				>
 				{#if deleteConfirm}
-					<div class="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
-						<p class="text-xs leading-relaxed text-red-700 dark:text-red-300">
+					<div class="shard-status-danger rounded-[var(--shard-radius-md)] p-3">
+						<p class="text-xs leading-relaxed">
 							Delete all encrypted cloud records? Notes stored on this device will remain.
 						</p>
 						<div class="mt-2 flex gap-2">
@@ -366,7 +368,7 @@
 								type="button"
 								onclick={() => void deleteCloudData()}
 								disabled={loading}
-								class="flex-1 rounded bg-red-600 px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+								class="shard-button shard-button-destructive-solid flex-1 px-2 py-1.5 text-xs font-medium"
 								>{loading ? 'Deleting…' : 'Delete cloud data'}</button
 							>
 						</div>
@@ -377,7 +379,7 @@
 						onclick={() => {
 							deleteConfirm = true;
 						}}
-						class="w-full text-xs text-red-600 touch-manipulation">Delete cloud data</button
+						class="shard-button shard-button-destructive w-full text-xs">Delete cloud data</button
 					>
 				{/if}
 			</div>
@@ -394,7 +396,7 @@
 						error = '';
 						info = '';
 					}}
-					class="w-full rounded-lg bg-blue-600 px-3 py-3 text-sm font-medium text-white touch-manipulation"
+					class="shard-button shard-button-primary w-full px-3 py-3 text-sm font-medium"
 					>Create sync key</button
 				><button
 					type="button"
@@ -413,11 +415,11 @@
 					Creates a private account on this device. Other devices join with a one-time code, not a
 					lifetime password.
 				</p>
-				{#if error}<p class="text-sm text-red-600">{error}</p>{/if}<button
+				{#if error}<p class="text-sm text-[var(--shard-danger)]">{error}</p>{/if}<button
 					type="button"
 					onclick={() => void create()}
 					disabled={loading}
-					class="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 touch-manipulation"
+					class="shard-button shard-button-primary w-full px-3 py-2 text-sm font-medium"
 					>{loading ? 'Creating…' : 'Create my sync key'}</button
 				><button
 					type="button"
@@ -438,13 +440,13 @@
 					placeholder="XXXX-XXXX-XXXX-XXXX"
 					maxlength="19"
 					spellcheck="false"
-					class="w-full rounded-lg border border-[var(--shard-border)] bg-[var(--shard-bg)] px-3 py-2 text-center text-lg font-bold tracking-wider"
+					class="shard-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
 					onkeydown={(event) => event.key === 'Enter' && void beginLink()}
-				/>{#if error}<p class="text-sm text-red-600">{error}</p>{/if}<button
+				/>{#if error}<p class="text-sm text-[var(--shard-danger)]">{error}</p>{/if}<button
 					type="button"
 					onclick={() => void beginLink()}
 					disabled={loading}
-					class="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 touch-manipulation"
+					class="shard-button shard-button-primary w-full px-3 py-2 text-sm font-medium"
 					>{loading ? 'Starting…' : 'Start connection'}</button
 				><button
 					type="button"
@@ -480,10 +482,9 @@
 					<button
 						type="button"
 						onclick={() => void copyCode()}
-						class="w-full rounded-lg border border-[var(--shard-border)] px-3 py-2.5 text-sm font-medium touch-manipulation {copyFlash
-							? 'border-green-600 bg-green-600 text-white'
-							: 'text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/5'}"
-						>{copyFlash ? 'Copied' : 'Copy code'}</button
+						class="shard-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
+							? 'border-[var(--shard-success)] bg-[var(--shard-success)] text-[var(--shard-success-foreground)]'
+							: 'shard-button-secondary'}">{copyFlash ? 'Copied' : 'Copy code'}</button
 					>
 				{:else}
 					<div>
@@ -500,9 +501,9 @@
 						<span>Expires in</span>
 						<span class="tabular-nums text-[var(--shard-text)]">{secondsLeft()}s</span>
 					</div>
-					<div class="h-1 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+					<div class="shard-progress-track h-1 overflow-hidden rounded-full">
 						<div
-							class="h-full rounded-full bg-blue-600 transition-[width] duration-1000 ease-linear"
+							class="shard-progress-value h-full rounded-full transition-[width] duration-1000 ease-linear"
 							style={`width: ${expiryRatio() * 100}%`}
 						></div>
 					</div>
@@ -523,7 +524,9 @@
 				{#if syncStore.progress}
 					{@const progress = syncStore.progress}
 					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-					<div class="rounded-lg bg-black/5 p-3 text-sm dark:bg-white/5">
+					<div
+						class="rounded-[var(--shard-radius-md)] bg-[var(--shard-interactive-hover)] p-3 text-sm"
+					>
 						<div class="mb-1 flex justify-between text-[var(--shard-text-muted)]">
 							<span>{progress.phase === 'upload' ? 'Uploading' : 'Downloading'}</span><span
 								>{formatBytes(progress.loadedBytes)}{progress.totalBytes
@@ -531,9 +534,9 @@
 									: ''}</span
 							>
 						</div>
-						<div class="h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+						<div class="shard-progress-track h-2 overflow-hidden rounded-full">
 							<div
-								class="h-full rounded-full bg-blue-600 transition-[width] duration-150"
+								class="shard-progress-value h-full rounded-full transition-[width] duration-150"
 								style={`width: ${progress.totalBytes ? percent : 100}%`}
 							></div>
 						</div>
@@ -545,17 +548,17 @@
 					type="button"
 					onclick={() => void choose(true)}
 					disabled={loading || syncing}
-					class="w-full rounded-lg bg-blue-600 px-3 py-3 text-left text-sm font-medium text-white disabled:opacity-50 touch-manipulation"
+					class="shard-button shard-button-primary w-full px-3 py-3 text-left text-sm font-medium"
 					>Keep and merge local notes</button
 				>
 				<button
 					type="button"
 					onclick={() => void choose(false)}
 					disabled={loading || syncing}
-					class="w-full rounded-lg border border-red-500/40 px-3 py-3 text-left text-sm font-medium text-red-600 disabled:opacity-50 touch-manipulation"
+					class="shard-button shard-button-destructive w-full border border-[var(--shard-danger)] px-3 py-3 text-left text-sm font-medium"
 					>Discard local notes and download synced notes</button
 				>
-				{#if error}<p class="text-sm text-red-600">{error}</p>{/if}
+				{#if error}<p class="text-sm text-[var(--shard-danger)]">{error}</p>{/if}
 			</div>
 		{/if}
 	</div>
