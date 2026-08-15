@@ -5,6 +5,7 @@
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Trash2 } from '@lucide/svelte';
 
 	const { openNote: openEditor } = useEditorActions();
@@ -20,19 +21,9 @@
 </script>
 
 <div class="pt-4 pb-8">
-	{#if trashed.length === 0}
-		<EmptyState
-			icon={Trash2}
-			description="Deleted notes stay here for 7 days before they are deleted forever."
-		/>
-	{:else}
-		<div class={shell}>
-			<div class="mb-3 flex items-center gap-3 px-2">
-				<h2 class="text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]">
-					Trash
-				</h2>
-				<span class="text-xs text-[var(--shard-text-muted)] opacity-60">{trashed.length}</span>
-				<div class="flex-1"></div>
+	<div class={shell}>
+		<PageHeader title="Trash" count={trashed.length}>
+			{#if trashed.length > 0}
 				{#if confirmEmpty}
 					<span class="text-xs text-[var(--shard-text-muted)]">Delete all?</span>
 					<button
@@ -55,9 +46,16 @@
 						>Empty</button
 					>
 				{/if}
-			</div>
-		</div>
+			{/if}
+		</PageHeader>
+	</div>
 
+	{#if trashed.length === 0}
+		<EmptyState
+			icon={Trash2}
+			description="Deleted notes stay here for 7 days before they are deleted forever."
+		/>
+	{:else}
 		<NotesFeed notes={trashed} onOpen={openEditor}>
 			{#snippet children(note)}
 				<TrashCard {note} onOpen={openEditor} />

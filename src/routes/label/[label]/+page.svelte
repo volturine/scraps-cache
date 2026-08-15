@@ -4,6 +4,7 @@
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { page } from '$app/state';
 	import { Tag } from '@lucide/svelte';
 
@@ -21,6 +22,10 @@
 
 {#key labelId}
 	<div class="pt-4 pb-8">
+		<div class={shell}>
+			<PageHeader title={label?.name ?? 'Label'} count={label ? notes.length : undefined} />
+		</div>
+
 		{#if !label}
 			<EmptyState
 				icon={Tag}
@@ -36,10 +41,6 @@
 				onAction={startNewNote}
 			/>
 		{:else}
-			<div class={shell}>
-				<h1 class="mb-4 px-2 text-xl font-medium text-[var(--shard-text)]">{label.name}</h1>
-			</div>
-
 			{#if pinned.length > 0}
 				<div class={shell}>
 					<h2

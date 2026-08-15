@@ -4,6 +4,7 @@
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Archive } from '@lucide/svelte';
 
 	const { openNote: openEditor } = useEditorActions();
@@ -13,7 +14,7 @@
 
 <div class="pt-4 pb-8">
 	<div class={shell}>
-		<h1 class="mb-4 px-2 text-xl font-medium text-[var(--shard-text)]">Archive</h1>
+		<PageHeader title="Archive" count={archived.length} />
 	</div>
 
 	{#if archived.length === 0}

@@ -12,6 +12,7 @@
 	import { kanbanStore } from '$lib/stores/kanban.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { ChevronDown, X } from '@lucide/svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	const { openNote } = useEditorActions();
 	const board = $derived(kanbanStore.activeBoard);
@@ -148,6 +149,8 @@
 </script>
 
 <div class="pt-4 pb-8">
+	<PageHeader title="Kanban" />
+
 	<div class="mb-4 flex flex-wrap items-center gap-2">
 		<div class="relative min-w-0 max-w-full">
 			<select

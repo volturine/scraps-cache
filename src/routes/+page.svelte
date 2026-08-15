@@ -5,6 +5,7 @@
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { StickyNote } from '@lucide/svelte';
 
 	const { openNote: openEditor, startNewNote } = useEditorActions();
@@ -18,6 +19,10 @@
 </script>
 
 <div class="pt-4 pb-8">
+	<div class={shell}>
+		<PageHeader title="Notes" count={filteredPinned.length + filteredOthers.length} />
+	</div>
+
 	{#if filteredPinned.length > 0}
 		<div class={shell}>
 			<h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]">

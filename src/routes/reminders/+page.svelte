@@ -4,6 +4,7 @@
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { AlarmClock } from '@lucide/svelte';
 
 	const { openNote: openEditor, startNewNote } = useEditorActions();
@@ -12,6 +13,10 @@
 </script>
 
 <div class="pt-4 pb-8">
+	<div class={shell}>
+		<PageHeader title="Reminders" count={reminders.length} />
+	</div>
+
 	{#if reminders.length === 0}
 		<EmptyState
 			icon={AlarmClock}
@@ -20,13 +25,6 @@
 			onAction={startNewNote}
 		/>
 	{:else}
-		<div class={shell}>
-			<h2
-				class="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]"
-			>
-				Reminders
-			</h2>
-		</div>
 		<NotesFeed notes={reminders} onOpen={openEditor} />
 	{/if}
 </div>

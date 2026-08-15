@@ -6,6 +6,7 @@
 	import SyncModal from './SyncModal.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import { useEditorActions } from '$lib/editorContext';
+	import { page } from '$app/state';
 	import {
 		decryptBackup,
 		encryptBackup,
@@ -36,6 +37,17 @@
 	let backupDialogMode = $state<'export' | 'import' | null>(null);
 	let backupBusy = $state(false);
 	let pendingEncryptedBackup = $state<EncryptedShardBackup | null>(null);
+	const routeTitle = $derived.by(() => {
+		if (page.url.pathname === '/') return 'Notes';
+		if (page.url.pathname === '/kanban') return 'Kanban';
+		if (page.url.pathname === '/reminders') return 'Reminders';
+		if (page.url.pathname === '/archive') return 'Archive';
+		if (page.url.pathname === '/trash') return 'Trash';
+		if (page.url.pathname.startsWith('/label/')) {
+			return notesStore.labels.find((label) => label.id === page.params.label)?.name ?? 'Label';
+		}
+		return 'Shard';
+	});
 
 	function startBackupExport() {
 		settingsOpen = false;
@@ -153,6 +165,9 @@
 	>
 		<Menu class="h-5 w-5" aria-hidden="true" />
 	</button>
+	<span class="max-w-20 truncate text-sm font-medium text-[var(--shard-text)] sm:hidden">
+		{routeTitle}
+	</span>
 
 	<div
 		class="flex h-10 flex-1 items-center gap-2 rounded-full border border-[var(--shard-border)] bg-[var(--shard-surface)] px-3"
@@ -189,7 +204,7 @@
 	</button>
 
 	<button
-		class="icon-btn h-10 w-10 p-2"
+		class="icon-btn hidden h-10 w-10 p-2 sm:grid"
 		title="Toggle layout"
 		onclick={() => uiStore.toggleLayout()}
 		aria-label="Toggle layout"
