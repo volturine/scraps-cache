@@ -174,7 +174,7 @@
 	function openTags(e: MouseEvent) {
 		e.stopPropagation();
 		if (!noteId) {
-			attachError = 'Save the note first to add tags';
+			attachError = 'Save the note first to add labels';
 			return;
 		}
 		onOpenTags?.();
@@ -292,9 +292,9 @@
 		<button
 			type="button"
 			class="icon-btn h-10 w-10 p-2 touch-manipulation"
-			title="Tags"
+			title="Labels"
 			onclick={openTags}
-			aria-label="Tags"
+			aria-label="Labels"
 		>
 			<Tag class="h-5 w-5" aria-hidden="true" />
 		</button>
