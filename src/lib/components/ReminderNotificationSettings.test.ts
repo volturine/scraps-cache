@@ -18,16 +18,17 @@ describe('ReminderNotificationSettings', () => {
 		vi.stubGlobal('Notification', notification);
 
 		render(ReminderNotificationSettings);
+		expect(screen.getByText('Not set')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: 'Turn on notifications' }));
 
 		await waitFor(() => {
-			expect(screen.getByText('On')).toBeTruthy();
+			expect(screen.getByText('Enabled')).toBeTruthy();
 		});
 		expect(notification.requestPermission).toHaveBeenCalledOnce();
 		expect(screen.queryByRole('button', { name: 'Turn on notifications' })).toBeNull();
 	});
 
-	it('explains that denied permission must be changed outside the app', () => {
+	it('shows denied permission as disabled without recovery instructions', () => {
 		vi.stubGlobal('Notification', {
 			permission: 'denied',
 			requestPermission: vi.fn()
@@ -35,9 +36,8 @@ describe('ReminderNotificationSettings', () => {
 
 		render(ReminderNotificationSettings);
 
-		expect(screen.getByText('Off')).toBeTruthy();
-		expect(screen.getByText('Notifications are off for Shard')).toBeTruthy();
-		expect(screen.getByText(/device or browser notification settings/)).toBeTruthy();
+		expect(screen.getByText('Disabled')).toBeTruthy();
+		expect(screen.queryByText(/settings/i)).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Turn on notifications' })).toBeNull();
 	});
 
@@ -52,6 +52,6 @@ describe('ReminderNotificationSettings', () => {
 		notification.permission = 'granted';
 		window.dispatchEvent(new Event('focus'));
 
-		await waitFor(() => expect(screen.getByText('On')).toBeTruthy());
+		await waitFor(() => expect(screen.getByText('Enabled')).toBeTruthy());
 	});
 });

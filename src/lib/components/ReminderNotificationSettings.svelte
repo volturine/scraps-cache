@@ -7,10 +7,6 @@
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 
 	let permission = $state(notificationPermission());
-	const appleMobile =
-		typeof navigator !== 'undefined' &&
-		(/iPhone|iPad|iPod/.test(navigator.userAgent) ||
-			(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
 	onMount(() => {
 		const refresh = () => {
@@ -29,16 +25,6 @@
 		if (permission !== 'granted') return;
 		if (await registerReminderDevice()) reminderStore.publish(notesStore.notes);
 	}
-
-	const description = $derived(
-		permission === 'granted'
-			? 'Reminder alerts are allowed on this device'
-			: permission === 'denied'
-				? 'Notifications are off for Shard'
-				: permission === 'unsupported'
-					? 'Unavailable here; on iPhone or iPad, add Shard to the Home Screen'
-					: 'Get reminder alerts on this device'
-	);
 </script>
 
 <section class="border-t border-[var(--shard-border)]" aria-label="Notifications">
@@ -50,30 +36,21 @@
 			aria-label="Turn on notifications"
 		>
 			<Bell class="h-4 w-4 shrink-0 text-[var(--shard-text)]" aria-hidden="true" />
-			<div class="min-w-0 flex-1">
-				<p class="text-sm font-medium text-[var(--shard-text)]">Notifications</p>
-				<p class="mt-0.5 text-xs leading-snug text-[var(--shard-text-muted)]">{description}</p>
-			</div>
-			<span class="shrink-0 text-xs font-medium text-[var(--shard-text-muted)]">Turn on</span>
+			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--shard-text)]">Notifications</span>
+			<span class="shrink-0 text-xs font-medium text-[var(--shard-text-muted)]">Not set</span>
 			<ChevronRight class="h-4 w-4 shrink-0 text-[var(--shard-text-muted)]" aria-hidden="true" />
 		</button>
 	{:else}
-		<div class="flex items-start gap-2.5 px-3 py-2.5">
-			<Bell class="mt-0.5 h-4 w-4 shrink-0 text-[var(--shard-text)]" aria-hidden="true" />
-			<div class="min-w-0 flex-1">
-				<p class="text-sm font-medium text-[var(--shard-text)]">Notifications</p>
-				<p class="mt-0.5 text-xs leading-snug text-[var(--shard-text-muted)]">{description}</p>
-			</div>
+		<div class="flex items-center gap-2.5 px-3 py-2.5">
+			<Bell class="h-4 w-4 shrink-0 text-[var(--shard-text)]" aria-hidden="true" />
+			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--shard-text)]">Notifications</span>
 			<span class="shrink-0 text-xs font-medium text-[var(--shard-text-muted)]">
-				{permission === 'granted' ? 'On' : permission === 'denied' ? 'Off' : 'Unavailable'}
+				{permission === 'granted'
+					? 'Enabled'
+					: permission === 'denied'
+						? 'Disabled'
+						: 'Unsupported'}
 			</span>
 		</div>
-		{#if permission === 'denied'}
-			<p class="px-3 pb-2.5 pl-[2.375rem] text-xs leading-snug text-[var(--shard-text-muted)]">
-				{appleMobile
-					? 'To turn them back on: iPhone Settings → Notifications → Shard → Allow Notifications.'
-					: 'Turn them back on in your device or browser notification settings.'}
-			</p>
-		{/if}
 	{/if}
 </section>
