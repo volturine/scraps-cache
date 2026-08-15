@@ -4,9 +4,10 @@
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { StickyNote } from '@lucide/svelte';
 
-	const { openNote: openEditor } = useEditorActions();
+	const { openNote: openEditor, startNewNote } = useEditorActions();
 
 	const pinned = $derived(notesStore.pinnedNotes);
 	const others = $derived(notesStore.unpinnedNotes);
@@ -37,12 +38,12 @@
 	{/if}
 
 	{#if filteredOthers.length === 0 && filteredPinned.length === 0}
-		<div
-			class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--shard-text-muted)]"
-		>
-			<StickyNote class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
-			<div class="text-sm">No notes here yet.</div>
-		</div>
+		<EmptyState
+			icon={StickyNote}
+			description="Capture an idea, task, or anything you want to keep."
+			actionLabel="Create note"
+			onAction={startNewNote}
+		/>
 	{:else if filteredOthers.length > 0}
 		<NotesFeed notes={filteredOthers} onOpen={openEditor} />
 	{/if}

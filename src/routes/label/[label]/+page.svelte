@@ -3,10 +3,11 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { page } from '$app/state';
 	import { Tag } from '@lucide/svelte';
 
-	const { openNote: openEditor } = useEditorActions();
+	const { openNote: openEditor, startNewNote } = useEditorActions();
 
 	const labelId = $derived(page.params.label);
 	const label = $derived(notesStore.labels.find((l) => l.id === labelId));
@@ -21,19 +22,19 @@
 {#key labelId}
 	<div class="pt-4 pb-8">
 		{#if !label}
-			<div
-				class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--shard-text-muted)]"
-			>
-				<Tag class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
-				<div class="text-sm">Label not found.</div>
-			</div>
+			<EmptyState
+				icon={Tag}
+				description="This label no longer exists."
+				actionLabel="Go to Notes"
+				href="/"
+			/>
 		{:else if notes.length === 0}
-			<div
-				class="notes-content mt-16 flex flex-col items-center justify-center text-[var(--shard-text-muted)]"
-			>
-				<Tag class="mb-2 h-12 w-12" strokeWidth={1.5} aria-hidden="true" />
-				<div class="text-sm">No notes with this label yet.</div>
-			</div>
+			<EmptyState
+				icon={Tag}
+				description="Create a note to start collecting ideas under this label."
+				actionLabel="Create note"
+				onAction={startNewNote}
+			/>
 		{:else}
 			<div class={shell}>
 				<h1 class="mb-4 px-2 text-xl font-medium text-[var(--shard-text)]">{label.name}</h1>
