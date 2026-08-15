@@ -83,7 +83,9 @@ html.dark {
 
 /* Note editor open: freeze the document and feed. Do not position:fixed the
  * document — that prevents innerHeight from restoring after the keyboard
- * dismisses and leaves a dead strip at the bottom. */
+ * dismisses and leaves a dead strip at the bottom.
+ * Only lock the feed canvas. The editor lives in .app-float, still inside
+ * .app-shell, and must keep its own .scrollable overflow. */
 html.editor-open,
 html.editor-open body {
 	overflow: hidden;
@@ -91,13 +93,15 @@ html.editor-open body {
 }
 html.editor-open .app-canvas > main {
 	pointer-events: none;
+	overflow: hidden;
+	touch-action: none;
+}
+html.editor-open .app-canvas > main .scrollable {
+	overflow: hidden;
+	touch-action: none;
 }
 html.editor-open .app-shell {
 	overflow: hidden;
-}
-html.editor-open .app-shell .scrollable {
-	overflow: hidden;
-	touch-action: none;
 }
 
 /*
