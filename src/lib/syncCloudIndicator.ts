@@ -11,6 +11,10 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null;
 function setSpin(on: boolean): void {
 	if (typeof document === 'undefined') return;
 	document.documentElement.classList.toggle(ROOT_CLASS, on);
+	for (const control of document.querySelectorAll<HTMLElement>('[data-shard-sync-control]')) {
+		control.setAttribute('aria-label', on ? 'Sync settings, syncing' : 'Sync settings');
+		control.setAttribute('aria-busy', String(on));
+	}
 }
 
 function scheduleSpinOff(): void {

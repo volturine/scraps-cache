@@ -22,7 +22,7 @@
 		<button
 			type="button"
 			onclick={() => onSelect(c)}
-			class="h-10 w-10 rounded-full border-2 border-black/10 transition-transform hover:scale-110 dark:border-white/15"
+			class="h-10 w-10 rounded-full border-2 border-black/10 transition-transform motion-reduce:transition-none sm:hover:scale-110 dark:border-white/15"
 			style="background-color: {bgColor(c)}"
 			aria-label="Set color {c}"
 			title={c}
