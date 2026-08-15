@@ -132,17 +132,15 @@
 	}
 </script>
 
-<div
-	class="w-80 rounded-2xl border border-[var(--shard-border)] bg-[var(--shard-surface)] p-5 shadow-2xl"
->
+<div class="shard-dialog w-80 p-5">
 	<div class="mb-3 text-base font-medium text-[var(--shard-text)]">Reminder</div>
 
 	<div
-		class="mb-4 rounded-xl border px-3 py-2.5 {uiStatus === 'active'
-			? 'border-green-600/35 bg-green-600/10 dark:bg-green-500/15'
+		class="mb-4 rounded-[var(--shard-radius-lg)] px-3 py-2.5 {uiStatus === 'active'
+			? 'shard-status-success'
 			: uiStatus === 'unsaved'
-				? 'border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/15'
-				: 'border-blue-500/35 bg-blue-500/10 dark:bg-blue-500/15'}"
+				? 'shard-status-warning'
+				: 'shard-status-accent'}"
 	>
 		<div class="flex items-center justify-between gap-2">
 			<div
@@ -152,17 +150,17 @@
 			</div>
 			{#if uiStatus === 'active'}
 				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-green-600/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800 dark:text-green-300"
+					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--shard-success)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--shard-success-foreground)]"
 					>Active</span
 				>
 			{:else if uiStatus === 'unsaved'}
 				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-amber-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900 dark:text-amber-200"
+					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--shard-warning)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--shard-bg)]"
 					>Edit</span
 				>
 			{:else}
 				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-blue-600/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300"
+					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--shard-accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--shard-accent-foreground)]"
 					>New</span
 				>
 			{/if}
@@ -260,7 +258,7 @@
 			<button
 				type="button"
 				onclick={clear}
-				class="shrink-0 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--shard-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
+				class="shard-button shard-button-quiet shrink-0 px-3 py-2.5 text-sm font-medium"
 			>
 				Remove
 			</button>
@@ -270,9 +268,9 @@
 		<button
 			type="button"
 			onclick={primaryAction}
-			class="min-w-[7.5rem] shrink-0 rounded-lg px-6 py-2.5 text-sm font-medium {primaryIsSave
-				? 'bg-blue-600 text-white hover:bg-blue-700'
-				: 'border border-[var(--shard-border)] bg-[var(--shard-bg)] text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/10'}"
+			class="shard-button min-w-[7.5rem] shrink-0 px-6 py-2.5 text-sm font-medium {primaryIsSave
+				? 'shard-button-primary'
+				: 'shard-button-secondary'}"
 		>
 			{primaryIsSave ? 'Save' : 'Cancel'}
 		</button>

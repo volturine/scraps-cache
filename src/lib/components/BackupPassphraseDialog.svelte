@@ -50,7 +50,7 @@
 	}}
 >
 	<div
-		class="w-full max-w-sm overflow-hidden rounded-2xl border border-[var(--shard-border)] bg-[var(--shard-surface)] shadow-2xl"
+		class="shard-dialog w-full max-w-sm overflow-hidden"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="backup-dialog-title"
@@ -81,7 +81,7 @@
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}
 					disabled={busy}
-					class="w-full rounded-lg border border-[var(--shard-border)] bg-transparent px-3 py-2.5 text-sm text-[var(--shard-text)] outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+					class="shard-input w-full bg-transparent px-3 py-2.5 text-sm"
 				/>
 			</label>
 
@@ -95,13 +95,13 @@
 						autocomplete="new-password"
 						bind:value={confirmation}
 						disabled={busy}
-						class="w-full rounded-lg border border-[var(--shard-border)] bg-transparent px-3 py-2.5 text-sm text-[var(--shard-text)] outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+						class="shard-input w-full bg-transparent px-3 py-2.5 text-sm"
 					/>
 				</label>
 			{/if}
 
 			{#if localError || error}
-				<p class="text-sm text-red-600" role="alert">{localError || error}</p>
+				<p class="text-sm text-[var(--shard-danger)]" role="alert">{localError || error}</p>
 			{/if}
 
 			<div class="flex justify-end gap-2 pt-1">
@@ -109,13 +109,12 @@
 					type="button"
 					onclick={onClose}
 					disabled={busy}
-					class="rounded-lg px-3 py-2 text-sm text-[var(--shard-text-muted)] hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10"
-					>Cancel</button
+					class="shard-button shard-button-quiet px-3 py-2 text-sm">Cancel</button
 				>
 				<button
 					type="submit"
 					disabled={busy}
-					class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+					class="shard-button shard-button-primary px-4 py-2 text-sm font-medium"
 					>{busy
 						? exporting
 							? 'Encrypting…'
