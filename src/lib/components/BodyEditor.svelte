@@ -632,7 +632,7 @@
 				if (lines[parentTaskIndex(i)]?.id !== focusedRootId) onFocusTask?.(i);
 			}}
 			placeholder={line.indent > 0 ? 'Sub-task' : 'Task'}
-			class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content] {line.checked
+			class="flex-1 min-w-0 resize-none overflow-hidden bg-transparent outline-none placeholder:text-[var(--shard-text-muted)] [field-sizing:content] {line.checked
 				? 'line-through opacity-50'
 				: ''} {line.indent > 0 ? 'text-[13px]' : ''}"></textarea>
 	</div>
@@ -640,7 +640,7 @@
 
 <div
 	bind:this={container}
-	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--gkc-text)]"
+	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--shard-text)]"
 >
 	{#each lines as line, i (line.id)}
 		{#if line.isCheck}
@@ -657,7 +657,7 @@
 						<button
 							type="button"
 							data-add-subtask
-							class="mt-0.5 flex items-center gap-1.5 rounded px-1 py-1 pl-6 text-left text-xs text-[var(--gkc-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--gkc-text)] dark:hover:bg-white/10"
+							class="mt-0.5 flex items-center gap-1.5 rounded px-1 py-1 pl-6 text-left text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
 							onclick={() => addSubtask(focusedGroupRows[0]?.index ?? -1)}
 						>
 							<span class="text-base leading-none" aria-hidden="true">+</span>
@@ -681,7 +681,7 @@
 				oninput={(e) => onPlainRunInput(i, e)}
 				onkeydown={(e) => onPlainRunKeydown(e, i)}
 				placeholder={i === 0 && plainRunEnd(i) === 0 ? placeholder : ''}
-				class="block w-full min-w-0 resize-none overflow-hidden bg-transparent py-0.5 outline-none placeholder:text-[var(--gkc-text-muted)] [field-sizing:content]"
+				class="block w-full min-w-0 resize-none overflow-hidden bg-transparent py-0.5 outline-none placeholder:text-[var(--shard-text-muted)] [field-sizing:content]"
 			></textarea>
 		{/if}
 	{/each}

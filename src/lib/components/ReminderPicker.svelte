@@ -133,9 +133,9 @@
 </script>
 
 <div
-	class="w-80 rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-5 shadow-2xl"
+	class="w-80 rounded-2xl border border-[var(--shard-border)] bg-[var(--shard-surface)] p-5 shadow-2xl"
 >
-	<div class="mb-3 text-base font-medium text-[var(--gkc-text)]">Reminder</div>
+	<div class="mb-3 text-base font-medium text-[var(--shard-text)]">Reminder</div>
 
 	<div
 		class="mb-4 rounded-xl border px-3 py-2.5 {uiStatus === 'active'
@@ -146,7 +146,7 @@
 	>
 		<div class="flex items-center justify-between gap-2">
 			<div
-				class="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--gkc-text-muted)]"
+				class="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]"
 			>
 				Will remind you
 			</div>
@@ -167,14 +167,14 @@
 				>
 			{/if}
 		</div>
-		<div class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--gkc-text)]">
+		<div class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--shard-text)]">
 			<AlarmClock class="h-4 w-4 shrink-0" aria-hidden="true" />
 			<span class="min-w-0 truncate">{willSaveLabel}</span>
 		</div>
 	</div>
 
-	<div class="mb-4 border-t border-[var(--gkc-border)] pt-4">
-		<div class="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--gkc-text-muted)]">
+	<div class="mb-4 border-t border-[var(--shard-border)] pt-4">
+		<div class="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--shard-text-muted)]">
 			Pick date & time
 		</div>
 
@@ -189,8 +189,8 @@
 			</button>
 			<button
 				type="button"
-				class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--gkc-text)] {monthYearOpen
-					? 'bg-[var(--gkc-bg)]'
+				class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--shard-text)] {monthYearOpen
+					? 'bg-[var(--shard-bg)]'
 					: ''}"
 				onclick={() => (monthYearOpen = !monthYearOpen)}
 				aria-label="Choose month and year"
@@ -239,7 +239,7 @@
 					ariaLabel="Hour"
 				/>
 				<div
-					class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--gkc-text)]"
+					class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--shard-text)]"
 					aria-hidden="true"
 				>
 					:
@@ -255,12 +255,12 @@
 		{/if}
 	</div>
 
-	<div class="flex items-center justify-between gap-3 border-t border-[var(--gkc-border)] pt-4">
+	<div class="flex items-center justify-between gap-3 border-t border-[var(--shard-border)] pt-4">
 		{#if showRemove}
 			<button
 				type="button"
 				onclick={clear}
-				class="shrink-0 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--gkc-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
+				class="shrink-0 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--shard-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
 			>
 				Remove
 			</button>
@@ -272,7 +272,7 @@
 			onclick={primaryAction}
 			class="min-w-[7.5rem] shrink-0 rounded-lg px-6 py-2.5 text-sm font-medium {primaryIsSave
 				? 'bg-blue-600 text-white hover:bg-blue-700'
-				: 'border border-[var(--gkc-border)] bg-[var(--gkc-bg)] text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/10'}"
+				: 'border border-[var(--shard-border)] bg-[var(--shard-bg)] text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/10'}"
 		>
 			{primaryIsSave ? 'Save' : 'Cancel'}
 		</button>

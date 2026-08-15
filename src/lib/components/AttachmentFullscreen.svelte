@@ -80,9 +80,9 @@
 
 {#if attachment}
 	<div {@attach portal}>
-		<div class="fixed inset-0 z-[80] flex flex-col bg-[var(--gkc-bg)] text-[var(--gkc-text)]">
+		<div class="fixed inset-0 z-[80] flex flex-col bg-[var(--shard-bg)] text-[var(--shard-text)]">
 			<header
-				class="flex shrink-0 items-center gap-3 border-b border-[var(--gkc-border)] px-3 py-2"
+				class="flex shrink-0 items-center gap-3 border-b border-[var(--shard-border)] px-3 py-2"
 			>
 				<button
 					type="button"
@@ -98,12 +98,12 @@
 			</header>
 
 			{#if loading}
-				<div class="grid flex-1 place-items-center text-sm text-[var(--gkc-text-muted)]">
+				<div class="grid flex-1 place-items-center text-sm text-[var(--shard-text-muted)]">
 					Opening file…
 				</div>
 			{:else if isText}
 				<pre
-					class="scrollable m-0 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm leading-relaxed text-[var(--gkc-text)]">{textContent ??
+					class="scrollable m-0 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm leading-relaxed text-[var(--shard-text)]">{textContent ??
 						''}</pre>
 			{:else if isAudio && sourceUrl}
 				<div class="grid flex-1 place-items-center p-6">

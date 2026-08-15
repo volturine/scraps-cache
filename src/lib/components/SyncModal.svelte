@@ -262,7 +262,7 @@
 		aria-label="Close sync dialog"
 	></button>
 	<div
-		class="relative w-full max-w-md rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] p-6 shadow-2xl"
+		class="relative w-full max-w-md rounded-xl border border-[var(--shard-border)] bg-[var(--shard-surface)] p-6 shadow-2xl"
 		role="dialog"
 		tabindex="-1"
 		aria-modal="true"
@@ -272,7 +272,7 @@
 		<div class="mb-4 flex items-center justify-between">
 			<h2
 				id="sync-title"
-				class="flex items-center gap-2 text-lg font-medium text-[var(--gkc-text)]"
+				class="flex items-center gap-2 text-lg font-medium text-[var(--shard-text)]"
 			>
 				<Cloud class="h-5 w-5" aria-hidden="true" />
 				Sync
@@ -284,7 +284,7 @@
 
 		{#if mode === 'linked' && syncStore.account}
 			<div class="space-y-4">
-				<p class="text-sm text-[var(--gkc-text-muted)]">
+				<p class="text-sm text-[var(--shard-text-muted)]">
 					This device is linked. Connect another device with a one-time code that expires in 60
 					seconds.
 				</p>
@@ -292,7 +292,7 @@
 					{@const progress = syncStore.progress}
 					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
 					<div class="rounded-lg bg-black/5 p-3 text-sm dark:bg-white/5">
-						<div class="mb-1 flex justify-between text-[var(--gkc-text-muted)]">
+						<div class="mb-1 flex justify-between text-[var(--shard-text-muted)]">
 							<span
 								>{progress.phase === 'upload'
 									? 'Encrypting & uploading'
@@ -310,8 +310,8 @@
 							></div>
 						</div>
 					</div>
-				{:else if syncing}<p class="text-sm text-[var(--gkc-text-muted)]">Syncing…</p>{/if}
-				{#if info}<p class="text-sm text-[var(--gkc-text-muted)]">{info}</p>{/if}
+				{:else if syncing}<p class="text-sm text-[var(--shard-text-muted)]">Syncing…</p>{/if}
+				{#if info}<p class="text-sm text-[var(--shard-text-muted)]">{info}</p>{/if}
 				{#if error}<p class="text-sm text-red-600">{error}</p>{/if}
 				<button
 					type="button"
@@ -324,15 +324,15 @@
 					type="button"
 					onclick={() => void startExistingConnection()}
 					disabled={loading || syncing}
-					class="w-full rounded-lg border border-[var(--gkc-border)] px-3 py-2.5 text-sm touch-manipulation"
+					class="w-full rounded-lg border border-[var(--shard-border)] px-3 py-2.5 text-sm touch-manipulation"
 					>Connect another device</button
 				>
 				{#if syncStore.usage}
-					<div class="text-center text-xs text-[var(--gkc-text-muted)]">
+					<div class="text-center text-xs text-[var(--shard-text-muted)]">
 						{formatBytes(syncStore.usage.ciphertextBytes)} stored for this account
 					</div>
 				{/if}
-				<div class="rounded-lg bg-black/5 p-3 text-xs text-[var(--gkc-text-muted)] dark:bg-white/5">
+				<div class="rounded-lg bg-black/5 p-3 text-xs text-[var(--shard-text-muted)] dark:bg-white/5">
 					Each connection uses a fresh code. The durable sync secret never appears on screen.
 				</div>
 				<button
@@ -357,7 +357,7 @@
 									deleteConfirm = false;
 								}}
 								disabled={loading}
-								class="flex-1 rounded border border-[var(--gkc-border)] px-2 py-1.5 text-xs"
+								class="flex-1 rounded border border-[var(--shard-border)] px-2 py-1.5 text-xs"
 								>Cancel</button
 							>
 							<button
@@ -381,7 +381,7 @@
 			</div>
 		{:else if mode === 'menu'}
 			<div class="space-y-3">
-				<p class="text-sm text-[var(--gkc-text-muted)]">
+				<p class="text-sm text-[var(--shard-text-muted)]">
 					Create one private sync key, then connect your own devices by starting the connection on
 					both within 60 seconds.
 				</p>
@@ -401,13 +401,13 @@
 						error = '';
 						info = '';
 					}}
-					class="w-full rounded-lg border border-[var(--gkc-border)] px-3 py-3 text-sm touch-manipulation"
+					class="w-full rounded-lg border border-[var(--shard-border)] px-3 py-3 text-sm touch-manipulation"
 					>Connect to an existing sync</button
 				>
 			</div>
 		{:else if mode === 'register'}
 			<div class="space-y-3">
-				<p class="text-sm text-[var(--gkc-text-muted)]">
+				<p class="text-sm text-[var(--shard-text-muted)]">
 					Creates a private account on this device. Other devices join with a one-time code, not a
 					lifetime password.
 				</p>
@@ -420,12 +420,12 @@
 				><button
 					type="button"
 					onclick={() => (mode = 'menu')}
-					class="w-full text-xs text-[var(--gkc-text-muted)] touch-manipulation">← Back</button
+					class="w-full text-xs text-[var(--shard-text-muted)] touch-manipulation">← Back</button
 				>
 			</div>
 		{:else if mode === 'link'}
 			<div class="space-y-3">
-				<p class="text-sm text-[var(--gkc-text-muted)]">
+				<p class="text-sm text-[var(--shard-text-muted)]">
 					On your other device open Sync and choose Connect another device. Enter the one-time code
 					shown there.
 				</p>
@@ -436,7 +436,7 @@
 					placeholder="XXXX-XXXX-XXXX-XXXX"
 					maxlength="19"
 					spellcheck="false"
-					class="w-full rounded-lg border border-[var(--gkc-border)] bg-[var(--gkc-bg)] px-3 py-2 text-center text-lg font-bold tracking-wider"
+					class="w-full rounded-lg border border-[var(--shard-border)] bg-[var(--shard-bg)] px-3 py-2 text-center text-lg font-bold tracking-wider"
 					onkeydown={(event) => event.key === 'Enter' && void beginLink()}
 				/>{#if error}<p class="text-sm text-red-600">{error}</p>{/if}<button
 					type="button"
@@ -447,29 +447,29 @@
 				><button
 					type="button"
 					onclick={() => (mode = 'menu')}
-					class="w-full text-xs text-[var(--gkc-text-muted)] touch-manipulation">← Back</button
+					class="w-full text-xs text-[var(--shard-text-muted)] touch-manipulation">← Back</button
 				>
 			</div>
 		{:else if mode === 'waiting'}
 			<div class="space-y-5">
 				{#if waiting?.role === 'existing'}
 					<div>
-						<p class="text-xs font-medium tracking-wide text-[var(--gkc-text-muted)]">
+						<p class="text-xs font-medium tracking-wide text-[var(--shard-text-muted)]">
 							On the new device
 						</p>
-						<p class="mt-1 text-sm text-[var(--gkc-text)]">Open Sync and type this code</p>
+						<p class="mt-1 text-sm text-[var(--shard-text)]">Open Sync and type this code</p>
 					</div>
 					<div
-						class="rounded-xl border border-[var(--gkc-border)] bg-[var(--gkc-bg)] px-2 py-5"
+						class="rounded-xl border border-[var(--shard-border)] bg-[var(--shard-bg)] px-2 py-5"
 						aria-label="One-time pairing code"
 					>
 						<div class="flex items-center justify-center gap-1">
 							{#each pairingGroups(waiting.syncCode) as group, index (index)}
 								{#if index > 0}
-									<span class="px-0.5 text-[var(--gkc-text-muted)]" aria-hidden="true">·</span>
+									<span class="px-0.5 text-[var(--shard-text-muted)]" aria-hidden="true">·</span>
 								{/if}
 								<span
-									class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--gkc-text)]"
+									class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--shard-text)]"
 									>{group}</span
 								>
 							{/each}
@@ -478,25 +478,25 @@
 					<button
 						type="button"
 						onclick={() => void copyCode()}
-						class="w-full rounded-lg border border-[var(--gkc-border)] px-3 py-2.5 text-sm font-medium touch-manipulation {copyFlash
+						class="w-full rounded-lg border border-[var(--shard-border)] px-3 py-2.5 text-sm font-medium touch-manipulation {copyFlash
 							? 'border-green-600 bg-green-600 text-white'
-							: 'text-[var(--gkc-text)] hover:bg-black/5 dark:hover:bg-white/5'}"
+							: 'text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/5'}"
 						>{copyFlash ? 'Copied' : 'Copy code'}</button
 					>
 				{:else}
 					<div>
-						<p class="text-xs font-medium tracking-wide text-[var(--gkc-text-muted)]">
+						<p class="text-xs font-medium tracking-wide text-[var(--shard-text-muted)]">
 							On the other device
 						</p>
-						<p class="mt-1 text-sm text-[var(--gkc-text)]">
+						<p class="mt-1 text-sm text-[var(--shard-text)]">
 							Open Sync and choose Connect another device
 						</p>
 					</div>
 				{/if}
 				<div class="space-y-1.5">
-					<div class="flex items-center justify-between text-xs text-[var(--gkc-text-muted)]">
+					<div class="flex items-center justify-between text-xs text-[var(--shard-text-muted)]">
 						<span>Expires in</span>
-						<span class="tabular-nums text-[var(--gkc-text)]">{secondsLeft()}s</span>
+						<span class="tabular-nums text-[var(--shard-text)]">{secondsLeft()}s</span>
 					</div>
 					<div class="h-1 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
 						<div
@@ -512,7 +512,7 @@
 						waiting = null;
 						mode = syncStore.isLoggedIn ? 'linked' : 'link';
 					}}
-					class="w-full text-sm text-[var(--gkc-text-muted)] touch-manipulation">Cancel</button
+					class="w-full text-sm text-[var(--shard-text-muted)] touch-manipulation">Cancel</button
 				>
 			</div>
 		{:else if mode === 'choice'}
@@ -522,7 +522,7 @@
 					{@const progress = syncStore.progress}
 					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
 					<div class="rounded-lg bg-black/5 p-3 text-sm dark:bg-white/5">
-						<div class="mb-1 flex justify-between text-[var(--gkc-text-muted)]">
+						<div class="mb-1 flex justify-between text-[var(--shard-text-muted)]">
 							<span>{progress.phase === 'upload' ? 'Uploading' : 'Downloading'}</span><span
 								>{formatBytes(progress.loadedBytes)}{progress.totalBytes
 									? ` / ${formatBytes(progress.totalBytes)} (${percent}%)`
@@ -537,7 +537,7 @@
 						</div>
 					</div>
 				{:else if syncing || loading}
-					<p class="text-sm text-[var(--gkc-text-muted)]">{info || 'Working…'}</p>
+					<p class="text-sm text-[var(--shard-text-muted)]">{info || 'Working…'}</p>
 				{/if}
 				<button
 					type="button"

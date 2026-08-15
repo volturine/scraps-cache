@@ -226,7 +226,7 @@
 			></div>
 		{/each}
 	</div>
-	<p class="px-3 pb-2 text-[10px] text-[var(--gkc-text-muted)]">
+	<p class="px-3 pb-2 text-[10px] text-[var(--shard-text-muted)]">
 		Photos are privacy-optimized before saving; originals are not retained.
 	</p>
 {/if}
@@ -238,7 +238,7 @@
 				class="flex items-center gap-2 rounded-lg border border-black/10 bg-black/5 px-2 py-1.5 dark:border-white/10 dark:bg-white/5"
 			>
 				<span
-					class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-black/10 text-[10px] font-bold tracking-wide text-[var(--gkc-text)] dark:bg-white/10"
+					class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-black/10 text-[10px] font-bold tracking-wide text-[var(--shard-text)] dark:bg-white/10"
 					aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span
 				>
 				<button
@@ -250,14 +250,14 @@
 					}}
 					aria-label={`Open ${file.name ?? 'file'}`}
 				>
-					<div class="truncate text-sm text-[var(--gkc-text)]">{file.name || 'Attachment'}</div>
-					<div class="text-[10px] text-[var(--gkc-text-muted)]">
+					<div class="truncate text-sm text-[var(--shard-text)]">{file.name || 'Attachment'}</div>
+					<div class="text-[10px] text-[var(--shard-text-muted)]">
 						{formatBytes(dataUrlByteLength(file.dataUrl))}
 					</div>
 				</button>
 				<button
 					type="button"
-					class="shrink-0 rounded-full px-1.5 py-0.5 text-xs text-[var(--gkc-text-muted)] touch-manipulation"
+					class="shrink-0 rounded-full px-1.5 py-0.5 text-xs text-[var(--shard-text-muted)] touch-manipulation"
 					onclick={() => removeAttachment(file.id)}
 					aria-label="Remove file"
 				>
