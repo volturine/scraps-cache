@@ -135,8 +135,8 @@
 		renamingId = label.id;
 		renamingName = label.name;
 		queueMicrotask(() => {
-			renameInput?.focus();
-			renameInput?.select();
+			renameInput?.focus({ preventScroll: true });
+			renameInput?.setSelectionRange(0, renamingName.length);
 		});
 	}
 
