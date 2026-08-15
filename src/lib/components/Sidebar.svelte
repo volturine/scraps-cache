@@ -115,7 +115,7 @@
 		creatingLabel = true;
 		renamingId = null;
 		newLabelName = '';
-		queueMicrotask(() => newLabelInput?.focus());
+		queueMicrotask(() => newLabelInput?.focus({ preventScroll: true }));
 	}
 
 	function finishCreateLabel() {
