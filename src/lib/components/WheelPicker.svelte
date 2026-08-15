@@ -180,6 +180,8 @@
 	.wheel-picker {
 		scrollbar-width: none;
 		-ms-overflow-style: none;
+		-webkit-overflow-scrolling: touch;
+		touch-action: pan-y;
 		scroll-snap-type: y mandatory;
 		overscroll-behavior: contain;
 		-webkit-mask-image: linear-gradient(

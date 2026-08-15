@@ -72,6 +72,35 @@ describe('NoteEditor header reminder controls', () => {
 		const bell = container.querySelector('header button[aria-label="Reminder"]');
 		expect(bell?.className).toContain('text-rose-600');
 	});
+
+	it('allows touch scrolling in the reminder wheels outside the editor dialog', async () => {
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		const reminderButton = container.querySelector(
+			'header button[aria-label="Reminder"]'
+		) as HTMLButtonElement;
+		await fireEvent.click(reminderButton);
+		await tick();
+
+		const wheel = container.querySelector('[role="listbox"][aria-label="Hour"]') as HTMLElement;
+		Object.defineProperties(wheel, {
+			scrollHeight: { configurable: true, value: 1_000 },
+			clientHeight: { configurable: true, value: 180 }
+		});
+		wheel.scrollTop = 72;
+
+		const start = new Event('touchstart', { bubbles: true, cancelable: true });
+		Object.defineProperty(start, 'touches', { value: [{ clientY: 100 }] });
+		wheel.dispatchEvent(start);
+		const move = new Event('touchmove', { bubbles: true, cancelable: true });
+		Object.defineProperty(move, 'touches', { value: [{ clientY: 80 }] });
+		wheel.dispatchEvent(move);
+
+		expect(move.defaultPrevented).toBe(false);
+	});
 });
 
 describe('NoteEditor task focus', () => {

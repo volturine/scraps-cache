@@ -154,9 +154,10 @@
 
 	function allowEditorBodyScroll(event: TouchEvent): boolean {
 		const target = event.target;
-		if (!(target instanceof Element) || !editorDialog?.contains(target)) return false;
+		if (!(target instanceof Element)) return false;
 		const scroller = target.closest('.scrollable');
-		if (!(scroller instanceof HTMLElement) || !editorDialog.contains(scroller)) return false;
+		if (!(scroller instanceof HTMLElement)) return false;
+		if (!editorDialog?.contains(scroller) && !scroller.closest('[data-editor-popup]')) return false;
 		if (scroller.scrollHeight <= scroller.clientHeight + 1) return false;
 		const y = event.touches[0]?.clientY ?? lastTouchY;
 		const dy = y - lastTouchY;
@@ -469,7 +470,7 @@
 			}}
 			role="presentation"
 		></div>
-		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<ColorPalette
 				color={note.color}
 				onSelect={(c) => {
@@ -489,7 +490,7 @@
 			}}
 			role="presentation"
 		></div>
-		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<ReminderPicker
 				reminder={note.reminder}
 				onApply={(r) => {
@@ -513,7 +514,7 @@
 			}}
 			role="presentation"
 		></div>
-		<div class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
 			<LabelMenu
 				noteId={note.id}
 				onClose={() => {
