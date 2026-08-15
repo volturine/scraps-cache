@@ -75,15 +75,29 @@
 		}
 	});
 
+	function exitTaskFocus() {
+		taskFocusLine = null;
+	}
+
 	function focusBodyFromPage(event: MouseEvent) {
 		const target = event.target;
+		const el = target instanceof Element ? target : null;
+		// Task rows and the focused envelope manage their own chrome.
+		if (el?.closest('[data-focus-group], [data-task-row], [data-add-subtask]')) return;
+
+		if (taskFocusLine !== null) {
+			exitTaskFocus();
+			// Empty note chrome: blur so iOS can dismiss the keyboard.
+			if (!el?.closest('button, input, textarea, select, a, [contenteditable]')) {
+				const active = document.activeElement;
+				if (active instanceof HTMLElement && editorDialog?.contains(active)) active.blur();
+			}
+			return;
+		}
+
 		// Match any contenteditable host (including plaintext-only). A strict ="true"
 		// check lets page clicks steal focus and collapse multi-line iOS selections.
-		if (
-			target instanceof Element &&
-			target.closest('button, input, textarea, select, a, [contenteditable]')
-		)
-			return;
+		if (el?.closest('button, input, textarea, select, a, [contenteditable]')) return;
 		focusBodySignal++;
 	}
 
@@ -379,6 +393,7 @@
 							placeholder="Title"
 							bind:value={title}
 							oninput={scheduleCommit}
+							onfocus={exitTaskFocus}
 							onkeydown={(e) => {
 								if (e.key === 'Enter') {
 									e.preventDefault();
@@ -395,7 +410,7 @@
 							focusSignal={focusBodySignal}
 							focusLine={taskFocusLine}
 							onFocusTask={focusTask}
-							onExitTaskFocus={handleBack}
+							onExitTaskFocus={exitTaskFocus}
 						/>
 
 						{#if links.length > 0}

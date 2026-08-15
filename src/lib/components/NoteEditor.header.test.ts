@@ -1,4 +1,5 @@
-import { render } from '@testing-library/svelte';
+import { fireEvent, render } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
@@ -70,5 +71,30 @@ describe('NoteEditor header reminder controls', () => {
 		expect(headerButtons(container)[1]).toBe(`Overdue reminder, ${formatReminder(reminder)}`);
 		const bell = container.querySelector('header button[aria-label="Reminder"]');
 		expect(bell?.className).toContain('text-rose-600');
+	});
+});
+
+describe('NoteEditor task focus', () => {
+	it('drops the focused task group when clicking elsewhere in the note', async () => {
+		notesStore.notes = [note({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		const avocados = [...container.querySelectorAll('textarea[placeholder="Task"]')].find(
+			(el) => (el as HTMLTextAreaElement).value === 'Avocados'
+		) as HTMLTextAreaElement;
+		await fireEvent.click(avocados);
+		await tick();
+
+		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
+		expect(container.querySelector('[data-add-subtask]')).not.toBeNull();
+
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		await fireEvent.click(scroller);
+		await tick();
+
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
+		expect(container.querySelector('[data-add-subtask]')).toBeNull();
 	});
 });
