@@ -22,6 +22,7 @@
 	--shard-text: #202124;
 	--shard-text-muted: #5f6368;
 	--shard-border: #e0e0e0;
+	--shard-focus: #1d4ed8;
 
 	/* Published by attachAppViewport(); CSS env() is the pre-JS default. */
 	--app-inset-top: env(safe-area-inset-top, 0px);
@@ -71,6 +72,7 @@
 	--shard-text: #e8eaed;
 	--shard-text-muted: #9aa0a6;
 	--shard-border: #3c4043;
+	--shard-focus: #93c5fd;
 }
 
 html {
@@ -143,6 +145,24 @@ body {
 	overflow: hidden;
 	overscroll-behavior: none;
 	background-color: var(--shard-bg);
+}
+
+/* Keep keyboard focus visible even where component utilities remove the browser outline. */
+:focus-visible {
+	outline: 2px solid var(--shard-focus) !important;
+	outline-offset: 2px;
+}
+
+/* Respect system motion preferences while retaining the final UI state. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
 }
 
 body {
@@ -382,7 +402,7 @@ body {
 }
 
 .icon-btn:focus-visible {
-	outline: 2px solid var(--shard-accent, #3b82f6);
+	outline: 2px solid var(--shard-focus);
 	outline-offset: 2px;
 }
 

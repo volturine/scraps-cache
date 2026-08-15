@@ -138,8 +138,12 @@ export function cardSwipeStyle(offsetX: number, dragging: boolean): string {
 	const transform =
 		offsetX !== 0 || dragging ? `transform: translate3d(${offsetX}px, 0, 0);` : 'transform: none;';
 	const willChange = offsetX !== 0 || dragging ? 'will-change: transform;' : '';
-	const transition = dragging
-		? 'transition: none;'
-		: 'transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.2s;';
+	const reducedMotion =
+		typeof window !== 'undefined' &&
+		window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+	const transition =
+		dragging || reducedMotion
+			? 'transition: none;'
+			: 'transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.2s;';
 	return `${transform} ${willChange} ${transition}`;
 }
