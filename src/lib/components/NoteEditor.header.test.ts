@@ -49,6 +49,15 @@ function dispatchTouchPointer(
 	return event;
 }
 
+function setCaret(element: Element, offset: number) {
+	const range = document.createRange();
+	range.setStart(element.firstChild ?? element, offset);
+	range.collapse(true);
+	const selection = window.getSelection();
+	selection?.removeAllRanges();
+	selection?.addRange(range);
+}
+
 beforeEach(() => {
 	vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 });
@@ -145,47 +154,35 @@ describe('NoteEditor task focus', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 		const scroller = container.querySelector('.scrollable') as HTMLElement;
-		const task = [...container.querySelectorAll('textarea[placeholder="Task"]')].at(
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const task = [...container.querySelectorAll('[data-task-row] [data-line-text]')].at(
 			-1
-		) as HTMLTextAreaElement;
+		) as HTMLElement;
 		scroller.scrollTop = 640;
 
 		dispatchTouchPointer(task, 'pointerdown');
 		dispatchTouchPointer(task, 'pointerup');
 
-		expect(document.activeElement).toBe(task);
+		expect(document.activeElement).toBe(editor);
 		expect(scroller.scrollTop).toBe(640);
 	});
 
-	it('keeps the tapped task anchored when focus chrome moves between tasks', () => {
+	it('keeps one native editing host when focus chrome moves between tasks', async () => {
 		notesStore.notes = [note({ body: '[ ] First task\n[ ] Last task' })];
 		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 		const scroller = container.querySelector('.scrollable') as HTMLElement;
-		const tasks = container.querySelectorAll(
-			'textarea[placeholder="Task"]'
-		) as NodeListOf<HTMLTextAreaElement>;
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const tasks = container.querySelectorAll('[data-task-row] [data-line-text]');
 		scroller.scrollTop = 640;
-		Object.defineProperty(scroller, 'getBoundingClientRect', {
-			configurable: true,
-			value: () => ({ top: 0, bottom: 600, left: 0, right: 300, width: 300, height: 600 })
-		});
-		tasks[0].focus();
-		Object.defineProperty(tasks[1], 'getBoundingClientRect', {
-			configurable: true,
-			value: () => {
-				const top = document.activeElement === tasks[1] ? 264 : 300;
-				return { top, bottom: top + 24, left: 0, right: 300, width: 300, height: 24 };
-			}
-		});
+		editor.focus();
+		setCaret(tasks[0], 4);
+		await fireEvent.click(tasks[1]);
 
-		dispatchTouchPointer(tasks[1], 'pointerdown', { clientY: 300 });
-		const taskTap = dispatchTouchPointer(tasks[1], 'pointerup', { clientY: 300 });
-
-		expect(taskTap.defaultPrevented).toBe(false);
-		expect(document.activeElement).toBe(tasks[1]);
-		expect(scroller.scrollTop).toBe(604);
+		expect(document.activeElement).toBe(editor);
+		expect(container.querySelectorAll('[contenteditable="plaintext-only"]')).toHaveLength(1);
+		expect(scroller.scrollTop).toBe(640);
 	});
 
 	it('moves an active edge task into the note body safe area before native caret placement', () => {
@@ -194,7 +191,8 @@ describe('NoteEditor task focus', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 		const scroller = container.querySelector('.scrollable') as HTMLElement;
-		const task = container.querySelector('textarea[placeholder="Task"]') as HTMLTextAreaElement;
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const task = container.querySelector('[data-task-row] [data-line-text]') as HTMLElement;
 		scroller.scrollTop = 500;
 		Object.defineProperty(scroller, 'getBoundingClientRect', {
 			configurable: true,
@@ -207,13 +205,13 @@ describe('NoteEditor task focus', () => {
 				return { top, bottom: top + 24, left: 0, right: 300, width: 300, height: 24 };
 			}
 		});
-		task.focus();
+		editor.focus();
 
 		dispatchTouchPointer(task, 'pointerdown', { clientY: 499 });
 		const taskTap = dispatchTouchPointer(task, 'pointerup', { clientY: 499 });
 
 		expect(taskTap.defaultPrevented).toBe(false);
-		expect(document.activeElement).toBe(task);
+		expect(document.activeElement).toBe(editor);
 		expect(scroller.scrollTop).toBeGreaterThan(500);
 		expect(window.scrollTo).toHaveBeenLastCalledWith(0, 0);
 	});
@@ -224,17 +222,17 @@ describe('NoteEditor task focus', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 		const scroller = container.querySelector('.scrollable') as HTMLElement;
-		const tasks = container.querySelectorAll(
-			'textarea[placeholder="Task"]'
-		) as NodeListOf<HTMLTextAreaElement>;
-		tasks[0].focus();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const tasks = container.querySelectorAll('[data-task-row] [data-line-text]');
+		editor.focus();
+		setCaret(tasks[0], 4);
 
 		dispatchTouchPointer(tasks[1], 'pointerdown', { clientY: 300 });
 		scroller.scrollTop = 40;
 		dispatchTouchPointer(tasks[1], 'pointermove', { clientY: 250 });
 		dispatchTouchPointer(tasks[1], 'pointerup', { clientY: 250 });
 
-		expect(document.activeElement).toBe(tasks[0]);
+		expect(document.activeElement).toBe(editor);
 		expect(scroller.scrollTop).toBe(40);
 	});
 
@@ -261,20 +259,22 @@ describe('NoteEditor task focus', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		const chocolate = [...container.querySelectorAll('textarea[placeholder="Task"]')].find(
-			(el) => (el as HTMLTextAreaElement).value === 'Dark chocolate'
-		) as HTMLTextAreaElement;
-		chocolate.focus();
-		chocolate.setSelectionRange(4, 4);
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const chocolate = [...container.querySelectorAll('[data-task-row] [data-line-text]')].find(
+			(el) => el.textContent === 'Dark chocolate'
+		) as HTMLElement;
+		editor.focus();
+		setCaret(chocolate, 4);
+		await fireEvent.click(chocolate);
 		await tick();
 
-		const renderedChocolate = [...container.querySelectorAll('textarea[placeholder="Task"]')].find(
-			(el) => (el as HTMLTextAreaElement).value === 'Dark chocolate'
-		) as HTMLTextAreaElement;
+		const renderedChocolate = [
+			...container.querySelectorAll('[data-task-row] [data-line-text]')
+		].find((el) => el.textContent === 'Dark chocolate') as HTMLElement;
 		expect(renderedChocolate).toBe(chocolate);
-		expect(document.activeElement).toBe(chocolate);
-		expect(chocolate.selectionStart).toBe(4);
-		expect(chocolate.selectionEnd).toBe(4);
+		expect(document.activeElement).toBe(editor);
+		expect(window.getSelection()?.anchorOffset).toBe(4);
+		expect(window.getSelection()?.focusOffset).toBe(4);
 	});
 
 	it('drops the focused task group when clicking elsewhere in the note', async () => {
@@ -283,10 +283,13 @@ describe('NoteEditor task focus', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		const avocados = [...container.querySelectorAll('textarea[placeholder="Task"]')].find(
-			(el) => (el as HTMLTextAreaElement).value === 'Avocados'
-		) as HTMLTextAreaElement;
-		await fireEvent.focus(avocados);
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const avocados = [...container.querySelectorAll('[data-task-row] [data-line-text]')].find(
+			(el) => el.textContent === 'Avocados'
+		) as HTMLElement;
+		editor.focus();
+		setCaret(avocados, 4);
+		await fireEvent.click(avocados);
 		await tick();
 
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
