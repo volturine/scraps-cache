@@ -137,11 +137,20 @@
 	onMount(() => {
 		const viewport = window.visualViewport;
 		const onViewportChange = () => queueFocusedEditorReveal();
+		const onFocusIn = (event: FocusEvent) => {
+			if (event.target instanceof Node && editorDialog?.contains(event.target)) {
+				queueFocusedEditorReveal();
+			}
+		};
 		viewport?.addEventListener('resize', onViewportChange);
 		viewport?.addEventListener('scroll', onViewportChange);
+		window.addEventListener('resize', onViewportChange);
+		document.addEventListener('focusin', onFocusIn);
 		return () => {
 			viewport?.removeEventListener('resize', onViewportChange);
 			viewport?.removeEventListener('scroll', onViewportChange);
+			window.removeEventListener('resize', onViewportChange);
+			document.removeEventListener('focusin', onFocusIn);
 			if (revealFrame !== null) cancelAnimationFrame(revealFrame);
 		};
 	});

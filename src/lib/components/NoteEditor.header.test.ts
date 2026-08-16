@@ -104,6 +104,28 @@ describe('NoteEditor header reminder controls', () => {
 });
 
 describe('NoteEditor task focus', () => {
+	it('keeps the native task field and caret when focus styling opens', async () => {
+		notesStore.notes = [note({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		const chocolate = [...container.querySelectorAll('textarea[placeholder="Task"]')].find(
+			(el) => (el as HTMLTextAreaElement).value === 'Dark chocolate'
+		) as HTMLTextAreaElement;
+		chocolate.focus();
+		chocolate.setSelectionRange(4, 4);
+		await tick();
+
+		const renderedChocolate = [...container.querySelectorAll('textarea[placeholder="Task"]')].find(
+			(el) => (el as HTMLTextAreaElement).value === 'Dark chocolate'
+		) as HTMLTextAreaElement;
+		expect(renderedChocolate).toBe(chocolate);
+		expect(document.activeElement).toBe(chocolate);
+		expect(chocolate.selectionStart).toBe(4);
+		expect(chocolate.selectionEnd).toBe(4);
+	});
+
 	it('drops the focused task group when clicking elsewhere in the note', async () => {
 		notesStore.notes = [note({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate' })];
 		const { container } = render(NoteEditor, {
@@ -113,7 +135,7 @@ describe('NoteEditor task focus', () => {
 		const avocados = [...container.querySelectorAll('textarea[placeholder="Task"]')].find(
 			(el) => (el as HTMLTextAreaElement).value === 'Avocados'
 		) as HTMLTextAreaElement;
-		await fireEvent.click(avocados);
+		await fireEvent.focus(avocados);
 		await tick();
 
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
