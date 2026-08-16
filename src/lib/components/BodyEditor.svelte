@@ -715,7 +715,7 @@
 								? placeholder
 								: ''
 						: undefined}
-					class="block min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
+					class="block min-h-[1lh] min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
 						? 'line-through opacity-50'
 						: ''} {line.indent > 0 ? 'text-[13px]' : ''}"
 				></span>

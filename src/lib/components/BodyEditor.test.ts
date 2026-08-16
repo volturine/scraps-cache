@@ -39,6 +39,19 @@ describe('BodyEditor native editing', () => {
 		expect(document.activeElement).toBe(editor);
 	});
 
+	it('gives blank lines a full editable line height after Enter', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'before\nafter' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const first = container.querySelector('[data-line-text]') as HTMLElement;
+		select(first, 'before'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+
+		const blank = container.querySelector('[data-editor-line="1"] [data-line-text]');
+		expect(lineTexts(container)).toEqual(['before', '', 'after']);
+		expect(blank?.className).toContain('min-h-[1lh]');
+	});
+
 	it('keeps the existing empty sub-task Enter behavior', async () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] parent\n  [ ] ' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
