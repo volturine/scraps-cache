@@ -2,6 +2,7 @@
 	import { flushSync, tick } from 'svelte';
 	import { CHECK_RE, formatCheckLine, parseCheckLine } from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
+	import { Trash2, X } from '@lucide/svelte';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -61,6 +62,12 @@
 	let selectedTaskIds = $state<Set<number>>(new Set());
 	let handledFocusSignal = 0;
 	let focusRequestSeq = 0;
+	let selectionHoldTimer: ReturnType<typeof setTimeout> | null = null;
+	let selectionHold:
+		{ pointerId: number; lineId: number; startX: number; startY: number } | undefined;
+	let suppressNextTaskToggleId: number | null = null;
+	const SELECTION_HOLD_MS = 450;
+	const SELECTION_HOLD_SLOP = 8;
 
 	let lastBody = '';
 	$effect(() => {
@@ -209,6 +216,10 @@
 
 	function toggleCheck(i: number, e: MouseEvent) {
 		e.stopPropagation();
+		if (suppressNextTaskToggleId === lines[i].id) {
+			suppressNextTaskToggleId = null;
+			return;
+		}
 		if (selectingTasks) {
 			toggleTaskSelection(lines[i].id);
 			return;
@@ -217,11 +228,58 @@
 		syncBody();
 	}
 
-	function beginTaskSelection() {
+	function beginTaskSelection(lineId: number) {
 		selectingTasks = true;
-		selectedTaskIds = new Set();
+		selectedTaskIds = new Set([lineId]);
 		const active = document.activeElement;
 		if (active instanceof HTMLElement && container?.contains(active)) active.blur();
+	}
+
+	function clearSelectionHold() {
+		if (selectionHoldTimer !== null) clearTimeout(selectionHoldTimer);
+		selectionHoldTimer = null;
+		selectionHold = undefined;
+	}
+
+	function startSelectionHold(lineId: number, event: PointerEvent) {
+		if (selectingTasks || event.pointerType !== 'touch') return;
+		clearSelectionHold();
+		selectionHold = {
+			pointerId: event.pointerId,
+			lineId,
+			startX: event.clientX,
+			startY: event.clientY
+		};
+		selectionHoldTimer = setTimeout(() => {
+			if (selectionHold?.lineId !== lineId) return;
+			suppressNextTaskToggleId = lineId;
+			beginTaskSelection(lineId);
+			clearSelectionHold();
+		}, SELECTION_HOLD_MS);
+	}
+
+	function moveSelectionHold(event: PointerEvent) {
+		const hold = selectionHold;
+		if (!hold || hold.pointerId !== event.pointerId) return;
+		if (
+			Math.hypot(event.clientX - hold.startX, event.clientY - hold.startY) > SELECTION_HOLD_SLOP
+		) {
+			clearSelectionHold();
+		}
+	}
+
+	function endSelectionHold(lineId: number, event: PointerEvent) {
+		if (selectionHold?.pointerId === event.pointerId) clearSelectionHold();
+		if (suppressNextTaskToggleId === lineId) {
+			setTimeout(() => {
+				if (suppressNextTaskToggleId === lineId) suppressNextTaskToggleId = null;
+			}, 0);
+		}
+	}
+
+	function cancelSelectionHold(lineId: number, event: PointerEvent) {
+		endSelectionHold(lineId, event);
+		if (suppressNextTaskToggleId === lineId) suppressNextTaskToggleId = null;
 	}
 
 	function cancelTaskSelection() {
@@ -234,10 +292,6 @@
 		if (next.has(lineId)) next.delete(lineId);
 		else next.add(lineId);
 		selectedTaskIds = next;
-	}
-
-	function selectAllTasks() {
-		selectedTaskIds = new Set(lines.filter((line) => line.isCheck).map((line) => line.id));
 	}
 
 	function deleteSelectedTasks() {
@@ -673,6 +727,10 @@
 			data-checklist-toggle
 			class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
 			class:checked={selectingTasks ? selectedTaskIds.has(line.id) : line.checked}
+			onpointerdown={(event) => startSelectionHold(line.id, event)}
+			onpointermove={moveSelectionHold}
+			onpointerup={(event) => endSelectionHold(line.id, event)}
+			onpointercancel={(event) => cancelSelectionHold(line.id, event)}
 			onclick={(e) => toggleCheck(i, e)}
 			aria-label={selectingTasks
 				? `${selectedTaskIds.has(line.id) ? 'Deselect' : 'Select'} ${line.text || 'empty task'}`
@@ -719,29 +777,32 @@
 	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--shard-text)]"
 >
 	{#if selectingTasks}
-		<div
-			data-task-selection-toolbar
-			class="mb-2 flex min-h-10 items-center gap-2 rounded-lg bg-black/[0.06] px-2 py-1.5 dark:bg-white/[0.1]"
-		>
-			<button
-				type="button"
-				class="rounded px-2 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/10"
-				onclick={cancelTaskSelection}>Cancel</button
+		<div class="mb-2 flex justify-end">
+			<div
+				data-task-selection-toolbar
+				class="inline-flex h-9 items-center gap-1 rounded-full bg-black/[0.06] px-1.5 dark:bg-white/[0.1]"
 			>
-			<span class="min-w-0 flex-1 text-xs text-[var(--shard-text-muted)]">
-				{selectedTaskIds.size} selected
-			</span>
-			<button
-				type="button"
-				class="rounded px-2 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/10"
-				onclick={selectAllTasks}>Select all</button
-			>
-			<button
-				type="button"
-				class="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-500/10 disabled:opacity-40 dark:text-red-400"
-				disabled={selectedTaskIds.size === 0}
-				onclick={deleteSelectedTasks}>Delete</button
-			>
+				<span class="px-1.5 text-xs tabular-nums text-[var(--shard-text-muted)]">
+					{selectedTaskIds.size} selected
+				</span>
+				<button
+					type="button"
+					class="rounded-full p-1.5 hover:bg-black/5 dark:hover:bg-white/10"
+					aria-label="Cancel task selection"
+					onclick={cancelTaskSelection}
+				>
+					<X class="h-4 w-4" aria-hidden="true" />
+				</button>
+				<button
+					type="button"
+					class="rounded-full p-1.5 text-red-600 hover:bg-red-500/10 disabled:opacity-40 dark:text-red-400"
+					disabled={selectedTaskIds.size === 0}
+					aria-label={`Delete ${selectedTaskIds.size} selected task${selectedTaskIds.size === 1 ? '' : 's'}`}
+					onclick={deleteSelectedTasks}
+				>
+					<Trash2 class="h-4 w-4" aria-hidden="true" />
+				</button>
+			</div>
 		</div>
 	{/if}
 	{#each lines as line, i (line.id)}
@@ -757,23 +818,15 @@
 			>
 				{@render taskRow(line, i)}
 				{#if !selectingTasks && line.id === focusedGroupLastId && focusedRootIndent === 0}
-					<div class="mt-0.5 flex items-center gap-2 pl-5">
-						<button
-							type="button"
-							data-add-subtask
-							class="flex items-center gap-1.5 rounded px-1 py-1 text-left text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
-							onclick={() => addSubtask(focusedGroupRows[0]?.index ?? -1)}
-						>
-							<span class="text-base leading-none" aria-hidden="true">+</span>
-							Add sub-task
-						</button>
-						<button
-							type="button"
-							data-select-tasks
-							class="rounded px-1 py-1 text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
-							onclick={beginTaskSelection}>Select tasks</button
-						>
-					</div>
+					<button
+						type="button"
+						data-add-subtask
+						class="mt-0.5 flex items-center gap-1.5 rounded px-1 py-1 pl-6 text-left text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
+						onclick={() => addSubtask(focusedGroupRows[0]?.index ?? -1)}
+					>
+						<span class="text-base leading-none" aria-hidden="true">+</span>
+						Add sub-task
+					</button>
 				{/if}
 			</div>
 		{:else if isPlainRunStart(i)}

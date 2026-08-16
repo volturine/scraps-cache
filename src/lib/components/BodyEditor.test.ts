@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
 
 describe('BodyEditor empty task Enter behavior', () => {
@@ -59,15 +59,23 @@ describe('BodyEditor task focus chrome', () => {
 
 describe('BodyEditor task selection', () => {
 	it('deletes multiple selected tasks and promotes a surviving sub-task', async () => {
+		vi.useFakeTimers();
 		const { container } = render(BodyEditor, {
 			props: { body: '[ ] Parent\n  [ ] Child\n[ ] Keep', focusLine: 0 }
 		});
 		await tick();
 
-		await fireEvent.click(container.querySelector('[data-select-tasks]') as HTMLButtonElement);
-		await fireEvent.click(
-			container.querySelector('[aria-label="Select Parent"]') as HTMLButtonElement
-		);
+		const parentToggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;
+		const hold = new Event('pointerdown', { bubbles: true });
+		Object.defineProperties(hold, {
+			pointerType: { value: 'touch' },
+			pointerId: { value: 1 },
+			clientX: { value: 10 },
+			clientY: { value: 10 }
+		});
+		parentToggle.dispatchEvent(hold);
+		await vi.advanceTimersByTimeAsync(450);
+
 		await fireEvent.click(
 			container.querySelector('[aria-label="Select Keep"]') as HTMLButtonElement
 		);
@@ -75,14 +83,13 @@ describe('BodyEditor task selection', () => {
 		expect(container.querySelector('[data-task-selection-toolbar]')?.textContent).toContain(
 			'2 selected'
 		);
-		await fireEvent.click(
-			container.querySelector('[data-task-selection-toolbar] button:last-child')!
-		);
+		await fireEvent.click(container.querySelector('[aria-label="Delete 2 selected tasks"]')!);
 
 		const remaining = container.querySelector('textarea[data-line-id]') as HTMLTextAreaElement;
 		expect(remaining.value).toBe('Child');
 		expect(remaining.placeholder).toBe('Task');
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
 		expect(container.querySelector('[data-task-selection-toolbar]')).toBeNull();
+		vi.useRealTimers();
 	});
 });
