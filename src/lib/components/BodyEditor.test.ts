@@ -99,6 +99,8 @@ describe('BodyEditor task focus chrome', () => {
 
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
 		expect(container.querySelector('[data-add-subtask]')).not.toBeNull();
+		expect(container.querySelector('[data-editor-line="0"]')?.className).toContain('rounded-t-lg');
+		expect(container.querySelector('[data-editor-line="1"]')?.className).toContain('rounded-b-lg');
 
 		await rerender({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate', focusLine: null });
 		await tick();

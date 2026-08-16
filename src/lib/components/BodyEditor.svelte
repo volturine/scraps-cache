@@ -210,7 +210,12 @@
 		const row = closestLineElement(event.target as Node);
 		if (!row) return;
 		const index = Number(row.dataset.editorLine);
-		if (Number.isInteger(index)) focusTask(index);
+		if (!Number.isInteger(index)) return;
+		const scroller = container?.closest('.scrollable') as HTMLElement | null;
+		const anchorTop = row.getBoundingClientRect().top;
+		focusTask(index);
+		flushSync();
+		if (scroller) scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
 	}
 
 	function readDomIntoLines() {
@@ -497,7 +502,13 @@
 
 	function taskShellClass(line: Line): string {
 		if (!focusedGroupIds.has(line.id)) return '';
-		return `rounded bg-black/[0.035] dark:bg-white/[0.06]`;
+		return [
+			'-mx-2 bg-black/[0.035] px-2 dark:bg-white/[0.06]',
+			line.id === focusedRootId ? 'mt-0.5 rounded-t-lg pt-1' : '',
+			line.id === focusedGroupLastId ? 'mb-0.5 rounded-b-lg pb-1' : ''
+		]
+			.filter(Boolean)
+			.join(' ');
 	}
 </script>
 
@@ -533,7 +544,9 @@
 			class="flex w-full min-w-0 items-start gap-2 py-0.5 {line.isCheck
 				? taskShellClass(line)
 				: ''}"
-			style={line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
+			style={line.indent > 0
+				? `padding-left: ${line.indent * 1.25 + (focusedGroupIds.has(line.id) ? 0.5 : 0)}rem`
+				: undefined}
 		>
 			{#if line.isCheck}
 				<button
