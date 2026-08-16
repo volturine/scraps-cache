@@ -130,9 +130,14 @@
 
 	onMount(() => {
 		const viewport = window.visualViewport;
-		const onViewportChange = () => queueFocusedEditorReveal();
+		const onViewportChange = () => {
+			if (!isOpen) return;
+			lockPageScroll();
+			queueFocusedEditorReveal();
+		};
 		const onFocusIn = (event: FocusEvent) => {
 			if (event.target instanceof Node && editorDialog?.contains(event.target)) {
+				lockPageScroll();
 				queueFocusedEditorReveal();
 			}
 		};
@@ -148,6 +153,12 @@
 			if (revealTimer !== null) clearTimeout(revealTimer);
 		};
 	});
+
+	function lockPageScroll() {
+		window.scrollTo(0, 0);
+		document.documentElement.scrollTop = 0;
+		document.body.scrollTop = 0;
+	}
 
 	function allowEditorBodyScroll(event: TouchEvent): boolean {
 		const target = event.target;
@@ -166,6 +177,8 @@
 
 	$effect(() => {
 		if (!isOpen) return;
+		lockPageScroll();
+		const viewport = window.visualViewport;
 		const onTouchStart = (event: TouchEvent) => {
 			lastTouchY = event.touches[0]?.clientY ?? 0;
 		};
@@ -173,11 +186,16 @@
 			if (!allowEditorBodyScroll(event)) event.preventDefault();
 			lastTouchY = event.touches[0]?.clientY ?? lastTouchY;
 		};
+		const onOuterScroll = () => lockPageScroll();
 		document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
 		document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+		window.addEventListener('scroll', onOuterScroll, { capture: true, passive: false });
+		viewport?.addEventListener('scroll', onOuterScroll);
 		return () => {
 			document.removeEventListener('touchstart', onTouchStart, { capture: true });
 			document.removeEventListener('touchmove', onTouchMove, { capture: true });
+			window.removeEventListener('scroll', onOuterScroll, { capture: true });
+			viewport?.removeEventListener('scroll', onOuterScroll);
 		};
 	});
 

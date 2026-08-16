@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
 import { formatReminder } from '$lib/utils';
@@ -30,7 +30,12 @@ function headerButtons(container: HTMLElement): string[] {
 	);
 }
 
+beforeEach(() => {
+	vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+});
+
 afterEach(() => {
+	vi.restoreAllMocks();
 	notesStore.notes = [];
 });
 
@@ -104,6 +109,15 @@ describe('NoteEditor header reminder controls', () => {
 });
 
 describe('NoteEditor task focus', () => {
+	it('keeps the outer page anchored while the note body owns scrolling', () => {
+		notesStore.notes = [note()];
+		render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+	});
+
 	it('keeps the native task field and caret when focus styling opens', async () => {
 		notesStore.notes = [note({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate' })];
 		const { container } = render(NoteEditor, {
