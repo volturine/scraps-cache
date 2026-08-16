@@ -137,6 +137,61 @@ describe('NoteEditor task focus', () => {
 		expect(scroller.scrollTop).toBe(640);
 	});
 
+	it('keeps an edge task tap inside the note body when another task is focused', () => {
+		notesStore.notes = [note({ body: '[ ] First task\n[ ] Last task' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		const tasks = container.querySelectorAll(
+			'textarea[placeholder="Task"]'
+		) as NodeListOf<HTMLTextAreaElement>;
+		Object.defineProperty(scroller, 'getBoundingClientRect', {
+			configurable: true,
+			value: () => ({ top: 100, bottom: 500, left: 0, right: 300, width: 300, height: 400 })
+		});
+		tasks[0].focus();
+
+		const edgeTap = new MouseEvent('pointerdown', {
+			bubbles: true,
+			cancelable: true,
+			clientY: 499
+		});
+		Object.defineProperty(edgeTap, 'pointerType', { value: 'touch' });
+		tasks[1].dispatchEvent(edgeTap);
+
+		expect(edgeTap.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(tasks[1]);
+		expect(window.scrollTo).toHaveBeenLastCalledWith(0, 0);
+	});
+
+	it('leaves non-edge task taps native while another task is focused', () => {
+		notesStore.notes = [note({ body: '[ ] First task\n[ ] Last task' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		const tasks = container.querySelectorAll(
+			'textarea[placeholder="Task"]'
+		) as NodeListOf<HTMLTextAreaElement>;
+		Object.defineProperty(scroller, 'getBoundingClientRect', {
+			configurable: true,
+			value: () => ({ top: 100, bottom: 500, left: 0, right: 300, width: 300, height: 400 })
+		});
+		tasks[0].focus();
+
+		const middleTap = new MouseEvent('pointerdown', {
+			bubbles: true,
+			cancelable: true,
+			clientY: 300
+		});
+		Object.defineProperty(middleTap, 'pointerType', { value: 'touch' });
+		tasks[1].dispatchEvent(middleTap);
+
+		expect(middleTap.defaultPrevented).toBe(false);
+		expect(document.activeElement).toBe(tasks[1]);
+	});
+
 	it('does not cancel touch movement at the note body boundary', () => {
 		notesStore.notes = [note()];
 		const { container } = render(NoteEditor, {

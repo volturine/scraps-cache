@@ -165,7 +165,26 @@
 		if (!(target instanceof Element)) return;
 		const field = target.closest('textarea, input[type="text"], [contenteditable]');
 		if (!(field instanceof HTMLElement) || !editorScroller.contains(field)) return;
-		if (document.activeElement === field) return;
+		const active = document.activeElement;
+		const editorAlreadyFocused = active instanceof HTMLElement && editorScroller.contains(active);
+		const viewport = editorScroller.getBoundingClientRect();
+		const edgeInset = 12;
+		const isViewportEdgeTap =
+			editorAlreadyFocused &&
+			(event.clientY <= viewport.top + edgeInset || event.clientY >= viewport.bottom - edgeInset);
+
+		// With the keyboard already open, iOS treats a tap at either clipped edge as
+		// a visual-viewport pan gesture. Take ownership of only that narrow case:
+		// keep the page fixed and reveal through the note body's scroller instead.
+		if (isViewportEdgeTap) event.preventDefault();
+
+		if (active === field) {
+			if (isViewportEdgeTap) {
+				revealEditorField(editorScroller, field);
+				lockPageScroll();
+			}
+			return;
+		}
 
 		// Run the focusing step inside the touch gesture before Safari's default
 		// focus action. Once the field is already active, the later default action
@@ -178,6 +197,7 @@
 		}
 		editorScroller.scrollTop = bodyScrollTop;
 		lockPageScroll();
+		if (isViewportEdgeTap) revealEditorField(editorScroller, field);
 	}
 
 	$effect(() => {
