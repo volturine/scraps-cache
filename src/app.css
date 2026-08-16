@@ -447,6 +447,7 @@ body {
 /* Checklist toggle — fixed box + SVG so the mark is optically centered on mobile. */
 .checklist-toggle {
 	box-sizing: border-box;
+	position: relative;
 	display: inline-grid;
 	place-items: center;
 	width: 1.125rem; /* 18px */
@@ -462,6 +463,12 @@ body {
 	-webkit-appearance: none;
 	touch-action: manipulation;
 	-webkit-tap-highlight-color: transparent;
+}
+.checklist-toggle::before {
+	/* A 32px hit target without changing the checkbox's visual size or row layout. */
+	content: '';
+	position: absolute;
+	inset: -0.4375rem;
 }
 .dark .checklist-toggle {
 	border-color: rgba(255, 255, 255, 0.4);
