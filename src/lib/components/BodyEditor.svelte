@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { flushSync, tick } from 'svelte';
 	import { CHECK_RE, formatCheckLine, parseCheckLine } from '$lib/checklistBody';
+	import { revealEditorField } from '$lib/editorVisibility';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -435,16 +436,7 @@
 		// the keyboard: restoring the old position fights that native movement.
 		const scroller = container?.closest('.scrollable') as HTMLElement | null;
 		if (!scroller) return;
-		const fieldRect = el.getBoundingClientRect();
-		const scrollerRect = scroller.getBoundingClientRect();
-		const padding = 12;
-		let nextTop = scroller.scrollTop;
-		if (fieldRect.top < scrollerRect.top + padding) {
-			nextTop += fieldRect.top - scrollerRect.top - padding;
-		} else if (fieldRect.bottom > scrollerRect.bottom - padding) {
-			nextTop += fieldRect.bottom - scrollerRect.bottom + padding;
-		}
-		scroller.scrollTop = Math.max(0, nextTop);
+		revealEditorField(scroller, el);
 	}
 
 	/** Keep NoteEditor taskFocusLine + root chrome aligned with the active row. */

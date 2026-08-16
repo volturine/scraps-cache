@@ -18,6 +18,7 @@
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Bell, ChevronLeft, Pin } from '@lucide/svelte';
+	import { revealEditorField } from '$lib/editorVisibility';
 
 	let {
 		noteId = $bindable(),
@@ -52,7 +53,7 @@
 	let focusBodySignal = $state(0);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let editorScroller = $state<HTMLDivElement | null>(null);
-	let revealFrame: number | null = null;
+	let revealTimer: ReturnType<typeof setTimeout> | null = null;
 	let lastTouchY = 0;
 	const editorDialogClass = 'flex h-full w-full flex-col overflow-hidden rounded-2xl';
 	const editorDialogStyle = $derived(
@@ -114,24 +115,17 @@
 		) as HTMLElement | null;
 		if (!field) return;
 
-		const fieldRect = field.getBoundingClientRect();
-		const scrollerRect = editorScroller.getBoundingClientRect();
-		const padding = 12;
-		let nextTop = editorScroller.scrollTop;
-		if (fieldRect.top < scrollerRect.top + padding) {
-			nextTop += fieldRect.top - scrollerRect.top - padding;
-		} else if (fieldRect.bottom > scrollerRect.bottom - padding) {
-			nextTop += fieldRect.bottom - scrollerRect.bottom + padding;
-		}
-		editorScroller.scrollTop = Math.max(0, nextTop);
+		revealEditorField(editorScroller, field);
 	}
 
 	function queueFocusedEditorReveal() {
-		if (revealFrame !== null) cancelAnimationFrame(revealFrame);
-		revealFrame = requestAnimationFrame(() => {
-			revealFrame = null;
+		if (revealTimer !== null) clearTimeout(revealTimer);
+		// Mobile browsers emit resize/scroll events throughout the keyboard animation.
+		// Reveal once after those events settle instead of chasing every animation frame.
+		revealTimer = setTimeout(() => {
+			revealTimer = null;
 			revealFocusedEditorField();
-		});
+		}, 100);
 	}
 
 	onMount(() => {
@@ -151,15 +145,9 @@
 			viewport?.removeEventListener('scroll', onViewportChange);
 			window.removeEventListener('resize', onViewportChange);
 			document.removeEventListener('focusin', onFocusIn);
-			if (revealFrame !== null) cancelAnimationFrame(revealFrame);
+			if (revealTimer !== null) clearTimeout(revealTimer);
 		};
 	});
-
-	function lockPageScroll() {
-		window.scrollTo(0, 0);
-		document.documentElement.scrollTop = 0;
-		document.body.scrollTop = 0;
-	}
 
 	function allowEditorBodyScroll(event: TouchEvent): boolean {
 		const target = event.target;
@@ -178,8 +166,6 @@
 
 	$effect(() => {
 		if (!isOpen) return;
-		lockPageScroll();
-		const viewport = window.visualViewport;
 		const onTouchStart = (event: TouchEvent) => {
 			lastTouchY = event.touches[0]?.clientY ?? 0;
 		};
@@ -187,16 +173,11 @@
 			if (!allowEditorBodyScroll(event)) event.preventDefault();
 			lastTouchY = event.touches[0]?.clientY ?? lastTouchY;
 		};
-		const onScroll = () => lockPageScroll();
 		document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
 		document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
-		window.addEventListener('scroll', onScroll, { capture: true, passive: false });
-		viewport?.addEventListener('scroll', onScroll);
 		return () => {
 			document.removeEventListener('touchstart', onTouchStart, { capture: true });
 			document.removeEventListener('touchmove', onTouchMove, { capture: true });
-			window.removeEventListener('scroll', onScroll, { capture: true });
-			viewport?.removeEventListener('scroll', onScroll);
 		};
 	});
 
