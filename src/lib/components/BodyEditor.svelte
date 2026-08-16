@@ -79,6 +79,16 @@
 		};
 	}
 
+	function syncEditableText(node: HTMLElement, value: string) {
+		const apply = (next: string) => {
+			// The browser mutates this text node directly. Only reconcile when state
+			// actually differs so iOS and Svelte never insert the first character twice.
+			if (node.textContent !== next) node.textContent = next;
+		};
+		apply(value);
+		return { update: apply };
+	}
+
 	function syncBody() {
 		const next = serializeLines(lines.filter((line) => line.id !== draftTaskId));
 		lastBody = next;
@@ -575,6 +585,7 @@
 				{/if}
 				<span
 					data-line-text
+					use:syncEditableText={line.text}
 					data-placeholder={line.text.length === 0
 						? line.isCheck
 							? line.indent > 0
@@ -586,22 +597,22 @@
 						: undefined}
 					class="block min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
 						? 'line-through opacity-50'
-						: ''} {line.indent > 0 ? 'text-[13px]' : ''}">{line.text}</span
-				>
+						: ''} {line.indent > 0 ? 'text-[13px]' : ''}"
+				></span>
 			</div>
+			{#if line.id === focusedGroupLastId}
+				<button
+					type="button"
+					contenteditable="false"
+					data-add-subtask
+					aria-label="Add sub-task"
+					class="flex select-none items-center rounded px-1 py-1 pl-6 text-left text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
+					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
+				>
+					<span class="add-subtask-label" aria-hidden="true"></span>
+				</button>
+			{/if}
 		</div>
-		{#if line.id === focusedGroupLastId}
-			<button
-				type="button"
-				contenteditable="false"
-				data-add-subtask
-				aria-label="Add sub-task"
-				class="mt-0.5 flex select-none items-center rounded px-1 py-1 pl-6 text-left text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
-				onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
-			>
-				<span class="add-subtask-label" aria-hidden="true"></span>
-			</button>
-		{/if}
 	{/each}
 </div>
 

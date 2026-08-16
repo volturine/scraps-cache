@@ -99,6 +99,9 @@ describe('BodyEditor task focus chrome', () => {
 
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
 		expect(container.querySelector('[data-add-subtask]')).not.toBeNull();
+		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
+			container.querySelector('[data-editor-line="1"]')
+		);
 		expect(container.querySelector('[data-editor-line="0"]')?.className).toContain('rounded-t-lg');
 		expect(container.querySelector('[data-editor-line="1"]')?.className).toContain('rounded-b-lg');
 
@@ -119,7 +122,16 @@ describe('BodyEditor task focus chrome', () => {
 				.querySelector('[data-editor-line="2"] [data-line-text]')
 				?.getAttribute('data-placeholder')
 		).toBe('Sub-task');
+		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
+			container.querySelector('[data-editor-line="2"]')
+		);
 		expect(document.activeElement).toBe(container.querySelector('[data-body-editor]'));
+
+		const draft = container.querySelector('[data-editor-line="2"] [data-line-text]') as HTMLElement;
+		draft.textContent = 'a';
+		await fireEvent.input(draft, { inputType: 'insertText', data: 'a' });
+		await tick();
+		expect(draft.textContent).toBe('a');
 
 		await rerender({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate', focusLine: null });
 		await tick();
