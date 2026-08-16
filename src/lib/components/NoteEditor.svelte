@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { flushSync, onMount } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { noteToPlainText, noteAttachments } from '$lib/checklistBody';
@@ -165,39 +165,22 @@
 		if (!(target instanceof Element)) return;
 		const field = target.closest('textarea, input[type="text"], [contenteditable]');
 		if (!(field instanceof HTMLElement) || !editorScroller.contains(field)) return;
-		const active = document.activeElement;
-		const editorAlreadyFocused = active instanceof HTMLElement && editorScroller.contains(active);
-		const viewport = editorScroller.getBoundingClientRect();
-		const edgeInset = 12;
-		const isViewportEdgeTap =
-			editorAlreadyFocused &&
-			(event.clientY <= viewport.top + edgeInset || event.clientY >= viewport.bottom - edgeInset);
-
-		// With the keyboard already open, iOS treats a tap at either clipped edge as
-		// a visual-viewport pan gesture. Take ownership of only that narrow case:
-		// keep the page fixed and reveal through the note body's scroller instead.
-		if (isViewportEdgeTap) event.preventDefault();
-
-		if (active === field) {
-			if (isViewportEdgeTap) {
-				revealEditorField(editorScroller, field);
-				lockPageScroll();
-			}
-			return;
-		}
+		if (document.activeElement === field) return;
 
 		// Run the focusing step inside the touch gesture before Safari's default
-		// focus action. Once the field is already active, the later default action
-		// can place the caret without scrolling the page or resetting the note body.
-		const bodyScrollTop = editorScroller.scrollTop;
+		// focus action. Flush the task-focus chrome in that same transaction, then
+		// compensate for its layout change around the tapped row. The note body is
+		// the only scroll owner; the later native action only places the exact caret.
+		const anchorTop = field.getBoundingClientRect().top;
 		try {
 			field.focus({ preventScroll: true });
 		} catch {
 			field.focus();
 		}
-		editorScroller.scrollTop = bodyScrollTop;
+		flushSync();
+		const movedBy = field.getBoundingClientRect().top - anchorTop;
+		editorScroller.scrollTop += movedBy;
 		lockPageScroll();
-		if (isViewportEdgeTap) revealEditorField(editorScroller, field);
 	}
 
 	$effect(() => {

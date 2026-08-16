@@ -57,14 +57,6 @@
 }
 
 @media (max-width: 767px) {
-	html.editor-open {
-		/* Keep the note sheet geometry stable before and during keyboard focus. */
-		--app-sheet-pad-bottom: 0.5rem;
-	}
-	html.editor-open .new-note-fab {
-		visibility: hidden;
-		pointer-events: none;
-	}
 	html.keyboard-open {
 		--app-sheet-pad-bottom: 0.5rem;
 	}
