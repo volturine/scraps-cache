@@ -89,6 +89,11 @@ export function appBottomInset(
 	return onPhone && fieldFocused ? 0 : safeBottom;
 }
 
+/** Keep an open note anchored while its body handles caret-follow scrolling. */
+export function appKeyboardTopInset(keyboardTop: number, editorOpen: boolean): number {
+	return editorOpen ? 0 : keyboardTop;
+}
+
 export function readSafeAreaInsets(): Insets {
 	if (typeof document === 'undefined') return { top: 0, right: 0, bottom: 0, left: 0 };
 	const probe = document.createElement('div');
@@ -119,6 +124,7 @@ export function attachAppViewport(_node: HTMLElement) {
 	let cachedSafe: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 	let fieldFocused = isKeyboardField(document.activeElement);
 	let restingLayoutHeight = window.innerHeight;
+	let editorOpen = document.documentElement.classList.contains('editor-open');
 	const phone = window.matchMedia(PHONE_MEDIA);
 
 	const apply = () => {
@@ -157,7 +163,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		// the phone keyboard is active, its own occlusion replaces this inset.
 		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, fieldFocused));
 		setInsetVar('--app-inset-left', cachedSafe.left);
-		setInsetVar('--app-keyboard-top', occlusion.top);
+		setInsetVar('--app-keyboard-top', appKeyboardTopInset(occlusion.top, editorOpen));
 		setInsetVar('--app-keyboard-bottom', occlusion.bottom);
 	};
 
@@ -171,6 +177,12 @@ export function attachAppViewport(_node: HTMLElement) {
 			apply();
 		});
 	};
+	const editorClassObserver = new MutationObserver(() => {
+		const nextEditorOpen = document.documentElement.classList.contains('editor-open');
+		if (nextEditorOpen === editorOpen) return;
+		editorOpen = nextEditorOpen;
+		apply();
+	});
 
 	apply();
 	const viewport = window.visualViewport;
@@ -180,6 +192,10 @@ export function attachAppViewport(_node: HTMLElement) {
 	phone.addEventListener('change', apply);
 	document.addEventListener('focusin', onFocusIn);
 	document.addEventListener('focusout', onFocusOut);
+	editorClassObserver.observe(document.documentElement, {
+		attributes: true,
+		attributeFilter: ['class']
+	});
 	return () => {
 		viewport?.removeEventListener('resize', apply);
 		viewport?.removeEventListener('scroll', apply);
@@ -187,6 +203,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		phone.removeEventListener('change', apply);
 		document.removeEventListener('focusin', onFocusIn);
 		document.removeEventListener('focusout', onFocusOut);
+		editorClassObserver.disconnect();
 		document.documentElement.classList.remove('keyboard-open');
 	};
 }

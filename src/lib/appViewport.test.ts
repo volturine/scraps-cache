@@ -3,6 +3,7 @@ import {
 	APP_FLOAT_SELECTOR,
 	APP_OVERLAY_SELECTOR,
 	appBottomInset,
+	appKeyboardTopInset,
 	isKeyboardField,
 	isKeyboardOccluding,
 	keyboardOcclusion,
@@ -23,6 +24,16 @@ describe('appBottomInset', () => {
 	it('lets the phone keyboard replace the home-indicator inset', () => {
 		expect(appBottomInset(34, true, true)).toBe(0);
 		expect(appBottomInset(34, true, false)).toBe(34);
+	});
+});
+
+describe('appKeyboardTopInset', () => {
+	it('does not translate the note sheet when iOS pans to a focused caret', () => {
+		expect(appKeyboardTopInset(286, true)).toBe(0);
+	});
+
+	it('keeps keyboard top compensation for other floating UI', () => {
+		expect(appKeyboardTopInset(286, false)).toBe(286);
 	});
 });
 
