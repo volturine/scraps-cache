@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { revealEditorField, scrollTopForReveal } from './editorVisibility';
+import { revealEditorField, revealEditorPoint, scrollTopForReveal } from './editorVisibility';
 
 const viewport = { top: 100, bottom: 500 };
 
@@ -61,5 +61,16 @@ describe('scrollTopForReveal', () => {
 
 		expect(scroller.scrollTop).toBe(302);
 		expect(document.querySelector('[aria-hidden="true"]')).toBeNull();
+	});
+
+	it('moves an edge touch point into the editor gutter before native caret placement', () => {
+		const scroller = document.createElement('div');
+		document.body.append(scroller);
+		scroller.scrollTop = 300;
+		vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue(rect(100, 500));
+
+		revealEditorPoint(scroller, 499);
+
+		expect(scroller.scrollTop).toBe(323);
 	});
 });

@@ -18,7 +18,7 @@
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Bell, ChevronLeft, Pin } from '@lucide/svelte';
-	import { revealEditorField } from '$lib/editorVisibility';
+	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
 
 	let {
 		noteId = $bindable(),
@@ -165,6 +165,12 @@
 		if (!(target instanceof Element)) return;
 		const field = target.closest('textarea, input[type="text"], [contenteditable]');
 		if (!(field instanceof HTMLElement) || !editorScroller.contains(field)) return;
+
+		// Establish the touch point's safe area inside the note body before Safari
+		// handles the gesture. This also covers an already-active or wrapped field:
+		// native caret placement no longer needs to pan the visual viewport.
+		revealEditorPoint(editorScroller, event.clientY);
+		lockPageScroll();
 		if (document.activeElement === field) return;
 
 		// Run the focusing step inside the touch gesture before Safari's default

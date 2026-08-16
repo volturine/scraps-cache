@@ -82,5 +82,18 @@ export function revealEditorField(scroller: HTMLElement, field: HTMLElement, pad
 	const target =
 		field instanceof HTMLTextAreaElement ? textareaCaretRect(field) : field.getBoundingClientRect();
 	const viewport = scroller.getBoundingClientRect();
+	if (viewport.bottom <= viewport.top) return;
 	scroller.scrollTop = scrollTopForReveal(scroller.scrollTop, target, viewport, padding);
+}
+
+/** Put a pending native caret gesture inside the editor scrollport before it is handled. */
+export function revealEditorPoint(scroller: HTMLElement, clientY: number, padding = 24): void {
+	const viewport = scroller.getBoundingClientRect();
+	if (viewport.bottom <= viewport.top) return;
+	scroller.scrollTop = scrollTopForReveal(
+		scroller.scrollTop,
+		{ top: clientY, bottom: clientY },
+		viewport,
+		padding
+	);
 }

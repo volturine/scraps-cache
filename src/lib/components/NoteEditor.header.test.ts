@@ -147,6 +147,10 @@ describe('NoteEditor task focus', () => {
 			'textarea[placeholder="Task"]'
 		) as NodeListOf<HTMLTextAreaElement>;
 		scroller.scrollTop = 640;
+		Object.defineProperty(scroller, 'getBoundingClientRect', {
+			configurable: true,
+			value: () => ({ top: 0, bottom: 600, left: 0, right: 300, width: 300, height: 600 })
+		});
 		tasks[0].focus();
 		Object.defineProperty(tasks[1], 'getBoundingClientRect', {
 			configurable: true,
@@ -156,13 +160,52 @@ describe('NoteEditor task focus', () => {
 			}
 		});
 
-		const taskTap = new MouseEvent('pointerdown', { bubbles: true, cancelable: true });
+		const taskTap = new MouseEvent('pointerdown', {
+			bubbles: true,
+			cancelable: true,
+			clientY: 300
+		});
 		Object.defineProperty(taskTap, 'pointerType', { value: 'touch' });
 		tasks[1].dispatchEvent(taskTap);
 
 		expect(taskTap.defaultPrevented).toBe(false);
 		expect(document.activeElement).toBe(tasks[1]);
 		expect(scroller.scrollTop).toBe(604);
+	});
+
+	it('moves an active edge task into the note body safe area before native caret placement', () => {
+		notesStore.notes = [note({ body: '[ ] Edge task' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		const task = container.querySelector('textarea[placeholder="Task"]') as HTMLTextAreaElement;
+		scroller.scrollTop = 500;
+		Object.defineProperty(scroller, 'getBoundingClientRect', {
+			configurable: true,
+			value: () => ({ top: 100, bottom: 500, left: 0, right: 300, width: 300, height: 400 })
+		});
+		Object.defineProperty(task, 'getBoundingClientRect', {
+			configurable: true,
+			value: () => {
+				const top = 490 - (scroller.scrollTop - 500);
+				return { top, bottom: top + 24, left: 0, right: 300, width: 300, height: 24 };
+			}
+		});
+		task.focus();
+
+		const taskTap = new MouseEvent('pointerdown', {
+			bubbles: true,
+			cancelable: true,
+			clientY: 499
+		});
+		Object.defineProperty(taskTap, 'pointerType', { value: 'touch' });
+		task.dispatchEvent(taskTap);
+
+		expect(taskTap.defaultPrevented).toBe(false);
+		expect(document.activeElement).toBe(task);
+		expect(scroller.scrollTop).toBeGreaterThan(500);
+		expect(window.scrollTo).toHaveBeenLastCalledWith(0, 0);
 	});
 
 	it('does not cancel touch movement at the note body boundary', () => {
