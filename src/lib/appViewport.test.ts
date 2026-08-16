@@ -3,6 +3,7 @@ import {
 	APP_FLOAT_SELECTOR,
 	APP_OVERLAY_SELECTOR,
 	appBottomInset,
+	appKeyboardFrame,
 	isKeyboardField,
 	isKeyboardOccluding,
 	keyboardOcclusion,
@@ -23,6 +24,54 @@ describe('appBottomInset', () => {
 	it('lets the phone keyboard replace the home-indicator inset', () => {
 		expect(appBottomInset(34, true, true)).toBe(0);
 		expect(appBottomInset(34, true, false)).toBe(34);
+	});
+});
+
+describe('appKeyboardFrame', () => {
+	it('keeps the generic floating layer aligned to the visual viewport', () => {
+		expect(
+			appKeyboardFrame({
+				editorOpen: false,
+				visualTop: 80,
+				visualHeight: 360,
+				layoutHeight: 844,
+				occlusion: { top: 21, bottom: 404 }
+			})
+		).toEqual({ viewportOffsetTop: 0, keyboardTop: 21, keyboardBottom: 404 });
+	});
+
+	it('anchors an open note and keeps its keyboard height independent of visual panning', () => {
+		const frame = (visualTop: number, occlusion: { top: number; bottom: number }) =>
+			appKeyboardFrame({
+				editorOpen: true,
+				visualTop,
+				visualHeight: 360,
+				layoutHeight: 844,
+				occlusion
+			});
+
+		expect(frame(80, { top: 21, bottom: 404 })).toEqual({
+			viewportOffsetTop: 80,
+			keyboardTop: 0,
+			keyboardBottom: 484
+		});
+		expect(frame(120, { top: 61, bottom: 364 })).toEqual({
+			viewportOffsetTop: 120,
+			keyboardTop: 0,
+			keyboardBottom: 484
+		});
+	});
+
+	it('counters visual panning without adding a keyboard inset when the layout already resized', () => {
+		expect(
+			appKeyboardFrame({
+				editorOpen: true,
+				visualTop: 32,
+				visualHeight: 500,
+				layoutHeight: 500,
+				occlusion: { top: 0, bottom: 0 }
+			})
+		).toEqual({ viewportOffsetTop: 32, keyboardTop: 0, keyboardBottom: 0 });
 	});
 });
 

@@ -89,6 +89,45 @@ export function appBottomInset(
 	return onPhone && fieldFocused ? 0 : safeBottom;
 }
 
+export type AppKeyboardFrame = {
+	viewportOffsetTop: number;
+	keyboardTop: number;
+	keyboardBottom: number;
+};
+
+/**
+ * An open editor is anchored to the visual screen, not Safari's panned layout
+ * viewport. Offset is countered at the root while keyboard height stays stable.
+ */
+export function appKeyboardFrame(options: {
+	editorOpen: boolean;
+	visualTop: number;
+	visualHeight: number;
+	layoutHeight: number;
+	occlusion: { top: number; bottom: number };
+}): AppKeyboardFrame {
+	if (!options.editorOpen) {
+		return {
+			viewportOffsetTop: 0,
+			keyboardTop: options.occlusion.top,
+			keyboardBottom: options.occlusion.bottom
+		};
+	}
+	const keyboardOverlaysLayout = options.occlusion.top > 0 || options.occlusion.bottom > 0;
+	if (!keyboardOverlaysLayout) {
+		return {
+			viewportOffsetTop: Math.max(0, options.visualTop),
+			keyboardTop: 0,
+			keyboardBottom: 0
+		};
+	}
+	return {
+		viewportOffsetTop: Math.max(0, options.visualTop),
+		keyboardTop: 0,
+		keyboardBottom: Math.max(0, options.layoutHeight - options.visualHeight)
+	};
+}
+
 export function readSafeAreaInsets(): Insets {
 	if (typeof document === 'undefined') return { top: 0, right: 0, bottom: 0, left: 0 };
 	const probe = document.createElement('div');
@@ -119,6 +158,7 @@ export function attachAppViewport(_node: HTMLElement) {
 	let cachedSafe: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 	let fieldFocused = isKeyboardField(document.activeElement);
 	let restingLayoutHeight = window.innerHeight;
+	let editorOpen = document.documentElement.classList.contains('editor-open');
 	const phone = window.matchMedia(PHONE_MEDIA);
 
 	const apply = () => {
@@ -149,6 +189,13 @@ export function attachAppViewport(_node: HTMLElement) {
 					safe: cachedSafe
 				})
 			: { top: 0, bottom: 0 };
+		const keyboardFrame = appKeyboardFrame({
+			editorOpen: onPhone && editorOpen,
+			visualTop,
+			visualHeight,
+			layoutHeight,
+			occlusion
+		});
 
 		document.documentElement.classList.toggle('keyboard-open', onPhone && fieldFocused);
 		setInsetVar('--app-inset-top', cachedSafe.top);
@@ -157,8 +204,9 @@ export function attachAppViewport(_node: HTMLElement) {
 		// the phone keyboard is active, its own occlusion replaces this inset.
 		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, fieldFocused));
 		setInsetVar('--app-inset-left', cachedSafe.left);
-		setInsetVar('--app-keyboard-top', occlusion.top);
-		setInsetVar('--app-keyboard-bottom', occlusion.bottom);
+		setInsetVar('--app-visual-offset-top', keyboardFrame.viewportOffsetTop);
+		setInsetVar('--app-keyboard-top', keyboardFrame.keyboardTop);
+		setInsetVar('--app-keyboard-bottom', keyboardFrame.keyboardBottom);
 	};
 
 	const onFocusIn = (event: FocusEvent) => {
@@ -171,6 +219,12 @@ export function attachAppViewport(_node: HTMLElement) {
 			apply();
 		});
 	};
+	const editorClassObserver = new MutationObserver(() => {
+		const nextEditorOpen = document.documentElement.classList.contains('editor-open');
+		if (nextEditorOpen === editorOpen) return;
+		editorOpen = nextEditorOpen;
+		apply();
+	});
 
 	apply();
 	const viewport = window.visualViewport;
@@ -180,6 +234,10 @@ export function attachAppViewport(_node: HTMLElement) {
 	phone.addEventListener('change', apply);
 	document.addEventListener('focusin', onFocusIn);
 	document.addEventListener('focusout', onFocusOut);
+	editorClassObserver.observe(document.documentElement, {
+		attributes: true,
+		attributeFilter: ['class']
+	});
 	return () => {
 		viewport?.removeEventListener('resize', apply);
 		viewport?.removeEventListener('scroll', apply);
@@ -187,6 +245,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		phone.removeEventListener('change', apply);
 		document.removeEventListener('focusin', onFocusIn);
 		document.removeEventListener('focusout', onFocusOut);
+		editorClassObserver.disconnect();
 		document.documentElement.classList.remove('keyboard-open');
 	};
 }

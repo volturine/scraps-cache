@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { flushSync, onMount } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { noteToPlainText, noteAttachments } from '$lib/checklistBody';
@@ -18,6 +18,7 @@
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Bell, ChevronLeft, Pin } from '@lucide/svelte';
+	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
 
 	let {
 		noteId = $bindable(),
@@ -52,8 +53,18 @@
 	let focusBodySignal = $state(0);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let editorScroller = $state<HTMLDivElement | null>(null);
-	let revealFrame: number | null = null;
-	let lastTouchY = 0;
+	let revealTimer: ReturnType<typeof setTimeout> | null = null;
+	let editorTouchGesture:
+		| {
+				pointerId: number;
+				field: HTMLElement;
+				startX: number;
+				startY: number;
+				startScrollTop: number;
+				moved: boolean;
+		  }
+		| undefined;
+	const TOUCH_TAP_SLOP = 8;
 	const editorDialogClass = 'flex h-full w-full flex-col overflow-hidden rounded-2xl';
 	const editorDialogStyle = $derived(
 		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
@@ -114,35 +125,42 @@
 		) as HTMLElement | null;
 		if (!field) return;
 
-		const fieldRect = field.getBoundingClientRect();
-		const scrollerRect = editorScroller.getBoundingClientRect();
-		const padding = 12;
-		let nextTop = editorScroller.scrollTop;
-		if (fieldRect.top < scrollerRect.top + padding) {
-			nextTop += fieldRect.top - scrollerRect.top - padding;
-		} else if (fieldRect.bottom > scrollerRect.bottom - padding) {
-			nextTop += fieldRect.bottom - scrollerRect.bottom + padding;
-		}
-		editorScroller.scrollTop = Math.max(0, nextTop);
+		revealEditorField(editorScroller, field);
 	}
 
 	function queueFocusedEditorReveal() {
-		if (revealFrame !== null) cancelAnimationFrame(revealFrame);
-		revealFrame = requestAnimationFrame(() => {
-			revealFrame = null;
+		if (revealTimer !== null) clearTimeout(revealTimer);
+		// Mobile browsers emit resize/scroll events throughout the keyboard animation.
+		// Reveal once after those events settle instead of chasing every animation frame.
+		revealTimer = setTimeout(() => {
+			revealTimer = null;
 			revealFocusedEditorField();
-		});
+		}, 100);
 	}
 
 	onMount(() => {
 		const viewport = window.visualViewport;
-		const onViewportChange = () => queueFocusedEditorReveal();
+		const onViewportChange = () => {
+			if (!isOpen) return;
+			lockPageScroll();
+			queueFocusedEditorReveal();
+		};
+		const onFocusIn = (event: FocusEvent) => {
+			if (event.target instanceof Node && editorDialog?.contains(event.target)) {
+				lockPageScroll();
+				queueFocusedEditorReveal();
+			}
+		};
 		viewport?.addEventListener('resize', onViewportChange);
 		viewport?.addEventListener('scroll', onViewportChange);
+		window.addEventListener('resize', onViewportChange);
+		document.addEventListener('focusin', onFocusIn);
 		return () => {
 			viewport?.removeEventListener('resize', onViewportChange);
 			viewport?.removeEventListener('scroll', onViewportChange);
-			if (revealFrame !== null) cancelAnimationFrame(revealFrame);
+			window.removeEventListener('resize', onViewportChange);
+			document.removeEventListener('focusin', onFocusIn);
+			if (revealTimer !== null) clearTimeout(revealTimer);
 		};
 	});
 
@@ -152,42 +170,90 @@
 		document.body.scrollTop = 0;
 	}
 
-	function allowEditorBodyScroll(event: TouchEvent): boolean {
-		const target = event.target;
-		if (!(target instanceof Element)) return false;
-		const scroller = target.closest('.scrollable');
-		if (!(scroller instanceof HTMLElement)) return false;
-		if (!editorDialog?.contains(scroller) && !scroller.closest('[data-editor-popup]')) return false;
-		if (scroller.scrollHeight <= scroller.clientHeight + 1) return false;
-		const y = event.touches[0]?.clientY ?? lastTouchY;
-		const dy = y - lastTouchY;
-		const atTop = scroller.scrollTop <= 0;
-		const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
-		if ((atTop && dy > 0) || (atBottom && dy < 0)) return false;
-		return true;
+	function editorFieldFromTarget(target: EventTarget | null): HTMLElement | null {
+		if (!(target instanceof Element) || !editorScroller) return null;
+		const field = target.closest('textarea, input[type="text"], [contenteditable]');
+		return field instanceof HTMLElement && editorScroller.contains(field) ? field : null;
+	}
+
+	function beginEditorTouch(event: PointerEvent) {
+		if (event.pointerType !== 'touch' || !editorScroller) return;
+		const field = editorFieldFromTarget(event.target);
+		if (!field) return;
+		editorTouchGesture = {
+			pointerId: event.pointerId,
+			field,
+			startX: event.clientX,
+			startY: event.clientY,
+			startScrollTop: editorScroller.scrollTop,
+			moved: false
+		};
+	}
+
+	function moveEditorTouch(event: PointerEvent) {
+		const gesture = editorTouchGesture;
+		if (!gesture || event.pointerId !== gesture.pointerId || !editorScroller) return;
+		if (
+			Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > TOUCH_TAP_SLOP ||
+			Math.abs(editorScroller.scrollTop - gesture.startScrollTop) > 1
+		) {
+			gesture.moved = true;
+		}
+	}
+
+	function cancelEditorTouch(event: PointerEvent) {
+		if (editorTouchGesture?.pointerId === event.pointerId) editorTouchGesture = undefined;
+	}
+
+	function completeEditorTouch(event: PointerEvent) {
+		const gesture = editorTouchGesture;
+		editorTouchGesture = undefined;
+		if (
+			event.pointerType !== 'touch' ||
+			!editorScroller ||
+			!gesture ||
+			event.pointerId !== gesture.pointerId ||
+			gesture.moved ||
+			Math.abs(editorScroller.scrollTop - gesture.startScrollTop) > 1 ||
+			editorFieldFromTarget(event.target) !== gesture.field
+		) {
+			return;
+		}
+		const field = gesture.field;
+
+		// Establish the touch point's safe area inside the note body before Safari
+		// handles the gesture. This also covers an already-active or wrapped field:
+		// native caret placement no longer needs to pan the visual viewport.
+		revealEditorPoint(editorScroller, event.clientY);
+		lockPageScroll();
+		if (document.activeElement === field) return;
+
+		// Run the focusing step inside the touch gesture before Safari's default
+		// focus action. Flush the task-focus chrome in that same transaction, then
+		// compensate for its layout change around the tapped row. The note body is
+		// the only scroll owner; the later native action only places the exact caret.
+		const anchorTop = field.getBoundingClientRect().top;
+		try {
+			field.focus({ preventScroll: true });
+		} catch {
+			field.focus();
+		}
+		flushSync();
+		const movedBy = field.getBoundingClientRect().top - anchorTop;
+		editorScroller.scrollTop += movedBy;
+		lockPageScroll();
 	}
 
 	$effect(() => {
 		if (!isOpen) return;
 		lockPageScroll();
 		const viewport = window.visualViewport;
-		const onTouchStart = (event: TouchEvent) => {
-			lastTouchY = event.touches[0]?.clientY ?? 0;
-		};
-		const onTouchMove = (event: TouchEvent) => {
-			if (!allowEditorBodyScroll(event)) event.preventDefault();
-			lastTouchY = event.touches[0]?.clientY ?? lastTouchY;
-		};
-		const onScroll = () => lockPageScroll();
-		document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
-		document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
-		window.addEventListener('scroll', onScroll, { capture: true, passive: false });
-		viewport?.addEventListener('scroll', onScroll);
+		const onOuterScroll = () => lockPageScroll();
+		window.addEventListener('scroll', onOuterScroll, { capture: true, passive: false });
+		viewport?.addEventListener('scroll', onOuterScroll);
 		return () => {
-			document.removeEventListener('touchstart', onTouchStart, { capture: true });
-			document.removeEventListener('touchmove', onTouchMove, { capture: true });
-			window.removeEventListener('scroll', onScroll, { capture: true });
-			viewport?.removeEventListener('scroll', onScroll);
+			window.removeEventListener('scroll', onOuterScroll, { capture: true });
+			viewport?.removeEventListener('scroll', onOuterScroll);
 		};
 	});
 
@@ -328,6 +394,10 @@
 					role="dialog"
 					tabindex="-1"
 					aria-modal="true"
+					onpointerdown={beginEditorTouch}
+					onpointermove={moveEditorTouch}
+					onpointerup={completeEditorTouch}
+					onpointercancel={cancelEditorTouch}
 					onclick={focusBodyFromPage}
 				>
 					<!-- Header -->
@@ -391,7 +461,7 @@
 
 					<div
 						bind:this={editorScroller}
-						class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pt-4 pb-3"
+						class="scrollable min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-6 pt-4 pb-3"
 					>
 						<input
 							type="text"

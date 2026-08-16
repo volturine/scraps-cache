@@ -48,6 +48,7 @@
 	--app-inset-right: env(safe-area-inset-right, 0px);
 	--app-inset-bottom: env(safe-area-inset-bottom, 0px);
 	--app-inset-left: env(safe-area-inset-left, 0px);
+	--app-visual-offset-top: 0px;
 	--app-keyboard-top: 0px;
 	--app-keyboard-bottom: 0px;
 	--app-topbar-height: 3.5rem;
@@ -151,7 +152,7 @@ html.editor-open .app-shell {
 	right: var(--app-inset-right);
 	bottom: var(--app-inset-bottom);
 	left: var(--app-inset-left);
-	transform: translate(0);
+	transform: translate3d(0, var(--app-visual-offset-top), 0);
 	overflow: hidden;
 }
 

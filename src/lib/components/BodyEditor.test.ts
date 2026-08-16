@@ -27,6 +27,19 @@ describe('BodyEditor empty task Enter behavior', () => {
 });
 
 describe('BodyEditor task focus chrome', () => {
+	it('keeps plain text in place when a task group receives focus', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Parent\ncontext between tasks\n  [ ] Child', focusLine: 0 }
+		});
+		await tick();
+
+		expect([...container.querySelectorAll('textarea')].map((field) => field.value)).toEqual([
+			'Parent',
+			'context between tasks',
+			'Child'
+		]);
+	});
+
 	it('shows Add sub-task on the focused root and drops it when focus leaves', async () => {
 		const { container, rerender } = render(BodyEditor, {
 			props: { body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate', focusLine: 0 }

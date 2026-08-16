@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { flushSync, tick } from 'svelte';
 	import { CHECK_RE, formatCheckLine, parseCheckLine } from '$lib/checklistBody';
+	import { revealEditorField } from '$lib/editorVisibility';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -435,16 +436,7 @@
 		// the keyboard: restoring the old position fights that native movement.
 		const scroller = container?.closest('.scrollable') as HTMLElement | null;
 		if (!scroller) return;
-		const fieldRect = el.getBoundingClientRect();
-		const scrollerRect = scroller.getBoundingClientRect();
-		const padding = 12;
-		let nextTop = scroller.scrollTop;
-		if (fieldRect.top < scrollerRect.top + padding) {
-			nextTop += fieldRect.top - scrollerRect.top - padding;
-		} else if (fieldRect.bottom > scrollerRect.bottom - padding) {
-			nextTop += fieldRect.bottom - scrollerRect.bottom + padding;
-		}
-		scroller.scrollTop = Math.max(0, nextTop);
+		revealEditorField(scroller, el);
 	}
 
 	/** Keep NoteEditor taskFocusLine + root chrome aligned with the active row. */
@@ -580,7 +572,7 @@
 		focusedRootId === null ? 0 : (lines.find((line) => line.id === focusedRootId)?.indent ?? 0)
 	);
 
-	/** Root + its sub-tasks — used for the shared focus envelope. */
+	/** Root + its sub-tasks — used for the shared focus styling. */
 	const focusedGroupRows = $derived.by(() => {
 		if (focusedRootId === null) return [] as { line: Line; index: number }[];
 		const rootIndex = lines.findIndex((line) => line.id === focusedRootId);
@@ -596,6 +588,18 @@
 	});
 
 	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
+	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
+
+	function taskShellClass(lineId: number): string {
+		if (!focusedGroupIds.has(lineId)) return '';
+		return [
+			'-mx-2 bg-black/[0.035] px-2 dark:bg-white/[0.06]',
+			lineId === focusedRootId ? 'mt-0.5 rounded-t-lg pt-1' : '',
+			lineId === focusedGroupLastId ? 'mb-0.5 rounded-b-lg pb-1' : ''
+		]
+			.filter(Boolean)
+			.join(' ');
+	}
 </script>
 
 {#snippet taskRow(line: Line, i: number)}
@@ -628,7 +632,7 @@
 			onblur={() => discardEmptyDraft(line.id)}
 			onkeydown={(e) => onLineKeydown(e, i)}
 			enterkeyhint="enter"
-			onclick={() => {
+			onfocus={() => {
 				if (lines[parentTaskIndex(i)]?.id !== focusedRootId) onFocusTask?.(i);
 			}}
 			placeholder={line.indent > 0 ? 'Sub-task' : 'Task'}
@@ -644,32 +648,28 @@
 >
 	{#each lines as line, i (line.id)}
 		{#if line.isCheck}
-			{#if focusedRootId !== null && line.id === focusedRootId}
-				<!-- One envelope around the focused root, its sub-tasks, and Add sub-task. -->
-				<div
-					class="-mx-2 my-0.5 rounded-lg bg-black/[0.035] px-2 py-1 dark:bg-white/[0.06]"
-					data-focus-group
-				>
-					{#each focusedGroupRows as { line: groupLine, index: groupIndex } (groupLine.id)}
-						{@render taskRow(groupLine, groupIndex)}
-					{/each}
-					{#if focusedRootIndent === 0}
-						<button
-							type="button"
-							data-add-subtask
-							class="mt-0.5 flex items-center gap-1.5 rounded px-1 py-1 pl-6 text-left text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
-							onclick={() => addSubtask(focusedGroupRows[0]?.index ?? -1)}
-						>
-							<span class="text-base leading-none" aria-hidden="true">+</span>
-							Add sub-task
-						</button>
-					{/if}
-				</div>
-			{:else if focusedGroupIds.has(line.id)}
-				<!-- Already rendered inside the focus envelope. -->
-			{:else}
+			<!--
+				Every task keeps the same keyed shell and textarea while focus styling changes.
+				Replacing rows here loses the browser-owned caret and breaks native keyboard scrolling.
+			-->
+			<div
+				data-task-shell
+				data-focus-group={line.id === focusedRootId ? '' : undefined}
+				class={taskShellClass(line.id)}
+			>
 				{@render taskRow(line, i)}
-			{/if}
+				{#if line.id === focusedGroupLastId && focusedRootIndent === 0}
+					<button
+						type="button"
+						data-add-subtask
+						class="mt-0.5 flex items-center gap-1.5 rounded px-1 py-1 pl-6 text-left text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
+						onclick={() => addSubtask(focusedGroupRows[0]?.index ?? -1)}
+					>
+						<span class="text-base leading-none" aria-hidden="true">+</span>
+						Add sub-task
+					</button>
+				{/if}
+			</div>
 		{:else if isPlainRunStart(i)}
 			<!-- One textarea for consecutive plain lines: multi-line select without affecting task focus. -->
 			<textarea
