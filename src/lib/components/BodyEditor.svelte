@@ -58,6 +58,7 @@
 	let container: HTMLDivElement | null = $state(null);
 	let focusedRootId = $state<number | null>(null);
 	let draftTaskId = $state<number | null>(null);
+	let ignoredFocusLine = $state<number | null>(null);
 	let handledFocusSignal = 0;
 	let lastBody = '';
 	let composing = false;
@@ -216,6 +217,12 @@
 		onFocusTask?.(index);
 	}
 
+	function dropTaskFocus() {
+		focusedRootId = null;
+		ignoredFocusLine = focusLine;
+		onExitTaskFocus?.();
+	}
+
 	function handleEditorClick(event: MouseEvent) {
 		const row = closestLineElement(event.target as Node);
 		if (!row) return;
@@ -296,10 +303,11 @@
 	function handleBeforeInput(rawEvent: Event) {
 		const event = rawEvent as InputEvent;
 		const range = editorRange();
-		if (!range || range.collapsed || range.start.line === range.end.line) return;
+		if (!range || range.collapsed) return;
 		if (!event.inputType.startsWith('delete')) return;
 		event.preventDefault();
 		const caret = replaceSelectedRange(range);
+		dropTaskFocus();
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
@@ -309,7 +317,12 @@
 			const line = lines[index];
 			const start = index === range.start.line ? range.start.offset : 0;
 			const end = index === range.end.line ? range.end.offset : line.text.length;
-			selected.push(line.text.slice(start, end));
+			const text = line.text.slice(start, end);
+			selected.push(
+				line.isCheck && start === 0 && end === line.text.length
+					? formatCheckLine(line.indent, line.checked, text)
+					: text
+			);
 		}
 		return selected.join('\n');
 	}
@@ -330,25 +343,63 @@
 		const range = writeSelectionToClipboard(event);
 		if (!range) return;
 		const caret = replaceSelectedRange(range);
+		dropTaskFocus();
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
 	function replaceRangeWithText(range: EditorRange, rawText: string): EditorPoint {
 		const parts = rawText.replace(/\r\n?/g, '\n').split('\n');
-		if (parts.length === 1) return replaceSelectedRange(range, parts[0]);
+		if (parts.length === 1) {
+			const first = lines[range.start.line];
+			const last = lines[range.end.line];
+			const prefix = first.text.slice(0, range.start.offset);
+			const check = prefix.length === 0 ? parseCheckLine(parts[0]) : null;
+			if (!check) return replaceSelectedRange(range, parts[0]);
+			first.text = check.text + last.text.slice(range.end.offset);
+			first.isCheck = true;
+			first.checked = check.checked;
+			first.indent = Math.min(MAX_TASK_INDENT, check.indent);
+			lines.splice(range.start.line + 1, range.end.line - range.start.line);
+			syncBody();
+			return {
+				line: range.start.line,
+				offset: check.text.length,
+				global: globalOffset(range.start.line, check.text.length)
+			};
+		}
 
 		const first = lines[range.start.line];
 		const last = lines[range.end.line];
 		const removedIds = new Set(
 			lines.slice(range.start.line, range.end.line + 1).map((line) => line.id)
 		);
+		const prefix = first.text.slice(0, range.start.offset);
 		const suffix = last.text.slice(range.end.offset);
+		const firstCheck = prefix.length === 0 ? parseCheckLine(parts[0]) : null;
 		const inserted: Line[] = [
-			{ ...first, text: first.text.slice(0, range.start.offset) + parts[0] }
+			firstCheck
+				? {
+						...first,
+						text: firstCheck.text,
+						isCheck: true,
+						checked: firstCheck.checked,
+						indent: Math.min(MAX_TASK_INDENT, firstCheck.indent)
+					}
+				: { ...first, text: prefix + parts[0] }
 		];
 		for (let index = 1; index < parts.length; index++) {
-			const text = parts[index] + (index === parts.length - 1 ? suffix : '');
-			inserted.push(newLine(text, first.isCheck, false, first.indent));
+			const check = parseCheckLine(parts[index]);
+			const trailing = index === parts.length - 1 ? suffix : '';
+			inserted.push(
+				check
+					? newLine(
+							check.text + trailing,
+							true,
+							check.checked,
+							Math.min(MAX_TASK_INDENT, check.indent)
+						)
+					: newLine(parts[index] + trailing, first.isCheck, false, first.indent)
+			);
 		}
 
 		lines.splice(range.start.line, range.end.line - range.start.line + 1, ...inserted);
@@ -550,9 +601,12 @@
 
 	$effect(() => {
 		if (focusLine === null) {
+			ignoredFocusLine = null;
 			focusedRootId = null;
 			return;
 		}
+		if (focusLine === ignoredFocusLine) return;
+		ignoredFocusLine = null;
 		const index = Math.max(0, Math.min(focusLine, lines.length - 1));
 		const root = parentTaskIndex(index);
 		focusedRootId = lines[root]?.isCheck ? lines[root].id : null;
