@@ -54,6 +54,17 @@
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let editorScroller = $state<HTMLDivElement | null>(null);
 	let revealTimer: ReturnType<typeof setTimeout> | null = null;
+	let editorTouchGesture:
+		| {
+				pointerId: number;
+				field: HTMLElement;
+				startX: number;
+				startY: number;
+				startScrollTop: number;
+				moved: boolean;
+		  }
+		| undefined;
+	const TOUCH_TAP_SLOP = 8;
 	const editorDialogClass = 'flex h-full w-full flex-col overflow-hidden rounded-2xl';
 	const editorDialogStyle = $derived(
 		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
@@ -159,12 +170,56 @@
 		document.body.scrollTop = 0;
 	}
 
-	function focusEditorFieldWithoutPageScroll(event: PointerEvent) {
-		if (event.pointerType !== 'touch' || !editorScroller) return;
-		const target = event.target;
-		if (!(target instanceof Element)) return;
+	function editorFieldFromTarget(target: EventTarget | null): HTMLElement | null {
+		if (!(target instanceof Element) || !editorScroller) return null;
 		const field = target.closest('textarea, input[type="text"], [contenteditable]');
-		if (!(field instanceof HTMLElement) || !editorScroller.contains(field)) return;
+		return field instanceof HTMLElement && editorScroller.contains(field) ? field : null;
+	}
+
+	function beginEditorTouch(event: PointerEvent) {
+		if (event.pointerType !== 'touch' || !editorScroller) return;
+		const field = editorFieldFromTarget(event.target);
+		if (!field) return;
+		editorTouchGesture = {
+			pointerId: event.pointerId,
+			field,
+			startX: event.clientX,
+			startY: event.clientY,
+			startScrollTop: editorScroller.scrollTop,
+			moved: false
+		};
+	}
+
+	function moveEditorTouch(event: PointerEvent) {
+		const gesture = editorTouchGesture;
+		if (!gesture || event.pointerId !== gesture.pointerId || !editorScroller) return;
+		if (
+			Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > TOUCH_TAP_SLOP ||
+			Math.abs(editorScroller.scrollTop - gesture.startScrollTop) > 1
+		) {
+			gesture.moved = true;
+		}
+	}
+
+	function cancelEditorTouch(event: PointerEvent) {
+		if (editorTouchGesture?.pointerId === event.pointerId) editorTouchGesture = undefined;
+	}
+
+	function completeEditorTouch(event: PointerEvent) {
+		const gesture = editorTouchGesture;
+		editorTouchGesture = undefined;
+		if (
+			event.pointerType !== 'touch' ||
+			!editorScroller ||
+			!gesture ||
+			event.pointerId !== gesture.pointerId ||
+			gesture.moved ||
+			Math.abs(editorScroller.scrollTop - gesture.startScrollTop) > 1 ||
+			editorFieldFromTarget(event.target) !== gesture.field
+		) {
+			return;
+		}
+		const field = gesture.field;
 
 		// Establish the touch point's safe area inside the note body before Safari
 		// handles the gesture. This also covers an already-active or wrapped field:
@@ -339,7 +394,10 @@
 					role="dialog"
 					tabindex="-1"
 					aria-modal="true"
-					onpointerdown={focusEditorFieldWithoutPageScroll}
+					onpointerdown={beginEditorTouch}
+					onpointermove={moveEditorTouch}
+					onpointerup={completeEditorTouch}
+					onpointercancel={cancelEditorTouch}
 					onclick={focusBodyFromPage}
 				>
 					<!-- Header -->

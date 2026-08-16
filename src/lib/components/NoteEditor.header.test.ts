@@ -30,6 +30,25 @@ function headerButtons(container: HTMLElement): string[] {
 	);
 }
 
+function dispatchTouchPointer(
+	target: Element,
+	type: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel',
+	options: { pointerId?: number; clientX?: number; clientY?: number } = {}
+): MouseEvent {
+	const event = new MouseEvent(type, {
+		bubbles: true,
+		cancelable: true,
+		clientX: options.clientX ?? 0,
+		clientY: options.clientY ?? 0
+	});
+	Object.defineProperties(event, {
+		pointerType: { value: 'touch' },
+		pointerId: { value: options.pointerId ?? 1 }
+	});
+	target.dispatchEvent(event);
+	return event;
+}
+
 beforeEach(() => {
 	vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 });
@@ -131,7 +150,8 @@ describe('NoteEditor task focus', () => {
 		) as HTMLTextAreaElement;
 		scroller.scrollTop = 640;
 
-		await fireEvent.pointerDown(task, { pointerType: 'touch' });
+		dispatchTouchPointer(task, 'pointerdown');
+		dispatchTouchPointer(task, 'pointerup');
 
 		expect(document.activeElement).toBe(task);
 		expect(scroller.scrollTop).toBe(640);
@@ -160,13 +180,8 @@ describe('NoteEditor task focus', () => {
 			}
 		});
 
-		const taskTap = new MouseEvent('pointerdown', {
-			bubbles: true,
-			cancelable: true,
-			clientY: 300
-		});
-		Object.defineProperty(taskTap, 'pointerType', { value: 'touch' });
-		tasks[1].dispatchEvent(taskTap);
+		dispatchTouchPointer(tasks[1], 'pointerdown', { clientY: 300 });
+		const taskTap = dispatchTouchPointer(tasks[1], 'pointerup', { clientY: 300 });
 
 		expect(taskTap.defaultPrevented).toBe(false);
 		expect(document.activeElement).toBe(tasks[1]);
@@ -194,18 +209,33 @@ describe('NoteEditor task focus', () => {
 		});
 		task.focus();
 
-		const taskTap = new MouseEvent('pointerdown', {
-			bubbles: true,
-			cancelable: true,
-			clientY: 499
-		});
-		Object.defineProperty(taskTap, 'pointerType', { value: 'touch' });
-		task.dispatchEvent(taskTap);
+		dispatchTouchPointer(task, 'pointerdown', { clientY: 499 });
+		const taskTap = dispatchTouchPointer(task, 'pointerup', { clientY: 499 });
 
 		expect(taskTap.defaultPrevented).toBe(false);
 		expect(document.activeElement).toBe(task);
 		expect(scroller.scrollTop).toBeGreaterThan(500);
 		expect(window.scrollTo).toHaveBeenLastCalledWith(0, 0);
+	});
+
+	it('does not change task focus when a touch becomes a note-body scroll', () => {
+		notesStore.notes = [note({ body: '[ ] First task\n[ ] Last task' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		const tasks = container.querySelectorAll(
+			'textarea[placeholder="Task"]'
+		) as NodeListOf<HTMLTextAreaElement>;
+		tasks[0].focus();
+
+		dispatchTouchPointer(tasks[1], 'pointerdown', { clientY: 300 });
+		scroller.scrollTop = 40;
+		dispatchTouchPointer(tasks[1], 'pointermove', { clientY: 250 });
+		dispatchTouchPointer(tasks[1], 'pointerup', { clientY: 250 });
+
+		expect(document.activeElement).toBe(tasks[0]);
+		expect(scroller.scrollTop).toBe(40);
 	});
 
 	it('does not cancel touch movement at the note body boundary', () => {
