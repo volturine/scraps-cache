@@ -539,48 +539,48 @@
 		<div
 			data-editor-line={index}
 			data-line-id={line.id}
-			data-task-row={line.isCheck ? '' : undefined}
 			data-focus-group={line.id === focusedRootId ? '' : undefined}
-			class="flex w-full min-w-0 items-start gap-2 py-0.5 {line.isCheck
-				? taskShellClass(line)
-				: ''}"
-			style={line.indent > 0
-				? `padding-left: ${line.indent * 1.25 + (focusedGroupIds.has(line.id) ? 0.5 : 0)}rem`
-				: undefined}
+			class={line.isCheck ? taskShellClass(line) : ''}
 		>
-			{#if line.isCheck}
-				<button
-					type="button"
-					contenteditable="false"
-					data-checklist-toggle
-					class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
-					class:checked={line.checked}
-					onclick={(event) => toggleCheck(index, event)}
-					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
-					aria-pressed={line.checked}
-				>
-					{#if line.checked}
-						<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
-							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-						</svg>
-					{/if}
-				</button>
-			{/if}
-			<span
-				data-line-text
-				data-placeholder={line.text.length === 0
-					? line.isCheck
-						? line.indent > 0
-							? 'Sub-task'
-							: 'Task'
-						: index === 0 && lines.length === 1
-							? placeholder
-							: ''
-					: undefined}
-				class="block min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
-					? 'line-through opacity-50'
-					: ''} {line.indent > 0 ? 'text-[13px]' : ''}">{line.text}</span
+			<div
+				data-task-row={line.isCheck ? '' : undefined}
+				class="flex w-full min-w-0 items-start gap-2 py-0.5"
+				style={line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
 			>
+				{#if line.isCheck}
+					<button
+						type="button"
+						contenteditable="false"
+						data-checklist-toggle
+						class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
+						class:checked={line.checked}
+						onclick={(event) => toggleCheck(index, event)}
+						aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
+						aria-pressed={line.checked}
+					>
+						{#if line.checked}
+							<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
+								<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+							</svg>
+						{/if}
+					</button>
+				{/if}
+				<span
+					data-line-text
+					data-placeholder={line.text.length === 0
+						? line.isCheck
+							? line.indent > 0
+								? 'Sub-task'
+								: 'Task'
+							: index === 0 && lines.length === 1
+								? placeholder
+								: ''
+						: undefined}
+					class="block min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
+						? 'line-through opacity-50'
+						: ''} {line.indent > 0 ? 'text-[13px]' : ''}">{line.text}</span
+				>
+			</div>
 		</div>
 		{#if line.id === focusedGroupLastId}
 			<button
