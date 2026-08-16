@@ -281,7 +281,7 @@ export class NotesStore {
 		this.mirrorToLS();
 		try {
 			await putNote(note);
-			syncStore.requestAutoSync([
+			await syncStore.queueOutbox([
 				`note:${id}`,
 				...(note.images ?? []).map((image) => `attachment:${image.id}`)
 			]);
@@ -292,10 +292,10 @@ export class NotesStore {
 		}
 	}
 
-	discardIfEmpty(id: string): void {
+	async discardIfEmpty(id: string): Promise<void> {
 		const n = this.notes.find((x) => x.id === id);
 		if (!n || !noteIsBlank(n)) return;
-		this.deleteNoteForever(id);
+		await this.deleteNoteForever(id);
 	}
 
 	/** Remove notes that have been in trash > 7 days. */
@@ -814,6 +814,15 @@ export class NotesStore {
 			}
 			return synced;
 		});
+	}
+
+	/** Flush durable local changes when leaving a note, without a no-op cloud request. */
+	async syncPendingChanges(): Promise<boolean> {
+		if (!syncStore.isLoggedIn) return false;
+		await syncStore.waitForOutboxWrites();
+		const pending = await getSyncOutboxKeys().catch(() => []);
+		if (pending.length === 0) return false;
+		return this.flushSync();
 	}
 
 	// Replace this device's local data with the already-linked account without uploading any
