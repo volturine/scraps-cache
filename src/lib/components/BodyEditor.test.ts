@@ -107,6 +107,28 @@ describe('BodyEditor native editing', () => {
 		expect(onExitTaskFocus).toHaveBeenCalledOnce();
 	});
 
+	it('removes a fully selected single row instead of leaving a micro row', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Keep before\nplain row to remove\n[ ] Keep after', focusLine: 1 }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const row = container.querySelector('[data-editor-line="1"] [data-line-text]') as HTMLElement;
+		select(row, 0, row, 'plain row to remove'.length);
+		const beforeInput = new InputEvent('beforeinput', {
+			bubbles: true,
+			cancelable: true,
+			inputType: 'deleteContentBackward'
+		});
+
+		editor.dispatchEvent(beforeInput);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Keep before', 'Keep after']);
+		expect(container.querySelectorAll('[data-editor-line]')).toHaveLength(2);
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
+	});
+
 	it('pastes multiple clipboard lines as structured task rows', async () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] ' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
