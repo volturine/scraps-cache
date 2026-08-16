@@ -337,8 +337,9 @@
 				console.error('[NoteEditor] flush failed:', err);
 			}
 		}
-		if (note) notesStore.discardIfEmpty(note.id);
+		if (note) await notesStore.discardIfEmpty(note.id);
 		onClose();
+		void notesStore.syncPendingChanges();
 	}
 
 	async function copyText() {

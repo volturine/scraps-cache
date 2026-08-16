@@ -122,6 +122,7 @@ class SyncStore {
 	progress = $state<SyncProgress | null>(null);
 	usage = $state<SyncUsage | null>(null);
 	private bootstrapRequested = false;
+	private pendingOutboxWrites: Promise<void> = Promise.resolve();
 
 	// Non-reactive callbacks avoid re-rendering the note grid for cloud feedback.
 	onSyncStart: (() => void) | null = null;
@@ -154,12 +155,18 @@ class SyncStore {
 	}
 
 	async queueOutbox(keys: Iterable<string> = []): Promise<void> {
-		try {
-			await markSyncOutbox(keys);
-		} catch (err) {
-			console.error('[sync] could not persist outbox:', err);
-		}
+		const write = markSyncOutbox(keys)
+			.catch((err) => {
+				console.error('[sync] could not persist outbox:', err);
+			})
+			.then(() => undefined);
+		this.pendingOutboxWrites = Promise.all([this.pendingOutboxWrites, write]).then(() => undefined);
+		await write;
 		this.onLocalDataChange?.();
+	}
+
+	async waitForOutboxWrites(): Promise<void> {
+		await this.pendingOutboxWrites;
 	}
 
 	private saveAccount(): void {
