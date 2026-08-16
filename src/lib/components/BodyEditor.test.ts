@@ -102,6 +102,25 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelector('[data-editor-line="0"]')?.className).toContain('rounded-t-lg');
 		expect(container.querySelector('[data-editor-line="1"]')?.className).toContain('rounded-b-lg');
 
+		await fireEvent.pointerDown(
+			container.querySelector('[data-add-subtask]') as HTMLButtonElement,
+			{
+				pointerType: 'touch'
+			}
+		);
+
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
+		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain(
+			'rounded-b-lg'
+		);
+		expect(container.querySelector('[data-editor-line="2"]')?.className).toContain('rounded-b-lg');
+		expect(
+			container
+				.querySelector('[data-editor-line="2"] [data-line-text]')
+				?.getAttribute('data-placeholder')
+		).toBe('Sub-task');
+		expect(document.activeElement).toBe(container.querySelector('[data-body-editor]'));
+
 		await rerender({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate', focusLine: null });
 		await tick();
 

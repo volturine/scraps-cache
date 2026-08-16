@@ -456,6 +456,14 @@
 		focusAt(insertAt, 0, draft.id);
 	}
 
+	function activateAddSubtask(event: PointerEvent, rootIndex: number) {
+		// iOS does not reliably dispatch click for a non-editable button embedded in a
+		// plaintext-only editing host. Activate on pointerdown and keep focus in the host.
+		event.preventDefault();
+		event.stopPropagation();
+		addSubtask(rootIndex);
+	}
+
 	function discardEmptyDraft() {
 		if (draftTaskId === null) return;
 		const index = lines.findIndex((line) => line.id === draftTaskId);
@@ -589,7 +597,7 @@
 				data-add-subtask
 				aria-label="Add sub-task"
 				class="mt-0.5 flex select-none items-center rounded px-1 py-1 pl-6 text-left text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
-				onclick={() => addSubtask(focusedGroupRows[0]?.index ?? -1)}
+				onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 			>
 				<span class="add-subtask-label" aria-hidden="true"></span>
 			</button>
