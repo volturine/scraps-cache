@@ -302,4 +302,46 @@ describe('NoteEditor task focus', () => {
 		expect(container.querySelector('[data-focus-group]')).toBeNull();
 		expect(container.querySelector('[data-add-subtask]')).toBeNull();
 	});
+
+	it('only toggles a checkbox without activating task focus or moving the note body', async () => {
+		notesStore.notes = [note({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		const toggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;
+		scroller.scrollTop = 640;
+		editor.focus();
+
+		const pointerDown = dispatchTouchPointer(toggle, 'pointerdown');
+		dispatchTouchPointer(toggle, 'pointerup');
+		await fireEvent.click(toggle);
+		await tick();
+
+		expect(pointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(editor);
+		expect(scroller.scrollTop).toBe(640);
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
+		expect(toggle.getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('drops task focus when the editor loses focus and the keyboard is dismissed', async () => {
+		notesStore.notes = [note({ body: '[ ] Avocados\n  [ ] tes' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const task = container.querySelector('[data-task-row] [data-line-text]') as HTMLElement;
+		editor.focus();
+		setCaret(task, 4);
+		await fireEvent.click(task);
+		await tick();
+
+		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
+		editor.blur();
+		await tick();
+
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
+	});
 });
