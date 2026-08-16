@@ -56,3 +56,33 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelector('[data-add-subtask]')).toBeNull();
 	});
 });
+
+describe('BodyEditor task selection', () => {
+	it('deletes multiple selected tasks and promotes a surviving sub-task', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Parent\n  [ ] Child\n[ ] Keep', focusLine: 0 }
+		});
+		await tick();
+
+		await fireEvent.click(container.querySelector('[data-select-tasks]') as HTMLButtonElement);
+		await fireEvent.click(
+			container.querySelector('[aria-label="Select Parent"]') as HTMLButtonElement
+		);
+		await fireEvent.click(
+			container.querySelector('[aria-label="Select Keep"]') as HTMLButtonElement
+		);
+
+		expect(container.querySelector('[data-task-selection-toolbar]')?.textContent).toContain(
+			'2 selected'
+		);
+		await fireEvent.click(
+			container.querySelector('[data-task-selection-toolbar] button:last-child')!
+		);
+
+		const remaining = container.querySelector('textarea[data-line-id]') as HTMLTextAreaElement;
+		expect(remaining.value).toBe('Child');
+		expect(remaining.placeholder).toBe('Task');
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
+		expect(container.querySelector('[data-task-selection-toolbar]')).toBeNull();
+	});
+});

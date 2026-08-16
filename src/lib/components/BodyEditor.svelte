@@ -57,6 +57,8 @@
 	let handledInlineFocusLine: number | null = null;
 	// Empty checklist rows created by Enter or Add sub-task stay UI-only until typed.
 	let draftTaskId = $state<number | null>(null);
+	let selectingTasks = $state(false);
+	let selectedTaskIds = $state<Set<number>>(new Set());
 	let handledFocusSignal = 0;
 	let focusRequestSeq = 0;
 
@@ -207,7 +209,60 @@
 
 	function toggleCheck(i: number, e: MouseEvent) {
 		e.stopPropagation();
+		if (selectingTasks) {
+			toggleTaskSelection(lines[i].id);
+			return;
+		}
 		lines[i].checked = !lines[i].checked;
+		syncBody();
+	}
+
+	function beginTaskSelection() {
+		selectingTasks = true;
+		selectedTaskIds = new Set();
+		const active = document.activeElement;
+		if (active instanceof HTMLElement && container?.contains(active)) active.blur();
+	}
+
+	function cancelTaskSelection() {
+		selectingTasks = false;
+		selectedTaskIds = new Set();
+	}
+
+	function toggleTaskSelection(lineId: number) {
+		const next = new Set(selectedTaskIds);
+		if (next.has(lineId)) next.delete(lineId);
+		else next.add(lineId);
+		selectedTaskIds = next;
+	}
+
+	function selectAllTasks() {
+		selectedTaskIds = new Set(lines.filter((line) => line.isCheck).map((line) => line.id));
+	}
+
+	function deleteSelectedTasks() {
+		if (selectedTaskIds.size === 0) return;
+		const deletingRootIds = new Set(
+			lines
+				.filter((line) => line.isCheck && line.indent === 0 && selectedTaskIds.has(line.id))
+				.map((line) => line.id)
+		);
+		let deletedRoot = false;
+		const remaining: Line[] = [];
+		for (const line of lines) {
+			if (selectedTaskIds.has(line.id)) {
+				if (deletingRootIds.has(line.id)) deletedRoot = true;
+				if (line.id === draftTaskId) draftTaskId = null;
+				continue;
+			}
+			if (line.isCheck && line.indent === 0) deletedRoot = false;
+			if (line.isCheck && line.indent > 0 && deletedRoot) line.indent = 0;
+			remaining.push(line);
+		}
+		lines = remaining.length > 0 ? remaining : [newLine()];
+		focusedRootId = null;
+		cancelTaskSelection();
+		onExitTaskFocus?.();
 		syncBody();
 	}
 
@@ -605,19 +660,28 @@
 {#snippet taskRow(line: Line, i: number)}
 	<div
 		data-task-row
-		class="flex w-full min-w-0 items-start gap-2 py-0.5"
+		data-task-selected={selectingTasks && selectedTaskIds.has(line.id) ? '' : undefined}
+		class="flex w-full min-w-0 items-start gap-2 rounded py-0.5 {selectingTasks
+			? 'cursor-pointer px-1 hover:bg-black/5 dark:hover:bg-white/10'
+			: ''} {selectingTasks && selectedTaskIds.has(line.id)
+			? 'bg-black/[0.07] dark:bg-white/[0.12]'
+			: ''}"
 		style={line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
 	>
 		<button
 			type="button"
 			data-checklist-toggle
 			class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
-			class:checked={line.checked}
+			class:checked={selectingTasks ? selectedTaskIds.has(line.id) : line.checked}
 			onclick={(e) => toggleCheck(i, e)}
-			aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
-			aria-pressed={line.checked}
+			aria-label={selectingTasks
+				? `${selectedTaskIds.has(line.id) ? 'Deselect' : 'Select'} ${line.text || 'empty task'}`
+				: line.indent > 0
+					? 'Toggle sub-task'
+					: 'Toggle item'}
+			aria-pressed={selectingTasks ? selectedTaskIds.has(line.id) : line.checked}
 		>
-			{#if line.checked}
+			{#if selectingTasks ? selectedTaskIds.has(line.id) : line.checked}
 				<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
 					<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
 				</svg>
@@ -631,7 +695,15 @@
 			oninput={(e) => onLineInput(i, e)}
 			onblur={() => discardEmptyDraft(line.id)}
 			onkeydown={(e) => onLineKeydown(e, i)}
+			onpointerdown={(event) => {
+				if (selectingTasks) event.preventDefault();
+			}}
+			onclick={() => {
+				if (selectingTasks) toggleTaskSelection(line.id);
+			}}
 			enterkeyhint="enter"
+			readonly={selectingTasks}
+			tabindex={selectingTasks ? -1 : undefined}
 			onfocus={() => {
 				if (lines[parentTaskIndex(i)]?.id !== focusedRootId) onFocusTask?.(i);
 			}}
@@ -646,6 +718,32 @@
 	bind:this={container}
 	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--shard-text)]"
 >
+	{#if selectingTasks}
+		<div
+			data-task-selection-toolbar
+			class="mb-2 flex min-h-10 items-center gap-2 rounded-lg bg-black/[0.06] px-2 py-1.5 dark:bg-white/[0.1]"
+		>
+			<button
+				type="button"
+				class="rounded px-2 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/10"
+				onclick={cancelTaskSelection}>Cancel</button
+			>
+			<span class="min-w-0 flex-1 text-xs text-[var(--shard-text-muted)]">
+				{selectedTaskIds.size} selected
+			</span>
+			<button
+				type="button"
+				class="rounded px-2 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/10"
+				onclick={selectAllTasks}>Select all</button
+			>
+			<button
+				type="button"
+				class="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-500/10 disabled:opacity-40 dark:text-red-400"
+				disabled={selectedTaskIds.size === 0}
+				onclick={deleteSelectedTasks}>Delete</button
+			>
+		</div>
+	{/if}
 	{#each lines as line, i (line.id)}
 		{#if line.isCheck}
 			<!--
@@ -658,16 +756,24 @@
 				class={taskShellClass(line.id)}
 			>
 				{@render taskRow(line, i)}
-				{#if line.id === focusedGroupLastId && focusedRootIndent === 0}
-					<button
-						type="button"
-						data-add-subtask
-						class="mt-0.5 flex items-center gap-1.5 rounded px-1 py-1 pl-6 text-left text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
-						onclick={() => addSubtask(focusedGroupRows[0]?.index ?? -1)}
-					>
-						<span class="text-base leading-none" aria-hidden="true">+</span>
-						Add sub-task
-					</button>
+				{#if !selectingTasks && line.id === focusedGroupLastId && focusedRootIndent === 0}
+					<div class="mt-0.5 flex items-center gap-2 pl-5">
+						<button
+							type="button"
+							data-add-subtask
+							class="flex items-center gap-1.5 rounded px-1 py-1 text-left text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
+							onclick={() => addSubtask(focusedGroupRows[0]?.index ?? -1)}
+						>
+							<span class="text-base leading-none" aria-hidden="true">+</span>
+							Add sub-task
+						</button>
+						<button
+							type="button"
+							data-select-tasks
+							class="rounded px-1 py-1 text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
+							onclick={beginTaskSelection}>Select tasks</button
+						>
+					</div>
 				{/if}
 			</div>
 		{:else if isPlainRunStart(i)}
