@@ -78,6 +78,49 @@ describe('BodyEditor native editing', () => {
 		expect(lineTexts(container)).toEqual(['Keep']);
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
 	});
+
+	it('cuts the selected task rows from the model', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] First task\n[ ] Second task\n[ ] Keep' }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const tasks = container.querySelectorAll('[data-line-text]');
+		select(tasks[0], 0, tasks[1], 'Second task'.length);
+
+		const setData = vi.fn();
+		const cut = new Event('cut', { bubbles: true, cancelable: true });
+		Object.defineProperty(cut, 'clipboardData', { value: { setData } });
+		editor.dispatchEvent(cut);
+		await tick();
+
+		expect(cut.defaultPrevented).toBe(true);
+		expect(setData).toHaveBeenCalledWith('text/plain', 'First task\nSecond task');
+		expect(lineTexts(container)).toEqual(['Keep']);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
+	});
+
+	it('pastes multiple clipboard lines as structured task rows', async () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] ' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const emptyTask = container.querySelector('[data-line-text]') as HTMLElement;
+		select(emptyTask, 0);
+
+		const paste = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, 'clipboardData', {
+			value: { getData: () => 'First task\nSecond task' }
+		});
+		editor.dispatchEvent(paste);
+		await tick();
+
+		expect(paste.defaultPrevented).toBe(true);
+		expect(lineTexts(container)).toEqual(['First task', 'Second task']);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(2);
+		expect(
+			[...editor.childNodes].filter(
+				(node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
+			)
+		).toHaveLength(0);
+	});
 });
 
 describe('BodyEditor task focus chrome', () => {

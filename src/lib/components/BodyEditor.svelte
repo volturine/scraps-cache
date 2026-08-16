@@ -303,9 +303,7 @@
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
-	function handleClipboard(event: ClipboardEvent) {
-		const range = editorRange();
-		if (!range || range.collapsed || !event.clipboardData) return;
+	function selectedText(range: EditorRange): string {
 		const selected: string[] = [];
 		for (let index = range.start.line; index <= range.end.line; index++) {
 			const line = lines[index];
@@ -313,8 +311,65 @@
 			const end = index === range.end.line ? range.end.offset : line.text.length;
 			selected.push(line.text.slice(start, end));
 		}
-		event.clipboardData.setData('text/plain', selected.join('\n'));
+		return selected.join('\n');
+	}
+
+	function writeSelectionToClipboard(event: ClipboardEvent): EditorRange | null {
+		const range = editorRange();
+		if (!range || range.collapsed || !event.clipboardData) return null;
+		event.clipboardData.setData('text/plain', selectedText(range));
 		event.preventDefault();
+		return range;
+	}
+
+	function handleCopy(event: ClipboardEvent) {
+		writeSelectionToClipboard(event);
+	}
+
+	function handleCut(event: ClipboardEvent) {
+		const range = writeSelectionToClipboard(event);
+		if (!range) return;
+		const caret = replaceSelectedRange(range);
+		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+	}
+
+	function replaceRangeWithText(range: EditorRange, rawText: string): EditorPoint {
+		const parts = rawText.replace(/\r\n?/g, '\n').split('\n');
+		if (parts.length === 1) return replaceSelectedRange(range, parts[0]);
+
+		const first = lines[range.start.line];
+		const last = lines[range.end.line];
+		const removedIds = new Set(
+			lines.slice(range.start.line, range.end.line + 1).map((line) => line.id)
+		);
+		const suffix = last.text.slice(range.end.offset);
+		const inserted: Line[] = [
+			{ ...first, text: first.text.slice(0, range.start.offset) + parts[0] }
+		];
+		for (let index = 1; index < parts.length; index++) {
+			const text = parts[index] + (index === parts.length - 1 ? suffix : '');
+			inserted.push(newLine(text, first.isCheck, false, first.indent));
+		}
+
+		lines.splice(range.start.line, range.end.line - range.start.line + 1, ...inserted);
+		if (draftTaskId !== null && removedIds.has(draftTaskId)) draftTaskId = null;
+		syncBody();
+		const line = range.start.line + inserted.length - 1;
+		return {
+			line,
+			offset: parts.at(-1)?.length ?? 0,
+			global: globalOffset(line, parts.at(-1)?.length ?? 0)
+		};
+	}
+
+	function handlePaste(event: ClipboardEvent) {
+		const range = editorRange();
+		if (!range || !event.clipboardData) return;
+		const text = event.clipboardData.getData('text/plain');
+		if (!text) return;
+		event.preventDefault();
+		const caret = replaceRangeWithText(range, text);
+		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
 	function toggleCheck(index: number, event: MouseEvent) {
@@ -542,8 +597,9 @@
 	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--shard-text)] outline-none"
 	onbeforeinput={handleBeforeInput}
 	oninput={handleInput}
-	oncopy={handleClipboard}
-	oncut={handleClipboard}
+	oncopy={handleCopy}
+	oncut={handleCut}
+	onpaste={handlePaste}
 	onkeydown={handleKeydown}
 	onclick={handleEditorClick}
 	oncompositionstart={() => (composing = true)}
