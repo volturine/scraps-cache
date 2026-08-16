@@ -54,7 +54,6 @@
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let editorScroller = $state<HTMLDivElement | null>(null);
 	let revealTimer: ReturnType<typeof setTimeout> | null = null;
-	let lastTouchY = 0;
 	const editorDialogClass = 'flex h-full w-full flex-col overflow-hidden rounded-2xl';
 	const editorDialogStyle = $derived(
 		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
@@ -160,40 +159,35 @@
 		document.body.scrollTop = 0;
 	}
 
-	function allowEditorBodyScroll(event: TouchEvent): boolean {
+	function focusEditorFieldWithoutPageScroll(event: PointerEvent) {
+		if (event.pointerType !== 'touch' || !editorScroller) return;
 		const target = event.target;
-		if (!(target instanceof Element)) return false;
-		const scroller = target.closest('.scrollable');
-		if (!(scroller instanceof HTMLElement)) return false;
-		if (!editorDialog?.contains(scroller) && !scroller.closest('[data-editor-popup]')) return false;
-		if (scroller.scrollHeight <= scroller.clientHeight + 1) return false;
-		const y = event.touches[0]?.clientY ?? lastTouchY;
-		const dy = y - lastTouchY;
-		const atTop = scroller.scrollTop <= 0;
-		const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
-		if ((atTop && dy > 0) || (atBottom && dy < 0)) return false;
-		return true;
+		if (!(target instanceof Element)) return;
+		const field = target.closest('textarea, input[type="text"], [contenteditable]');
+		if (!(field instanceof HTMLElement) || !editorScroller.contains(field)) return;
+		if (document.activeElement === field) return;
+
+		// Run the focusing step inside the touch gesture before Safari's default
+		// focus action. Once the field is already active, the later default action
+		// can place the caret without scrolling the page or resetting the note body.
+		const bodyScrollTop = editorScroller.scrollTop;
+		try {
+			field.focus({ preventScroll: true });
+		} catch {
+			field.focus();
+		}
+		editorScroller.scrollTop = bodyScrollTop;
+		lockPageScroll();
 	}
 
 	$effect(() => {
 		if (!isOpen) return;
 		lockPageScroll();
 		const viewport = window.visualViewport;
-		const onTouchStart = (event: TouchEvent) => {
-			lastTouchY = event.touches[0]?.clientY ?? 0;
-		};
-		const onTouchMove = (event: TouchEvent) => {
-			if (!allowEditorBodyScroll(event)) event.preventDefault();
-			lastTouchY = event.touches[0]?.clientY ?? lastTouchY;
-		};
 		const onOuterScroll = () => lockPageScroll();
-		document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
-		document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
 		window.addEventListener('scroll', onOuterScroll, { capture: true, passive: false });
 		viewport?.addEventListener('scroll', onOuterScroll);
 		return () => {
-			document.removeEventListener('touchstart', onTouchStart, { capture: true });
-			document.removeEventListener('touchmove', onTouchMove, { capture: true });
 			window.removeEventListener('scroll', onOuterScroll, { capture: true });
 			viewport?.removeEventListener('scroll', onOuterScroll);
 		};
@@ -336,6 +330,7 @@
 					role="dialog"
 					tabindex="-1"
 					aria-modal="true"
+					onpointerdown={focusEditorFieldWithoutPageScroll}
 					onclick={focusBodyFromPage}
 				>
 					<!-- Header -->
@@ -399,7 +394,7 @@
 
 					<div
 						bind:this={editorScroller}
-						class="scrollable min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pt-4 pb-3"
+						class="scrollable min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-6 pt-4 pb-3"
 					>
 						<input
 							type="text"

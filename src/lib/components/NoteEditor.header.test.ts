@@ -118,6 +118,42 @@ describe('NoteEditor task focus', () => {
 		expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
 	});
 
+	it('focuses a scrolled task without resetting the note body', async () => {
+		notesStore.notes = [
+			note({ body: Array.from({ length: 30 }, (_, index) => `[ ] Task ${index}`).join('\n') })
+		];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		const task = [...container.querySelectorAll('textarea[placeholder="Task"]')].at(
+			-1
+		) as HTMLTextAreaElement;
+		scroller.scrollTop = 640;
+
+		await fireEvent.pointerDown(task, { pointerType: 'touch' });
+
+		expect(document.activeElement).toBe(task);
+		expect(scroller.scrollTop).toBe(640);
+	});
+
+	it('does not cancel touch movement at the note body boundary', () => {
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		Object.defineProperties(scroller, {
+			scrollHeight: { configurable: true, value: 1_000 },
+			clientHeight: { configurable: true, value: 300 }
+		});
+		scroller.scrollTop = 700;
+		const move = new Event('touchmove', { bubbles: true, cancelable: true });
+		scroller.dispatchEvent(move);
+
+		expect(move.defaultPrevented).toBe(false);
+	});
+
 	it('keeps the native task field and caret when focus styling opens', async () => {
 		notesStore.notes = [note({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate' })];
 		const { container } = render(NoteEditor, {
