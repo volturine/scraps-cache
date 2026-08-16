@@ -89,9 +89,43 @@ export function appBottomInset(
 	return onPhone && fieldFocused ? 0 : safeBottom;
 }
 
-/** Keep an open note anchored while its body handles caret-follow scrolling. */
-export function appKeyboardTopInset(keyboardTop: number, editorOpen: boolean): number {
-	return editorOpen ? 0 : keyboardTop;
+export type AppKeyboardFrame = {
+	viewportOffsetTop: number;
+	keyboardTop: number;
+	keyboardBottom: number;
+};
+
+/**
+ * An open editor is anchored to the visual screen, not Safari's panned layout
+ * viewport. Offset is countered at the root while keyboard height stays stable.
+ */
+export function appKeyboardFrame(options: {
+	editorOpen: boolean;
+	visualTop: number;
+	visualHeight: number;
+	layoutHeight: number;
+	occlusion: { top: number; bottom: number };
+}): AppKeyboardFrame {
+	if (!options.editorOpen) {
+		return {
+			viewportOffsetTop: 0,
+			keyboardTop: options.occlusion.top,
+			keyboardBottom: options.occlusion.bottom
+		};
+	}
+	const keyboardOverlaysLayout = options.occlusion.top > 0 || options.occlusion.bottom > 0;
+	if (!keyboardOverlaysLayout) {
+		return {
+			viewportOffsetTop: Math.max(0, options.visualTop),
+			keyboardTop: 0,
+			keyboardBottom: 0
+		};
+	}
+	return {
+		viewportOffsetTop: Math.max(0, options.visualTop),
+		keyboardTop: 0,
+		keyboardBottom: Math.max(0, options.layoutHeight - options.visualHeight)
+	};
 }
 
 export function readSafeAreaInsets(): Insets {
@@ -155,6 +189,13 @@ export function attachAppViewport(_node: HTMLElement) {
 					safe: cachedSafe
 				})
 			: { top: 0, bottom: 0 };
+		const keyboardFrame = appKeyboardFrame({
+			editorOpen: onPhone && editorOpen,
+			visualTop,
+			visualHeight,
+			layoutHeight,
+			occlusion
+		});
 
 		document.documentElement.classList.toggle('keyboard-open', onPhone && fieldFocused);
 		setInsetVar('--app-inset-top', cachedSafe.top);
@@ -163,8 +204,9 @@ export function attachAppViewport(_node: HTMLElement) {
 		// the phone keyboard is active, its own occlusion replaces this inset.
 		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, fieldFocused));
 		setInsetVar('--app-inset-left', cachedSafe.left);
-		setInsetVar('--app-keyboard-top', appKeyboardTopInset(occlusion.top, editorOpen));
-		setInsetVar('--app-keyboard-bottom', occlusion.bottom);
+		setInsetVar('--app-visual-offset-top', keyboardFrame.viewportOffsetTop);
+		setInsetVar('--app-keyboard-top', keyboardFrame.keyboardTop);
+		setInsetVar('--app-keyboard-bottom', keyboardFrame.keyboardBottom);
 	};
 
 	const onFocusIn = (event: FocusEvent) => {
