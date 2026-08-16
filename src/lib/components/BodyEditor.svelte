@@ -439,6 +439,12 @@
 		syncBody();
 	}
 
+	function keepEditorFocus(event: PointerEvent) {
+		// A checklist toggle is an action within the editing surface, not a focus target.
+		// Preventing the pointer default avoids blurring the editor and dismissing its keyboard.
+		event.preventDefault();
+	}
+
 	function indentLine(index: number, delta: number): boolean {
 		const line = lines[index];
 		if (!line?.isCheck) return false;
@@ -692,6 +698,7 @@
 						data-checklist-toggle
 						class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
 						class:checked={line.checked}
+						onpointerdown={keepEditorFocus}
 						onclick={(event) => toggleCheck(index, event)}
 						aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
 						aria-pressed={line.checked}

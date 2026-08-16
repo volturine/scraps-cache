@@ -26,6 +26,21 @@ function lineTexts(container: HTMLElement): string[] {
 }
 
 describe('BodyEditor native editing', () => {
+	it('toggles a checklist item without moving focus from the editor', async () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] Task' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const toggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;
+		editor.focus();
+
+		const pointerDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+		toggle.dispatchEvent(pointerDown);
+		await fireEvent.click(toggle);
+
+		expect(pointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(editor);
+		expect(toggle.getAttribute('aria-pressed')).toBe('true');
+	});
+
 	it('replaces an empty root task with a focused plain-text line', async () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] \nafter' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
