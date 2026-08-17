@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { portalToAppFloat } from '$lib/appViewport';
+	import { portalToAppOverlay } from '$lib/appViewport';
 
 	let {
 		mode,
@@ -37,20 +37,29 @@
 	function keydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && !busy) onClose();
 	}
+
+	/** iOS pans the page to the focused field. Take focus ourselves so it does not. */
+	function focusWithoutPan(event: PointerEvent) {
+		const input = event.currentTarget;
+		if (!(input instanceof HTMLInputElement) || input.disabled) return;
+		if (document.activeElement === input) return;
+		event.preventDefault();
+		input.focus({ preventScroll: true });
+	}
 </script>
 
 <svelte:window onkeydown={keydown} />
 
 <div
-	{@attach portalToAppFloat}
-	class="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4"
+	{@attach portalToAppOverlay}
+	class="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 px-4 pb-4 pt-[calc(var(--app-topbar-height)+0.5rem)]"
 	role="presentation"
 	onclick={(event) => {
 		if (event.target === event.currentTarget && !busy) onClose();
 	}}
 >
 	<div
-		class="scraps-cache-dialog w-full max-w-sm overflow-hidden"
+		class="scraps-cache-dialog w-full max-w-sm"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="backup-dialog-title"
@@ -81,7 +90,8 @@
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}
 					disabled={busy}
-					class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-sm"
+					onpointerdown={focusWithoutPan}
+					class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-[16px]"
 				/>
 			</label>
 
@@ -95,7 +105,8 @@
 						autocomplete="new-password"
 						bind:value={confirmation}
 						disabled={busy}
-						class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-sm"
+						onpointerdown={focusWithoutPan}
+						class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-[16px]"
 					/>
 				</label>
 			{/if}

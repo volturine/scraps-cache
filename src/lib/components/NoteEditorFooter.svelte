@@ -16,7 +16,17 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
 	import { formatStorageError } from '$lib/imageBlob';
-	import { Archive, Check, Copy, Palette, Paperclip, Tag, Trash2, X } from '@lucide/svelte';
+	import {
+		Archive,
+		Check,
+		Copy,
+		Palette,
+		Paperclip,
+		RotateCcw,
+		Tag,
+		Trash2,
+		X
+	} from '@lucide/svelte';
 
 	let {
 		images = $bindable<NoteImage[]>([]),
@@ -26,6 +36,7 @@
 		showArchive = false,
 		showDelete = false,
 		archived = false,
+		trashed = false,
 		copyFlash = false,
 		onOpenColor,
 		onOpenTags,
@@ -42,6 +53,7 @@
 		showArchive?: boolean;
 		showDelete?: boolean;
 		archived?: boolean;
+		trashed?: boolean;
 		copyFlash?: boolean;
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
@@ -409,11 +421,15 @@
 			<button
 				type="button"
 				class="icon-btn h-10 w-10 p-2 touch-manipulation"
-				title={archived ? 'Unarchive' : 'Archive'}
-				aria-label={archived ? 'Unarchive' : 'Archive'}
+				title={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
+				aria-label={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
 				onclick={() => onArchive?.()}
 			>
-				<Archive class="h-5 w-5" aria-hidden="true" />
+				{#if trashed}
+					<RotateCcw class="h-5 w-5" aria-hidden="true" />
+				{:else}
+					<Archive class="h-5 w-5" aria-hidden="true" />
+				{/if}
 			</button>
 		{/if}
 		{#if showDelete}

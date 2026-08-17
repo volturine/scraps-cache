@@ -510,6 +510,7 @@
 						showArchive={true}
 						showDelete={true}
 						archived={note.archived}
+						trashed={note.trashed}
 						{copyFlash}
 						onOpenColor={() => {
 							closePopups();
@@ -521,11 +522,13 @@
 						}}
 						onCopy={() => void copyText()}
 						onArchive={() => {
-							notesStore.toggleArchive(note.id);
+							if (note.trashed) notesStore.restoreNote(note.id);
+							else notesStore.toggleArchive(note.id);
 							void close();
 						}}
 						onDelete={() => {
-							notesStore.trashNote(note.id);
+							if (note.trashed) void notesStore.deleteNoteForever(note.id);
+							else notesStore.trashNote(note.id);
 							close();
 						}}
 						onImagesChange={(imgs) => commitNow(imgs)}
