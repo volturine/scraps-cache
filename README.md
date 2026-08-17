@@ -4,6 +4,8 @@
 sync. Pins, labels, reminders, checklists, attachments, kanban boards,
 trash/archive — and a ciphertext-only relay that never sees your note contents.
 
+Visit [scrapscache.com](https://scrapscache.com).
+
 [![CI/CD](https://github.com/volturine/scraps-cache/actions/workflows/ci-cd.yaml/badge.svg)](https://github.com/volturine/scraps-cache/actions/workflows/ci-cd.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-24-brightgreen.svg)](.nvmrc)

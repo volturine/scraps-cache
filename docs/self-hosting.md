@@ -24,7 +24,7 @@ Edit `.env` at minimum:
 | -------------------------- | ---------------------------------------------------------------------------------- |
 | `SCRAPS_CACHE_IMAGE`       | Pin a release, e.g. `ghcr.io/volturine/scraps-cache:1.2.3`, or an immutable digest |
 | `SCRAPS_CACHE_ADMIN_TOKEN` | Long random secret (metrics + manual backup)                                       |
-| `SCRAPS_CACHE_ORIGIN`      | Exact public origin, e.g. `https://notes.example.com`                              |
+| `SCRAPS_CACHE_ORIGIN`      | Exact public origin, e.g. `https://scrapscache.com`                                |
 | `SCRAPS_CACHE_PORT`        | Host port (default `3000`)                                                         |
 
 ```sh

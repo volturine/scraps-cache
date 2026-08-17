@@ -5,7 +5,7 @@
 	"description": "Offline-first notes with optional end-to-end encrypted cloud sync",
 	"license": "MIT",
 	"author": "Roland Rajcsanyi",
-	"homepage": "https://github.com/volturine/scraps-cache#readme",
+	"homepage": "https://scrapscache.com",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/volturine/scraps-cache.git"
