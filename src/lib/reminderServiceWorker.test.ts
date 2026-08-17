@@ -42,7 +42,7 @@ async function firedWakeIds(): Promise<string[]> {
 function loadPushHandler(showNotification: ReturnType<typeof vi.fn>) {
 	const listeners = new Map<string, (event: unknown) => void>();
 	const self = {
-		location: { origin: 'https://shard.example' },
+		location: { origin: 'https://scraps-cache.example' },
 		registration: { showNotification },
 		clients: {},
 		addEventListener(type: string, listener: (event: unknown) => void) {
@@ -105,7 +105,7 @@ describe('reminder service worker', () => {
 		expect(show).toHaveBeenCalledWith(
 			'Pick up groceries',
 			expect.objectContaining({
-				tag: `shard-reminder:${id}`,
+				tag: `scraps-cache-reminder:${id}`,
 				data: { type: 'reminder', noteId: note.id, wakeId: id }
 			})
 		);
@@ -125,8 +125,8 @@ describe('reminder service worker', () => {
 			expect(call).toEqual([
 				'Reminder',
 				expect.objectContaining({
-					body: 'Open Shard to check your notes.',
-					tag: `shard-reminder:${id}`
+					body: 'Open Scraps Cache to check your notes.',
+					tag: `scraps-cache-reminder:${id}`
 				})
 			]);
 		}

@@ -134,7 +134,7 @@
 	function nativeDrop(event: DragEvent, destinationColumnId: string) {
 		event.preventDefault();
 		try {
-			const raw = event.dataTransfer?.getData('application/x-shard-kanban');
+			const raw = event.dataTransfer?.getData('application/x-scraps-cache-kanban');
 			const payload = raw
 				? (JSON.parse(raw) as { noteId?: unknown; sourceColumnId?: unknown })
 				: null;
@@ -142,7 +142,7 @@
 				moveNote(payload.noteId, payload.sourceColumnId, destinationColumnId);
 			}
 		} catch {
-			// Ignore drops that did not come from a Shard Kanban card.
+			// Ignore drops that did not come from a Scraps Cache Kanban card.
 		}
 	}
 </script>
@@ -155,20 +155,20 @@
 				value={board.id}
 				onchange={(event) =>
 					kanbanStore.selectBoard((event.currentTarget as HTMLSelectElement).value)}
-				class="min-w-0 max-w-full appearance-none rounded-xl border border-[var(--shard-border)] bg-[var(--shard-surface)] py-2 pl-3 pr-8 text-sm font-semibold text-[var(--shard-text)] outline-none"
+				class="min-w-0 max-w-full appearance-none rounded-xl border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] py-2 pl-3 pr-8 text-sm font-semibold text-[var(--scraps-cache-text)] outline-none"
 			>
 				{#each kanbanStore.boards as choice (choice.id)}
 					<option value={choice.id}>{choice.name}</option>
 				{/each}
 			</select>
 			<ChevronDown
-				class="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--shard-text-muted)]"
+				class="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--scraps-cache-text-muted)]"
 				aria-hidden="true"
 			/>
 		</div>
 		<button
 			type="button"
-			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
+			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scraps-cache-text)] dark:hover:bg-white/10"
 			onclick={() => {
 				kanbanStore.createBoard();
 				renamingBoard = true;
@@ -178,7 +178,7 @@
 		</button>
 		<button
 			type="button"
-			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10"
+			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scraps-cache-text)] dark:hover:bg-white/10"
 			onclick={() => {
 				boardName = board.name;
 				renamingBoard = !renamingBoard;
@@ -206,12 +206,12 @@
 					if (event.key === 'Enter') commitBoardName();
 					if (event.key === 'Escape') renamingBoard = false;
 				}}
-				class="min-w-0 flex-1 rounded-xl border border-[var(--shard-border)] bg-[var(--shard-surface)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400/40"
+				class="min-w-0 flex-1 rounded-xl border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400/40"
 			/>
 			<button
 				type="button"
 				onclick={commitBoardName}
-				class="rounded-xl bg-black/[0.06] px-3 py-2 text-sm font-medium text-[var(--shard-text)] hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
+				class="rounded-xl bg-black/[0.06] px-3 py-2 text-sm font-medium text-[var(--scraps-cache-text)] hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
 			>
 				Save
 			</button>
@@ -229,7 +229,9 @@
 					ondrop={(event) => nativeDrop(event, column.id)}
 				>
 					<div class="mb-2 flex items-center gap-2 px-1 pt-1">
-						<h2 class="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--shard-text)]">
+						<h2
+							class="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--scraps-cache-text)]"
+						>
 							{columnName(column)}
 						</h2>
 						{#if column.labelId === null}
@@ -237,7 +239,7 @@
 								type="button"
 								class="grid h-7 min-w-7 place-items-center rounded-lg px-1.5 text-xs font-medium transition-colors {backlogFilterActive
 									? 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
-									: 'text-[var(--shard-text-muted)] hover:bg-black/5 hover:text-[var(--shard-text)] dark:hover:bg-white/10'}"
+									: 'text-[var(--scraps-cache-text-muted)] hover:bg-black/5 hover:text-[var(--scraps-cache-text)] dark:hover:bg-white/10'}"
 								onclick={() => (backlogFilterOpen = !backlogFilterOpen)}
 								aria-expanded={backlogFilterOpen}
 								aria-label="Backlog filter"
@@ -249,7 +251,7 @@
 							<button
 								type="button"
 								onclick={() => kanbanStore.removeTagColumn(board.id, column.id)}
-								class="grid h-7 w-7 place-items-center rounded-lg text-[var(--shard-text-muted)] hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+								class="grid h-7 w-7 place-items-center rounded-lg text-[var(--scraps-cache-text-muted)] hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
 								aria-label={`Remove ${columnName(column)} label column`}
 								title="Remove label column"
 							>
@@ -260,11 +262,11 @@
 
 					{#if column.labelId === null && backlogFilterOpen}
 						<div
-							class="mb-2 space-y-2 rounded-xl border border-black/10 bg-[var(--shard-surface)] p-2 text-xs dark:border-white/10"
+							class="mb-2 space-y-2 rounded-xl border border-black/10 bg-[var(--scraps-cache-surface)] p-2 text-xs dark:border-white/10"
 							role="group"
 							aria-label="Backlog filter options"
 						>
-							<p class="text-[11px] leading-snug text-[var(--shard-text-muted)]">
+							<p class="text-[11px] leading-snug text-[var(--scraps-cache-text-muted)]">
 								Choose which notes show in Backlog. Notes already in a label column are never listed
 								here.
 							</p>
@@ -279,8 +281,10 @@
 									class="mt-0.5"
 								/>
 								<span>
-									<span class="font-medium text-[var(--shard-text)]">All non-column notes</span>
-									<span class="mt-0.5 block text-[var(--shard-text-muted)]"
+									<span class="font-medium text-[var(--scraps-cache-text)]"
+										>All non-column notes</span
+									>
+									<span class="mt-0.5 block text-[var(--scraps-cache-text-muted)]"
 										>Default: everything not in a label column</span
 									>
 								</span>
@@ -295,7 +299,7 @@
 									onchange={() => setBacklogMode('custom')}
 									class="mt-0.5"
 								/>
-								<span class="font-medium text-[var(--shard-text)]">Only selected…</span>
+								<span class="font-medium text-[var(--scraps-cache-text)]">Only selected…</span>
 							</label>
 
 							{#if backlogFilter.mode === 'custom'}
@@ -308,7 +312,7 @@
 											checked={backlogFilter.includeUntagged}
 											onchange={toggleBacklogUntagged}
 										/>
-										<span class="text-[var(--shard-text)]">No labels</span>
+										<span class="text-[var(--scraps-cache-text)]">No labels</span>
 									</label>
 									{#each backlogFilterTags as label (label.id)}
 										<label
@@ -319,11 +323,11 @@
 												checked={backlogFilter.labelIds.includes(label.id)}
 												onchange={() => toggleBacklogLabel(label.id)}
 											/>
-											<span class="truncate text-[var(--shard-text)]">{label.name}</span>
+											<span class="truncate text-[var(--scraps-cache-text)]">{label.name}</span>
 										</label>
 									{/each}
 									{#if backlogFilterTags.length === 0}
-										<p class="px-1 py-1 text-[var(--shard-text-muted)]">
+										<p class="px-1 py-1 text-[var(--scraps-cache-text-muted)]">
 											No other labels available. Create labels on notes, or remove a label column
 											first.
 										</p>
@@ -332,7 +336,7 @@
 							{/if}
 
 							<p
-								class="truncate px-1 text-[10px] text-[var(--shard-text-muted)]"
+								class="truncate px-1 text-[10px] text-[var(--scraps-cache-text-muted)]"
 								title={backlogFilterSummary()}
 							>
 								Showing: {backlogFilterSummary()}
@@ -346,7 +350,7 @@
 						{/each}
 						{#if columnNotes(board, column, visibleNotes).length === 0}
 							<div
-								class="rounded-xl border border-dashed border-black/10 px-3 py-5 text-center text-xs text-[var(--shard-text-muted)] dark:border-white/10"
+								class="rounded-xl border border-dashed border-black/10 px-3 py-5 text-center text-xs text-[var(--scraps-cache-text-muted)] dark:border-white/10"
 							>
 								Drop a note here
 							</div>
@@ -361,7 +365,7 @@
 						aria-label="Add a label column"
 						value=""
 						onchange={addTagColumn}
-						class="w-full rounded-xl border border-dashed border-[var(--shard-border)] bg-transparent px-3 py-2.5 text-left text-sm font-medium text-[var(--shard-text-muted)] outline-none hover:bg-black/[0.035] dark:hover:bg-white/[0.055]"
+						class="w-full rounded-xl border border-dashed border-[var(--scraps-cache-border)] bg-transparent px-3 py-2.5 text-left text-sm font-medium text-[var(--scraps-cache-text-muted)] outline-none hover:bg-black/[0.035] dark:hover:bg-white/[0.055]"
 					>
 						<option value="">+ Add label column</option>
 						{#each unusedTags as label (label.id)}

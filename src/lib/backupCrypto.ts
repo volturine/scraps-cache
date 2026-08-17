@@ -3,7 +3,7 @@ import { argon2idAsync } from '@noble/hashes/argon2.js';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const FORMAT = 'shard-encrypted-backup';
+const FORMAT = 'scraps-cache-encrypted-backup';
 const FORMAT_VERSION = 1;
 const DEFAULT_CHUNK_BYTES = 1024 * 1024;
 
@@ -20,7 +20,7 @@ export type EncryptedBackupChunk = {
 	ciphertext: string;
 };
 
-export type EncryptedShardBackup = {
+export type EncryptedScrapsCacheBackup = {
 	format: typeof FORMAT;
 	version: typeof FORMAT_VERSION;
 	kdf: BackupKdf;
@@ -100,9 +100,9 @@ function chunkAad(kdf: BackupKdf, index: number, count: number): Uint8Array {
 	);
 }
 
-export function isEncryptedShardBackup(value: unknown): value is EncryptedShardBackup {
+export function isEncryptedScrapsCacheBackup(value: unknown): value is EncryptedScrapsCacheBackup {
 	if (!value || typeof value !== 'object') return false;
-	const candidate = value as Partial<EncryptedShardBackup>;
+	const candidate = value as Partial<EncryptedScrapsCacheBackup>;
 	return (
 		candidate.format === FORMAT &&
 		candidate.version === FORMAT_VERSION &&
@@ -118,7 +118,7 @@ export async function encryptBackup(
 	payload: unknown,
 	passphrase: string,
 	options: BackupEncryptionOptions = {}
-): Promise<EncryptedShardBackup> {
+): Promise<EncryptedScrapsCacheBackup> {
 	const chunkBytes = options.chunkBytes ?? DEFAULT_CHUNK_BYTES;
 	if (!Number.isInteger(chunkBytes) || chunkBytes < 1024 || chunkBytes > 8 * 1024 * 1024) {
 		throw new Error('Invalid backup chunk size');
@@ -152,10 +152,11 @@ export async function encryptBackup(
 }
 
 export async function decryptBackup(
-	backup: EncryptedShardBackup,
+	backup: EncryptedScrapsCacheBackup,
 	passphrase: string
 ): Promise<unknown> {
-	if (!isEncryptedShardBackup(backup)) throw new Error('Not an encrypted Shard backup');
+	if (!isEncryptedScrapsCacheBackup(backup))
+		throw new Error('Not an encrypted Scraps Cache backup');
 	validateKdf(backup.kdf);
 	if (
 		backup.chunkCount < 1 ||

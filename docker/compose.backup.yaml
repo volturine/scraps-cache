@@ -1,4 +1,4 @@
-name: shard-notes
+name: scraps-cache
 
 services:
   backup-local:
@@ -13,17 +13,17 @@ services:
         export RESTIC_PASSWORD_FILE=/run/secrets/restic-password
         restic snapshots >/dev/null 2>&1 || restic init
         while true; do
-          restic backup /snapshots --tag shard-sync
-          restic forget --tag shard-sync --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
+          restic backup /snapshots --tag scraps-cache-sync
+          restic forget --tag scraps-cache-sync --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
           restic check
-          sleep "$${SHARD_RESTIC_INTERVAL_SECONDS:-86400}"
+          sleep "$${SCRAPS_CACHE_RESTIC_INTERVAL_SECONDS:-86400}"
         done
     environment:
-      SHARD_RESTIC_INTERVAL_SECONDS: "${SHARD_RESTIC_INTERVAL_SECONDS:-86400}"
+      SCRAPS_CACHE_RESTIC_INTERVAL_SECONDS: "${SCRAPS_CACHE_RESTIC_INTERVAL_SECONDS:-86400}"
     volumes:
-      - shard-backup-snapshots:/snapshots:ro
-      - shard-restic-local:/repository
-      - "${SHARD_RESTIC_PASSWORD_FILE:-./secrets/restic-password}:/run/secrets/restic-password:ro"
+      - scraps-cache-backup-snapshots:/snapshots:ro
+      - scraps-cache-restic-local:/repository
+      - "${SCRAPS_CACHE_RESTIC_PASSWORD_FILE:-./secrets/restic-password}:/run/secrets/restic-password:ro"
     security_opt:
       - no-new-privileges:true
 
@@ -35,29 +35,29 @@ services:
     command:
       - |
         set -eu
-        export RESTIC_REPOSITORY="$${SHARD_RESTIC_S3_REPOSITORY}"
+        export RESTIC_REPOSITORY="$${SCRAPS_CACHE_RESTIC_S3_REPOSITORY}"
         export RESTIC_PASSWORD_FILE=/run/secrets/restic-password
         export AWS_ACCESS_KEY_ID="$$(cat /run/secrets/s3-access-key)"
         export AWS_SECRET_ACCESS_KEY="$$(cat /run/secrets/s3-secret-key)"
         restic snapshots >/dev/null 2>&1 || restic init
         while true; do
-          restic backup /snapshots --tag shard-sync
-          restic forget --tag shard-sync --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
+          restic backup /snapshots --tag scraps-cache-sync
+          restic forget --tag scraps-cache-sync --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
           restic check
-          sleep "$${SHARD_RESTIC_INTERVAL_SECONDS:-86400}"
+          sleep "$${SCRAPS_CACHE_RESTIC_INTERVAL_SECONDS:-86400}"
         done
     environment:
-      SHARD_RESTIC_INTERVAL_SECONDS: "${SHARD_RESTIC_INTERVAL_SECONDS:-86400}"
-      SHARD_RESTIC_S3_REPOSITORY: "${SHARD_RESTIC_S3_REPOSITORY:-s3:https://storage.example.com/shard-backups}"
+      SCRAPS_CACHE_RESTIC_INTERVAL_SECONDS: "${SCRAPS_CACHE_RESTIC_INTERVAL_SECONDS:-86400}"
+      SCRAPS_CACHE_RESTIC_S3_REPOSITORY: "${SCRAPS_CACHE_RESTIC_S3_REPOSITORY:-s3:https://storage.example.com/scraps-cache-backups}"
       AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-us-east-1}"
     volumes:
-      - shard-backup-snapshots:/snapshots:ro
-      - "${SHARD_RESTIC_PASSWORD_FILE:-./secrets/restic-password}:/run/secrets/restic-password:ro"
-      - "${SHARD_S3_ACCESS_KEY_FILE:-./secrets/s3-access-key}:/run/secrets/s3-access-key:ro"
-      - "${SHARD_S3_SECRET_KEY_FILE:-./secrets/s3-secret-key}:/run/secrets/s3-secret-key:ro"
+      - scraps-cache-backup-snapshots:/snapshots:ro
+      - "${SCRAPS_CACHE_RESTIC_PASSWORD_FILE:-./secrets/restic-password}:/run/secrets/restic-password:ro"
+      - "${SCRAPS_CACHE_S3_ACCESS_KEY_FILE:-./secrets/s3-access-key}:/run/secrets/s3-access-key:ro"
+      - "${SCRAPS_CACHE_S3_SECRET_KEY_FILE:-./secrets/s3-secret-key}:/run/secrets/s3-secret-key:ro"
     security_opt:
       - no-new-privileges:true
 
 volumes:
-  shard-backup-snapshots:
-  shard-restic-local:
+  scraps-cache-backup-snapshots:
+  scraps-cache-restic-local:

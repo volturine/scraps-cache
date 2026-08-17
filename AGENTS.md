@@ -1,4 +1,4 @@
-# Shard
+# Scraps Cache
 
 Offline-first notes with end-to-end encrypted multi-device sync: local IndexedDB storage, SQLite relay storage, backups, and a self-hostable SvelteKit app.
 
@@ -30,7 +30,7 @@ Code/config: `just verify` && `just test` && `just test-e2e` before done or revi
 
 For this repository, use `npm run validate` in place of the unavailable `just verify`, `just test`, and `just test-e2e` recipes. Markdown-only changes do not require validation unless asked.
 
-## Shard security and privacy
+## Scraps Cache security and privacy
 
 - Preserve the opaque-ciphertext relay model: note contents, labels, attachment bytes, and decryptable keys must never be sent to or stored by the server in plaintext.
 - Never log secrets, note content, pairing codes, full account IDs, plaintext keys, or ciphertext payloads.

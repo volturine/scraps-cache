@@ -50,30 +50,30 @@
 	}}
 >
 	<div
-		class="shard-dialog w-full max-w-sm overflow-hidden"
+		class="scraps-cache-dialog w-full max-w-sm overflow-hidden"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="backup-dialog-title"
 	>
-		<div class="border-b border-[var(--shard-border)] px-5 py-4">
+		<div class="border-b border-[var(--scraps-cache-border)] px-5 py-4">
 			<p
-				class="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--shard-text-muted)]"
+				class="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--scraps-cache-text-muted)]"
 			>
 				Encrypted on this device
 			</p>
-			<h2 id="backup-dialog-title" class="text-lg font-semibold text-[var(--shard-text)]">
+			<h2 id="backup-dialog-title" class="text-lg font-semibold text-[var(--scraps-cache-text)]">
 				{exporting ? 'Protect this backup' : 'Unlock this backup'}
 			</h2>
-			<p class="mt-1 text-sm leading-relaxed text-[var(--shard-text-muted)]">
+			<p class="mt-1 text-sm leading-relaxed text-[var(--scraps-cache-text-muted)]">
 				{exporting
-					? 'Shard cannot recover this passphrase. Store it separately from the backup file.'
+					? 'Scraps Cache cannot recover this passphrase. Store it separately from the backup file.'
 					: 'The passphrase and decrypted notes stay in this browser.'}
 			</p>
 		</div>
 
 		<form class="space-y-4 px-5 py-5" onsubmit={submit}>
 			<label class="block">
-				<span class="mb-1.5 block text-xs font-medium text-[var(--shard-text-muted)]"
+				<span class="mb-1.5 block text-xs font-medium text-[var(--scraps-cache-text-muted)]"
 					>Backup passphrase</span
 				>
 				<input
@@ -81,13 +81,13 @@
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}
 					disabled={busy}
-					class="shard-input w-full bg-transparent px-3 py-2.5 text-sm"
+					class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-sm"
 				/>
 			</label>
 
 			{#if exporting}
 				<label class="block">
-					<span class="mb-1.5 block text-xs font-medium text-[var(--shard-text-muted)]"
+					<span class="mb-1.5 block text-xs font-medium text-[var(--scraps-cache-text-muted)]"
 						>Confirm passphrase</span
 					>
 					<input
@@ -95,13 +95,13 @@
 						autocomplete="new-password"
 						bind:value={confirmation}
 						disabled={busy}
-						class="shard-input w-full bg-transparent px-3 py-2.5 text-sm"
+						class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-sm"
 					/>
 				</label>
 			{/if}
 
 			{#if localError || error}
-				<p class="text-sm text-[var(--shard-danger)]" role="alert">{localError || error}</p>
+				<p class="text-sm text-[var(--scraps-cache-danger)]" role="alert">{localError || error}</p>
 			{/if}
 
 			<div class="flex justify-end gap-2 pt-1">
@@ -109,12 +109,12 @@
 					type="button"
 					onclick={onClose}
 					disabled={busy}
-					class="shard-button shard-button-quiet px-3 py-2 text-sm">Cancel</button
+					class="scraps-cache-button scraps-cache-button-quiet px-3 py-2 text-sm">Cancel</button
 				>
 				<button
 					type="submit"
 					disabled={busy}
-					class="shard-button shard-button-primary px-4 py-2 text-sm font-medium"
+					class="scraps-cache-button scraps-cache-button-primary px-4 py-2 text-sm font-medium"
 					>{busy
 						? exporting
 							? 'Encrypting…'
