@@ -98,26 +98,14 @@ export type AppKeyboardFrame = {
 /**
  * An open editor is anchored to the visual screen, not Safari's panned layout
  * viewport. Offset is countered at the root while keyboard height stays stable.
- *
- * A docked backup sheet uses the visual viewport height even when
- * resizes-content already shrank innerHeight — the iOS suggestion bar is
- * often shorter than the occlusion threshold and would otherwise cover it.
  */
 export function appKeyboardFrame(options: {
 	editorOpen: boolean;
-	dockToKeyboard?: boolean;
 	visualTop: number;
 	visualHeight: number;
 	layoutHeight: number;
 	occlusion: { top: number; bottom: number };
 }): AppKeyboardFrame {
-	if (options.dockToKeyboard) {
-		return {
-			viewportOffsetTop: Math.max(0, options.visualTop),
-			keyboardTop: 0,
-			keyboardBottom: Math.max(0, options.layoutHeight - options.visualHeight)
-		};
-	}
 	if (!options.editorOpen) {
 		return {
 			viewportOffsetTop: 0,
@@ -171,7 +159,6 @@ export function attachAppViewport(_node: HTMLElement) {
 	let fieldFocused = isKeyboardField(document.activeElement);
 	let restingLayoutHeight = window.innerHeight;
 	let editorOpen = document.documentElement.classList.contains('editor-open');
-	let backupDialogOpen = document.documentElement.classList.contains('backup-dialog-open');
 	const phone = window.matchMedia(PHONE_MEDIA);
 
 	const apply = () => {
@@ -204,7 +191,6 @@ export function attachAppViewport(_node: HTMLElement) {
 			: { top: 0, bottom: 0 };
 		const keyboardFrame = appKeyboardFrame({
 			editorOpen: onPhone && editorOpen,
-			dockToKeyboard: onPhone && backupDialogOpen && fieldFocused,
 			visualTop,
 			visualHeight,
 			layoutHeight,
@@ -235,10 +221,8 @@ export function attachAppViewport(_node: HTMLElement) {
 	};
 	const editorClassObserver = new MutationObserver(() => {
 		const nextEditorOpen = document.documentElement.classList.contains('editor-open');
-		const nextBackupDialogOpen = document.documentElement.classList.contains('backup-dialog-open');
-		if (nextEditorOpen === editorOpen && nextBackupDialogOpen === backupDialogOpen) return;
+		if (nextEditorOpen === editorOpen) return;
 		editorOpen = nextEditorOpen;
-		backupDialogOpen = nextBackupDialogOpen;
 		apply();
 	});
 

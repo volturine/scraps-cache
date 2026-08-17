@@ -37,34 +37,20 @@
 	function keydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && !busy) onClose();
 	}
-
-	function portalBackupDialog(node: HTMLElement) {
-		document.documentElement.classList.add('backup-dialog-open');
-		const cleanup = portalToAppOverlay(node);
-		return () => {
-			document.documentElement.classList.remove('backup-dialog-open');
-			cleanup();
-		};
-	}
-
-	function focusOnAttach(node: HTMLInputElement) {
-		node.focus();
-	}
 </script>
 
 <svelte:window onkeydown={keydown} />
 
 <div
-	{@attach portalBackupDialog}
-	data-backup-dialog
-	class="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4"
+	{@attach portalToAppOverlay}
+	class="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 p-4"
 	role="presentation"
 	onclick={(event) => {
 		if (event.target === event.currentTarget && !busy) onClose();
 	}}
 >
 	<div
-		class="scraps-cache-dialog w-full max-w-sm max-h-full overflow-y-auto"
+		class="scraps-cache-dialog w-full max-w-sm"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="backup-dialog-title"
@@ -91,7 +77,6 @@
 					>Backup passphrase</span
 				>
 				<input
-					{@attach focusOnAttach}
 					type="password"
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}

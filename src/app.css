@@ -65,12 +65,6 @@
 		visibility: hidden;
 		pointer-events: none;
 	}
-	/* Sit the backup sheet on the keyboard once. Both fields are then already
-	 * in the visual area, so moving focus between them does not pan the app. */
-	html.keyboard-open [data-backup-dialog] {
-		align-items: end;
-		padding-bottom: 0.75rem;
-	}
 }
 
 @media (min-width: 640px) {
@@ -178,14 +172,11 @@ html.editor-open .app-shell {
 	pointer-events: auto;
 }
 
-/* Global dialogs must sit above the mobile sidebar as well as the canvas.
- * transform makes this the containing block for position:fixed children,
- * matching .app-float, so keyboard insets actually clip the backup sheet. */
+/* Global dialogs must sit above the mobile sidebar as well as the canvas. */
 .app-overlay {
 	position: absolute;
-	inset: var(--app-keyboard-top) 0 var(--app-keyboard-bottom);
+	inset: 0;
 	z-index: 100;
-	transform: translate(0);
 	pointer-events: none;
 }
 .app-overlay > * {
