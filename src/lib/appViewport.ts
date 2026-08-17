@@ -93,41 +93,65 @@ export type AppKeyboardFrame = {
 	viewportOffsetTop: number;
 	keyboardTop: number;
 	keyboardBottom: number;
+	/** Resting layout height to pin `.app-viewport` to, or null to stretch. */
+	lockFrameHeight: number | null;
 };
 
+export function keyboardCoverPx(restingLayoutHeight: number, visualHeight: number): number {
+	if (restingLayoutHeight <= 0 || visualHeight <= 0) return 0;
+	const cover = restingLayoutHeight - visualHeight;
+	return cover > KEYBOARD_HEIGHT_THRESHOLD_PX ? cover : 0;
+}
+
 /**
- * Keep the notes canvas on the visual screen. Safari may pan the layout
- * viewport when a field is focused; that offset is countered at the root.
- * The floating layer then shrinks to the remaining visual area so dialogs
- * and the editor sit above the keyboard without dragging the feed.
+ * Keep the notes canvas on the visual screen. Safari may pan or resize the
+ * layout viewport when a field is focused. Dialogs lock the canvas at its
+ * pre-keyboard size and only shrink the floating layer. The editor keeps
+ * filling the (possibly resized) visual screen.
  */
 export function appKeyboardFrame(options: {
 	editorOpen: boolean;
+	fieldFocused?: boolean;
 	visualTop: number;
 	visualHeight: number;
 	layoutHeight: number;
+	restingLayoutHeight?: number;
 	occlusion: { top: number; bottom: number };
 }): AppKeyboardFrame {
 	const keyboardOverlaysLayout = options.occlusion.top > 0 || options.occlusion.bottom > 0;
-	const anchorCanvas = options.editorOpen || keyboardOverlaysLayout;
-	if (!anchorCanvas) {
-		return {
-			viewportOffsetTop: 0,
-			keyboardTop: 0,
-			keyboardBottom: 0
-		};
-	}
-	if (!keyboardOverlaysLayout) {
+	if (options.editorOpen) {
+		if (!keyboardOverlaysLayout) {
+			return {
+				viewportOffsetTop: Math.max(0, options.visualTop),
+				keyboardTop: 0,
+				keyboardBottom: 0,
+				lockFrameHeight: null
+			};
+		}
 		return {
 			viewportOffsetTop: Math.max(0, options.visualTop),
 			keyboardTop: 0,
-			keyboardBottom: 0
+			keyboardBottom: Math.max(0, options.layoutHeight - options.visualHeight),
+			lockFrameHeight: null
 		};
 	}
+
+	const resting = options.restingLayoutHeight ?? options.layoutHeight;
+	const cover = options.fieldFocused ? keyboardCoverPx(resting, options.visualHeight) : 0;
+	if (cover <= 0 && !keyboardOverlaysLayout) {
+		return {
+			viewportOffsetTop: 0,
+			keyboardTop: 0,
+			keyboardBottom: 0,
+			lockFrameHeight: null
+		};
+	}
+
 	return {
 		viewportOffsetTop: Math.max(0, options.visualTop),
 		keyboardTop: 0,
-		keyboardBottom: Math.max(0, options.layoutHeight - options.visualHeight)
+		keyboardBottom: cover > 0 ? cover : Math.max(0, options.layoutHeight - options.visualHeight),
+		lockFrameHeight: resting
 	};
 }
 
@@ -176,11 +200,12 @@ export function attachAppViewport(_node: HTMLElement) {
 
 		const occluding =
 			onPhone &&
-			isKeyboardOccluding({
+			(isKeyboardOccluding({
 				fieldFocused,
 				visualHeight,
 				layoutHeight
-			});
+			}) ||
+				keyboardCoverPx(restingLayoutHeight, visualHeight) > 0);
 		cachedSafe = rememberSafeArea(cachedSafe, readSafeAreaInsets(), occluding);
 		const occlusion = onPhone
 			? keyboardOcclusion({
@@ -194,13 +219,17 @@ export function attachAppViewport(_node: HTMLElement) {
 			: { top: 0, bottom: 0 };
 		const keyboardFrame = appKeyboardFrame({
 			editorOpen: onPhone && editorOpen,
+			fieldFocused: onPhone && fieldFocused,
 			visualTop,
 			visualHeight,
 			layoutHeight,
+			restingLayoutHeight,
 			occlusion
 		});
 
+		const lockFrameHeight = keyboardFrame.lockFrameHeight;
 		document.documentElement.classList.toggle('keyboard-open', onPhone && fieldFocused);
+		document.documentElement.classList.toggle('keyboard-lock-canvas', lockFrameHeight != null);
 		setInsetVar('--app-inset-top', cachedSafe.top);
 		setInsetVar('--app-inset-right', cachedSafe.right);
 		// Keep installed iPhone and iPad controls above the home indicator. When
@@ -210,6 +239,12 @@ export function attachAppViewport(_node: HTMLElement) {
 		setInsetVar('--app-visual-offset-top', keyboardFrame.viewportOffsetTop);
 		setInsetVar('--app-keyboard-top', keyboardFrame.keyboardTop);
 		setInsetVar('--app-keyboard-bottom', keyboardFrame.keyboardBottom);
+		if (lockFrameHeight != null) {
+			setInsetVar('--app-frame-height', Math.max(0, lockFrameHeight - cachedSafe.top));
+			if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
+		} else {
+			document.documentElement.style.removeProperty('--app-frame-height');
+		}
 	};
 
 	const onFocusIn = (event: FocusEvent) => {
@@ -250,6 +285,8 @@ export function attachAppViewport(_node: HTMLElement) {
 		document.removeEventListener('focusout', onFocusOut);
 		editorClassObserver.disconnect();
 		document.documentElement.classList.remove('keyboard-open');
+		document.documentElement.classList.remove('keyboard-lock-canvas');
+		document.documentElement.style.removeProperty('--app-frame-height');
 	};
 }
 

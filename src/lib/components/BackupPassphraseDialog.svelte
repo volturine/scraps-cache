@@ -43,6 +43,7 @@
 
 <div
 	{@attach portalToAppFloat}
+	data-backup-dialog
 	class="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4"
 	role="presentation"
 	onclick={(event) => {

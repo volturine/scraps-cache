@@ -67,6 +67,28 @@
 	}
 }
 
+/*
+ * A focused dialog must not let the notes canvas shrink or pan with the
+ * software keyboard. Pin the frame to its pre-keyboard height and only
+ * inset .app-float / .app-overlay to the remaining visual area.
+ */
+html.keyboard-lock-canvas,
+html.keyboard-lock-canvas body {
+	overflow: hidden;
+	overscroll-behavior: none;
+}
+html.keyboard-lock-canvas .app-viewport {
+	bottom: auto;
+	height: var(--app-frame-height);
+}
+html.keyboard-lock-canvas .app-canvas > main {
+	overflow: hidden;
+	touch-action: none;
+}
+html.keyboard-open [data-backup-dialog] {
+	align-items: end;
+}
+
 @media (min-width: 640px) {
 	:root {
 		--app-topbar-height: 4rem;
