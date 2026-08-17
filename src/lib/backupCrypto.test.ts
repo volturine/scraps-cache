@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	decryptBackup,
 	encryptBackup,
-	isEncryptedShardBackup,
+	isEncryptedScrapsCacheBackup,
 	type BackupEncryptionOptions
 } from './backupCrypto';
 
@@ -13,11 +13,11 @@ const fast: BackupEncryptionOptions = {
 	chunkBytes: 1024
 };
 
-describe('encrypted Shard backups', () => {
+describe('encrypted Scraps Cache backups', () => {
 	it('round-trips multiple authenticated chunks', async () => {
 		const source = { notes: [{ id: 'one', body: 'private '.repeat(500) }], labels: [] };
 		const encrypted = await encryptBackup(source, 'a strong backup passphrase', fast);
-		expect(isEncryptedShardBackup(encrypted)).toBe(true);
+		expect(isEncryptedScrapsCacheBackup(encrypted)).toBe(true);
 		expect(encrypted.chunks.length).toBeGreaterThan(1);
 		await expect(decryptBackup(encrypted, 'a strong backup passphrase')).resolves.toEqual(source);
 	});

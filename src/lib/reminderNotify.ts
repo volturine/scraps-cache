@@ -24,7 +24,7 @@ export type ReminderAlert = {
 };
 
 const CHECKLIST_PREFIX = /^(?:\s*(?:[-*•]\s+)?)?\[[ xX]?\]\s*/;
-const WAKE_DOMAIN = 'shard-reminder-wake:v1\0';
+const WAKE_DOMAIN = 'scraps-cache-reminder-wake:v1\0';
 export const REMINDER_WAKE_ID_RE = /^[A-Za-z0-9_-]{43}$/;
 export const RELAY_WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
 export const MAX_RELAY_WAKES = 1_000;
@@ -122,7 +122,7 @@ export async function showReminderNotification(
 	if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
 	const payload: NotificationOptions = {
 		body: formatReminder(alert.reminder),
-		tag: `shard-reminder:${alert.wakeId}`,
+		tag: `scraps-cache-reminder:${alert.wakeId}`,
 		icon: '/icon-192.png',
 		data: { type: 'reminder', noteId: alert.noteId, wakeId: alert.wakeId }
 	};

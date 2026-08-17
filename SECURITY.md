@@ -1,6 +1,6 @@
 # Security policy
 
-Shard is designed as a privacy-preserving notes app: note content is encrypted
+Scraps Cache is designed as a privacy-preserving notes app: note content is encrypted
 on the client before optional cloud sync, and the relay stores opaque ciphertext.
 
 ## Supported versions
@@ -15,7 +15,7 @@ backports.
 | Latest tagged release | Yes              |
 | Older tags            | Best effort only |
 
-## What Shard protects
+## What Scraps Cache protects
 
 - **Local notes** live in the browser (IndexedDB). They are protected by the
   browser and OS sandbox, not by an extra app passphrase while the app is open.
@@ -23,12 +23,12 @@ backports.
   accounts but never receives plaintext notes, labels, attachments, or keys.
 - **Device pairing** transfers the sync key using a short code and a PAKE
   (CPace), so the relay does not learn the key in the clear.
-- **User backups** (`.shard-backup`) are encrypted client-side with Argon2id +
+- **User backups** (`.scraps-cache-backup`) are encrypted client-side with Argon2id +
   XChaCha20-Poly1305 under a user-chosen passphrase.
 - **Server snapshots** of the SQLite relay database contain only ciphertext and
   account credentials needed for sync auth — not readable note content.
 
-## What Shard does not claim
+## What Scraps Cache does not claim
 
 - Local live data is not an additional encrypted vault while the browser can
   access IndexedDB.
@@ -46,7 +46,7 @@ For design detail, see [docs/security.md](docs/security.md).
 Prefer one of:
 
 1. **GitHub Security Advisories** — open a private report on
-   [volturine/shard-notes](https://github.com/volturine/shard-notes/security/advisories/new)
+   [volturine/scraps-cache](https://github.com/volturine/scraps-cache/security/advisories/new)
 2. **Email** — if advisories are unavailable, contact the maintainer through
    the GitHub profile listed on the repository
 

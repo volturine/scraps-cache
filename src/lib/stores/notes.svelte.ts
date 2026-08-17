@@ -46,7 +46,7 @@ import { makeImageThumbDataUrl } from '$lib/imageThumb';
 import { replacementFitsStorage } from '$lib/storageCapacity';
 import { formatStorageError } from '$lib/imageBlob';
 import type { NoteImage } from '$lib/types';
-import { normalizeBackup, type BackupImportProgress, type ShardBackup } from '$lib/backup';
+import { normalizeBackup, type BackupImportProgress, type ScrapsCacheBackup } from '$lib/backup';
 
 /** True when closing the editor should throw the note away. */
 export function noteIsBlank(note: Note): boolean {
@@ -555,7 +555,7 @@ export class NotesStore {
 	 * Full app/DB backup: notes (with full-resolution attachments), labels, boards,
 	 * tombstones, UI prefs, and the optional sync account.
 	 */
-	async exportBackup(): Promise<ShardBackup> {
+	async exportBackup(): Promise<ScrapsCacheBackup> {
 		const fullNotes: Note[] = [];
 		for (const note of this.notes) {
 			const needsFull = (note.images ?? []).some((image) => !image.dataUrl);
@@ -602,7 +602,8 @@ export class NotesStore {
 		if (this.backupImportProgress)
 			return { success: false, error: 'A backup import is already running.' };
 		const backup = normalizeBackup(data);
-		if (!backup) return { success: false, error: 'That file is not a valid Shard full backup.' };
+		if (!backup)
+			return { success: false, error: 'That file is not a valid Scraps Cache full backup.' };
 		try {
 			if (navigator.storage?.estimate) {
 				const estimate = await navigator.storage.estimate();
@@ -908,7 +909,7 @@ export class NotesStore {
 	private async withSyncLock<T>(run: () => Promise<T>): Promise<T> {
 		const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
 		if (!locks?.request) return run();
-		return locks.request('shard-sync', run);
+		return locks.request('scraps-cache-sync', run);
 	}
 
 	// Core sync. Local IDB remains authoritative; photo bytes move in small fractions.
@@ -1034,7 +1035,7 @@ export class NotesStore {
 		return [
 			{
 				id: uid(),
-				title: 'Welcome to Shard 👋',
+				title: 'Welcome to Scraps Cache 👋',
 				body: 'Small note fragments, offline-first. Notes live on this device and sync when you sign in. Try pins, archive, colours, checklists, and reminders.',
 				color: 'yellow',
 				pinned: true,

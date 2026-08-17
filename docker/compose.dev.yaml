@@ -1,45 +1,45 @@
-name: shard-notes-dev
+name: scraps-cache-dev
 
 # Preview a published PR image beside a production stack.
 # Isolated project name + volumes. Host port 3000 (master here uses 5173).
 #
 #   cp .env.dev.example .env.dev
-#   # set SHARD_IMAGE=ghcr.io/volturine/shard-notes:dev-<pr>
+#   # set SCRAPS_CACHE_IMAGE=ghcr.io/volturine/scraps-cache:dev-<pr>
 #   docker compose --project-directory . -f docker/compose.dev.yaml --env-file .env.dev pull
 #   docker compose --project-directory . -f docker/compose.dev.yaml --env-file .env.dev up -d
 #
-# Change the tag: edit SHARD_IMAGE in .env.dev, then pull && up -d again.
+# Change the tag: edit SCRAPS_CACHE_IMAGE in .env.dev, then pull && up -d again.
 
 services:
   app:
-    image: "${SHARD_IMAGE:?Set SHARD_IMAGE to a GHCR dev-* tag in .env.dev}"
+    image: "${SCRAPS_CACHE_IMAGE:?Set SCRAPS_CACHE_IMAGE to a GHCR dev-* tag in .env.dev}"
     # PR images are published as linux/amd64 only.
     platform: linux/amd64
     pull_policy: always
     restart: unless-stopped
     init: true
     ports:
-      - "${SHARD_PORT:-3000}:3000"
+      - "${SCRAPS_CACHE_PORT:-3000}:3000"
     environment:
-      ORIGIN: "${SHARD_ORIGIN:-http://localhost:3000}"
-      SHARD_ORIGIN: "${SHARD_ORIGIN:-http://localhost:3000}"
-      SHARD_VAPID_PUBLIC_KEY: "${SHARD_VAPID_PUBLIC_KEY:-}"
-      SHARD_VAPID_PRIVATE_KEY: "${SHARD_VAPID_PRIVATE_KEY:-}"
-      SHARD_VAPID_SUBJECT: "${SHARD_VAPID_SUBJECT:-}"
-      BODY_SIZE_LIMIT: "${SHARD_BODY_SIZE_LIMIT:-110M}"
-      ADDRESS_HEADER: "${SHARD_ADDRESS_HEADER:-}"
-      XFF_DEPTH: "${SHARD_XFF_DEPTH:-1}"
-      SHARD_SYNC_DATA_DIR: /data
-      SHARD_SYNC_MAX_ACCOUNT_BYTES: "${SHARD_SYNC_MAX_ACCOUNT_BYTES:-1000000000}"
-      SHARD_SYNC_MAX_ACCOUNT_ENVELOPES: "${SHARD_SYNC_MAX_ACCOUNT_ENVELOPES:-50000}"
-      SHARD_SYNC_MAX_CONCURRENT_REQUESTS: "${SHARD_SYNC_MAX_CONCURRENT_REQUESTS:-8}"
-      SHARD_BACKUP_DIR: /backups
-      SHARD_BACKUP_INTERVAL_HOURS: "${SHARD_BACKUP_INTERVAL_HOURS:-24}"
-      SHARD_BACKUP_RETAIN: "${SHARD_BACKUP_RETAIN:-2}"
-      SHARD_ADMIN_TOKEN: "${SHARD_ADMIN_TOKEN:-development-only-admin-token}"
+      ORIGIN: "${SCRAPS_CACHE_ORIGIN:-http://localhost:3000}"
+      SCRAPS_CACHE_ORIGIN: "${SCRAPS_CACHE_ORIGIN:-http://localhost:3000}"
+      SCRAPS_CACHE_VAPID_PUBLIC_KEY: "${SCRAPS_CACHE_VAPID_PUBLIC_KEY:-}"
+      SCRAPS_CACHE_VAPID_PRIVATE_KEY: "${SCRAPS_CACHE_VAPID_PRIVATE_KEY:-}"
+      SCRAPS_CACHE_VAPID_SUBJECT: "${SCRAPS_CACHE_VAPID_SUBJECT:-}"
+      BODY_SIZE_LIMIT: "${SCRAPS_CACHE_BODY_SIZE_LIMIT:-110M}"
+      ADDRESS_HEADER: "${SCRAPS_CACHE_ADDRESS_HEADER:-}"
+      XFF_DEPTH: "${SCRAPS_CACHE_XFF_DEPTH:-1}"
+      SCRAPS_CACHE_SYNC_DATA_DIR: /data
+      SCRAPS_CACHE_SYNC_MAX_ACCOUNT_BYTES: "${SCRAPS_CACHE_SYNC_MAX_ACCOUNT_BYTES:-1000000000}"
+      SCRAPS_CACHE_SYNC_MAX_ACCOUNT_ENVELOPES: "${SCRAPS_CACHE_SYNC_MAX_ACCOUNT_ENVELOPES:-50000}"
+      SCRAPS_CACHE_SYNC_MAX_CONCURRENT_REQUESTS: "${SCRAPS_CACHE_SYNC_MAX_CONCURRENT_REQUESTS:-8}"
+      SCRAPS_CACHE_BACKUP_DIR: /backups
+      SCRAPS_CACHE_BACKUP_INTERVAL_HOURS: "${SCRAPS_CACHE_BACKUP_INTERVAL_HOURS:-24}"
+      SCRAPS_CACHE_BACKUP_RETAIN: "${SCRAPS_CACHE_BACKUP_RETAIN:-2}"
+      SCRAPS_CACHE_ADMIN_TOKEN: "${SCRAPS_CACHE_ADMIN_TOKEN:-development-only-admin-token}"
     volumes:
-      - shard-dev-sync-data:/data
-      - shard-dev-backup-snapshots:/backups
+      - scraps-cache-dev-sync-data:/data
+      - scraps-cache-dev-backup-snapshots:/backups
     read_only: true
     tmpfs:
       - /tmp
@@ -47,5 +47,5 @@ services:
       - no-new-privileges:true
 
 volumes:
-  shard-dev-sync-data:
-  shard-dev-backup-snapshots:
+  scraps-cache-dev-sync-data:
+  scraps-cache-dev-backup-snapshots:

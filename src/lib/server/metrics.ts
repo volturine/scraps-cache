@@ -70,34 +70,36 @@ export function renderMetrics(
 	usage: { accounts: number; envelopeCount: number; ciphertextBytes: number }
 ): string {
 	const lines = [
-		'# TYPE shard_http_requests_total counter',
-		'# TYPE shard_http_request_duration_milliseconds_sum counter'
+		'# TYPE scraps-cache_http_requests_total counter',
+		'# TYPE scraps-cache_http_request_duration_milliseconds_sum counter'
 	];
 	for (const [key, metric] of http) {
 		const [route, status] = key.split('\u0000');
 		const labels = `route=${JSON.stringify(route)},status=${JSON.stringify(status)}`;
-		lines.push(line('shard_http_requests_total', metric.count, labels));
-		lines.push(line('shard_http_request_duration_milliseconds_sum', metric.durationMs, labels));
+		lines.push(line('scraps-cache_http_requests_total', metric.count, labels));
+		lines.push(
+			line('scraps-cache_http_request_duration_milliseconds_sum', metric.durationMs, labels)
+		);
 	}
 	lines.push(
-		'# TYPE shard_rate_limited_total counter',
-		line('shard_rate_limited_total', rateLimited),
-		'# TYPE shard_sync_requests_total counter',
-		line('shard_sync_requests_total', syncRequests),
-		line('shard_sync_upload_envelopes_total', syncUploadEnvelopes),
-		line('shard_sync_delete_slots_total', syncDeleteSlots),
-		line('shard_sqlite_busy_total', sqliteBusy),
-		line('shard_sync_accounts', usage.accounts),
-		line('shard_sync_envelopes', usage.envelopeCount),
-		line('shard_sync_ciphertext_bytes', usage.ciphertextBytes),
-		line('shard_backup_last_attempt_timestamp_seconds', backup.lastAttemptAt / 1000),
-		line('shard_backup_last_success_timestamp_seconds', backup.lastSuccessAt / 1000),
-		line('shard_backup_failures_total', backup.failures),
-		line('shard_backup_duration_milliseconds', backup.durationMs),
-		'# TYPE shard_reminder_wakes_sent_total counter',
-		line('shard_reminder_wakes_sent_total', reminderWakesSent),
-		line('shard_reminder_wakes_gone_total', reminderWakesGone),
-		line('shard_reminder_wakes_failed_total', reminderWakesFailed)
+		'# TYPE scraps-cache_rate_limited_total counter',
+		line('scraps-cache_rate_limited_total', rateLimited),
+		'# TYPE scraps-cache_sync_requests_total counter',
+		line('scraps-cache_sync_requests_total', syncRequests),
+		line('scraps-cache_sync_upload_envelopes_total', syncUploadEnvelopes),
+		line('scraps-cache_sync_delete_slots_total', syncDeleteSlots),
+		line('scraps-cache_sqlite_busy_total', sqliteBusy),
+		line('scraps-cache_sync_accounts', usage.accounts),
+		line('scraps-cache_sync_envelopes', usage.envelopeCount),
+		line('scraps-cache_sync_ciphertext_bytes', usage.ciphertextBytes),
+		line('scraps-cache_backup_last_attempt_timestamp_seconds', backup.lastAttemptAt / 1000),
+		line('scraps-cache_backup_last_success_timestamp_seconds', backup.lastSuccessAt / 1000),
+		line('scraps-cache_backup_failures_total', backup.failures),
+		line('scraps-cache_backup_duration_milliseconds', backup.durationMs),
+		'# TYPE scraps-cache_reminder_wakes_sent_total counter',
+		line('scraps-cache_reminder_wakes_sent_total', reminderWakesSent),
+		line('scraps-cache_reminder_wakes_gone_total', reminderWakesGone),
+		line('scraps-cache_reminder_wakes_failed_total', reminderWakesFailed)
 	);
 	return `${lines.join('\n')}\n`;
 }

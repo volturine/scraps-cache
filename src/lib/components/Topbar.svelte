@@ -10,8 +10,8 @@
 	import {
 		decryptBackup,
 		encryptBackup,
-		isEncryptedShardBackup,
-		type EncryptedShardBackup
+		isEncryptedScrapsCacheBackup,
+		type EncryptedScrapsCacheBackup
 	} from '$lib/backupCrypto';
 	import {
 		Cloud,
@@ -36,7 +36,7 @@
 	let backupImportError = $state('');
 	let backupDialogMode = $state<'export' | 'import' | null>(null);
 	let backupBusy = $state(false);
-	let pendingEncryptedBackup = $state<EncryptedShardBackup | null>(null);
+	let pendingEncryptedBackup = $state<EncryptedScrapsCacheBackup | null>(null);
 
 	function startBackupExport() {
 		settingsOpen = false;
@@ -53,7 +53,7 @@
 				const encrypted = await encryptBackup(data, passphrase);
 				downloadJSON(
 					encrypted,
-					`shard-backup-${new Date().toISOString().slice(0, 10)}.shard-backup`
+					`scraps-cache-backup-${new Date().toISOString().slice(0, 10)}.scraps-cache-backup`
 				);
 				backupDialogMode = null;
 				return;
@@ -86,7 +86,7 @@
 		reader.onload = async () => {
 			try {
 				const data = JSON.parse(String(reader.result));
-				if (isEncryptedShardBackup(data)) {
+				if (isEncryptedScrapsCacheBackup(data)) {
 					pendingEncryptedBackup = data;
 					backupDialogMode = 'import';
 					settingsOpen = false;
@@ -150,18 +150,18 @@
 	</button>
 
 	<div
-		class="flex h-10 flex-1 items-center gap-2 rounded-full border border-[var(--shard-border)] bg-[var(--shard-surface)] px-3"
+		class="flex h-10 flex-1 items-center gap-2 rounded-full border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3"
 	>
-		<Search class="h-4 w-4 shrink-0 text-[var(--shard-text-muted)]" aria-hidden="true" />
+		<Search class="h-4 w-4 shrink-0 text-[var(--scraps-cache-text-muted)]" aria-hidden="true" />
 		<input
 			bind:value={uiStore.search}
 			type="text"
 			placeholder="Search"
-			class="flex-1 bg-transparent text-sm text-[var(--shard-text)] focus:outline-none placeholder:text-[var(--shard-text-muted)]"
+			class="flex-1 bg-transparent text-sm text-[var(--scraps-cache-text)] focus:outline-none placeholder:text-[var(--scraps-cache-text-muted)]"
 		/>
 		{#if uiStore.search}
 			<button
-				class="icon-btn h-8 w-8 p-1.5 text-sm text-[var(--shard-text-muted)]"
+				class="icon-btn h-8 w-8 p-1.5 text-sm text-[var(--scraps-cache-text-muted)]"
 				onclick={() => (uiStore.search = '')}
 				aria-label="Clear search"
 			>
@@ -178,9 +178,9 @@
 			syncOpen = true;
 		}}
 		aria-label="Sync settings"
-		data-shard-sync-control
+		data-scraps-cache-sync-control
 	>
-		<Cloud class="h-5 w-5" data-shard-sync-icon aria-hidden="true" />
+		<Cloud class="h-5 w-5" data-scraps-cache-sync-icon aria-hidden="true" />
 	</button>
 
 	<button
@@ -207,12 +207,12 @@
 		</button>
 		{#if settingsOpen}
 			<div
-				class="absolute right-0 top-12 z-30 w-64 rounded-lg border border-[var(--shard-border)] bg-[var(--shard-surface)] py-1 shadow-lg"
+				class="absolute right-0 top-12 z-30 w-64 rounded-lg border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] py-1 shadow-lg"
 			>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
 					<div
-						class="space-y-2 px-3 py-2 text-xs text-[var(--shard-text-muted)]"
+						class="space-y-2 px-3 py-2 text-xs text-[var(--scraps-cache-text-muted)]"
 						role="status"
 						aria-live="polite"
 					>
@@ -238,7 +238,7 @@
 						onclick={() => {
 							uiStore.toggleDark();
 						}}
-						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						{#if uiStore.effectiveDark}
 							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -251,7 +251,7 @@
 					<button
 						type="button"
 						onclick={startBackupExport}
-						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Export backup
@@ -259,7 +259,7 @@
 					<button
 						type="button"
 						onclick={() => fileInputEl?.click()}
-						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--shard-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Import backup
@@ -276,7 +276,7 @@
 		<input
 			bind:this={fileInputEl}
 			type="file"
-			accept=".shard-backup,application/json"
+			accept=".scraps-cache-backup,application/json"
 			onchange={importBackup}
 			class="hidden"
 		/>
