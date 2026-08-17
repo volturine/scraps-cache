@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { portalToAppFloat } from '$lib/appViewport';
+	import { portalToAppOverlay } from '$lib/appViewport';
+
+	function keepViewportStill() {
+		window.scrollTo(0, 0);
+	}
 
 	let {
 		mode,
@@ -42,9 +46,8 @@
 <svelte:window onkeydown={keydown} />
 
 <div
-	{@attach portalToAppFloat}
-	data-backup-dialog
-	class="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4"
+	{@attach portalToAppOverlay}
+	class="fixed inset-0 z-[70] grid place-items-start justify-items-center bg-black/45 p-4 md:place-items-center"
 	role="presentation"
 	onclick={(event) => {
 		if (event.target === event.currentTarget && !busy) onClose();
@@ -82,6 +85,7 @@
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}
 					disabled={busy}
+					onfocus={keepViewportStill}
 					class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-sm"
 				/>
 			</label>
@@ -96,6 +100,7 @@
 						autocomplete="new-password"
 						bind:value={confirmation}
 						disabled={busy}
+						onfocus={keepViewportStill}
 						class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-sm"
 					/>
 				</label>

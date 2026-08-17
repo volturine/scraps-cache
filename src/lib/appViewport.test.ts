@@ -6,7 +6,6 @@ import {
 	appKeyboardFrame,
 	isKeyboardField,
 	isKeyboardOccluding,
-	keyboardCoverPx,
 	keyboardOcclusion,
 	portalToAppFloat,
 	portalToAppOverlay,
@@ -28,50 +27,17 @@ describe('appBottomInset', () => {
 	});
 });
 
-describe('keyboardCoverPx', () => {
-	it('is zero until the visual viewport has shrunk by more than the keyboard threshold', () => {
-		expect(keyboardCoverPx(844, 800)).toBe(0);
-		expect(keyboardCoverPx(844, 500)).toBe(344);
-	});
-});
-
 describe('appKeyboardFrame', () => {
-	it('keeps the notes canvas still and only shrinks the floating layer for a focused dialog', () => {
+	it('keeps the generic floating layer aligned to the visual viewport', () => {
 		expect(
 			appKeyboardFrame({
 				editorOpen: false,
-				fieldFocused: true,
 				visualTop: 80,
 				visualHeight: 360,
 				layoutHeight: 844,
-				restingLayoutHeight: 844,
 				occlusion: { top: 21, bottom: 404 }
 			})
-		).toEqual({
-			viewportOffsetTop: 80,
-			keyboardTop: 0,
-			keyboardBottom: 484,
-			lockFrameHeight: 844
-		});
-	});
-
-	it('locks the notes canvas when resizes-content shrinks innerHeight with the keyboard', () => {
-		expect(
-			appKeyboardFrame({
-				editorOpen: false,
-				fieldFocused: true,
-				visualTop: 0,
-				visualHeight: 500,
-				layoutHeight: 500,
-				restingLayoutHeight: 844,
-				occlusion: { top: 0, bottom: 0 }
-			})
-		).toEqual({
-			viewportOffsetTop: 0,
-			keyboardTop: 0,
-			keyboardBottom: 344,
-			lockFrameHeight: 844
-		});
+		).toEqual({ viewportOffsetTop: 0, keyboardTop: 21, keyboardBottom: 404 });
 	});
 
 	it('anchors an open note and keeps its keyboard height independent of visual panning', () => {
@@ -87,14 +53,12 @@ describe('appKeyboardFrame', () => {
 		expect(frame(80, { top: 21, bottom: 404 })).toEqual({
 			viewportOffsetTop: 80,
 			keyboardTop: 0,
-			keyboardBottom: 484,
-			lockFrameHeight: null
+			keyboardBottom: 484
 		});
 		expect(frame(120, { top: 61, bottom: 364 })).toEqual({
 			viewportOffsetTop: 120,
 			keyboardTop: 0,
-			keyboardBottom: 484,
-			lockFrameHeight: null
+			keyboardBottom: 484
 		});
 	});
 
@@ -107,7 +71,7 @@ describe('appKeyboardFrame', () => {
 				layoutHeight: 500,
 				occlusion: { top: 0, bottom: 0 }
 			})
-		).toEqual({ viewportOffsetTop: 32, keyboardTop: 0, keyboardBottom: 0, lockFrameHeight: null });
+		).toEqual({ viewportOffsetTop: 32, keyboardTop: 0, keyboardBottom: 0 });
 	});
 });
 
