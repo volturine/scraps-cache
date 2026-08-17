@@ -59,6 +59,7 @@
 	let focusedRootId = $state<number | null>(null);
 	let draftTaskId = $state<number | null>(null);
 	let ignoredFocusLine = $state<number | null>(null);
+	let checklistPointerId: number | null = null;
 	let handledFocusSignal = 0;
 	let lastBody = '';
 	let composing = false;
@@ -224,6 +225,10 @@
 	}
 
 	function handleEditorClick(event: MouseEvent) {
+		// A touch can start on the checkbox and finish over the editable label. In
+		// that case Safari may retarget its synthetic click to the task row. Keep
+		// the whole gesture owned by the checkbox so it cannot open the keyboard.
+		if (checklistPointerId !== null) return;
 		const row = closestLineElement(event.target as Node);
 		if (!row) return;
 		const index = Number(row.dataset.editorLine);
@@ -446,6 +451,24 @@
 		// toggle as a body tap and scrolling the selected row into view.
 		event.preventDefault();
 		event.stopPropagation();
+		checklistPointerId = event.pointerId;
+		const toggle = event.currentTarget as HTMLElement;
+		try {
+			toggle.setPointerCapture?.(event.pointerId);
+		} catch {
+			// Pointer capture is best-effort on older Safari versions.
+		}
+	}
+
+	function finishChecklistPointer(event: PointerEvent) {
+		if (event.pointerId !== checklistPointerId) return;
+		queueMicrotask(() => {
+			if (checklistPointerId === event.pointerId) checklistPointerId = null;
+		});
+	}
+
+	function cancelChecklistPointer(event: PointerEvent) {
+		if (event.pointerId === checklistPointerId) checklistPointerId = null;
 	}
 
 	function indentLine(index: number, delta: number): boolean {
@@ -680,6 +703,8 @@
 	oncut={handleCut}
 	onpaste={handlePaste}
 	onkeydown={handleKeydown}
+	onpointerup={finishChecklistPointer}
+	onpointercancel={cancelChecklistPointer}
 	onclick={handleEditorClick}
 	oncompositionstart={() => (composing = true)}
 	oncompositionend={() => {
