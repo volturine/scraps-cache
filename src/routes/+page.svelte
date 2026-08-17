@@ -20,7 +20,9 @@
 <div class="pt-4 pb-8">
 	{#if filteredPinned.length > 0}
 		<div class={shell}>
-			<h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]">
+			<h2
+				class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--scraps-cache-text-muted)]"
+			>
 				Pinned
 			</h2>
 		</div>
@@ -30,7 +32,7 @@
 	{#if filteredOthers.length > 0 && filteredPinned.length > 0}
 		<div class={shell}>
 			<h2
-				class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]"
+				class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--scraps-cache-text-muted)]"
 			>
 				Others
 			</h2>

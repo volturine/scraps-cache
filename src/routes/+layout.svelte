@@ -128,13 +128,13 @@
 </script>
 
 <svelte:head>
-	<title>Shard</title>
+	<title>Scraps Cache</title>
 	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
 <div class="app-viewport" {@attach attachAppViewport}>
 	<div
-		class="app-shell flex h-full w-full overflow-hidden bg-[var(--shard-bg)] text-[var(--shard-text)]"
+		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scraps-cache-bg)] text-[var(--scraps-cache-text)]"
 	>
 		{#if mobile.current}
 			{#if uiStore.sidebarOpen}
@@ -148,7 +148,7 @@
 					transition:fade={{ duration: 150 }}
 				></button>
 				<div
-					class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--shard-border)] bg-[var(--shard-surface)]"
+					class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)]"
 					transition:fly={{ x: -288, duration: 200 }}
 					role="navigation"
 					aria-label="Sidebar"
@@ -158,7 +158,7 @@
 			{/if}
 		{:else}
 			{#if uiStore.sidebarOpen}
-				<div class="w-64 shrink-0 border-r border-[var(--shard-border)]">
+				<div class="w-64 shrink-0 border-r border-[var(--scraps-cache-border)]">
 					<Sidebar />
 				</div>
 			{/if}

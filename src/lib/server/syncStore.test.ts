@@ -13,7 +13,7 @@ function createStore(options?: ConstructorParameters<typeof SyncStore>[1]): {
 	store: SyncStore;
 	directory: string;
 } {
-	const directory = mkdtempSync(join(tmpdir(), 'shard-sync-'));
+	const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-sync-'));
 	const store = new SyncStore(directory, options);
 	directories.push(directory);
 	stores.push(store);
@@ -279,7 +279,7 @@ describe('SQLite sync store', () => {
 	});
 
 	it('imports the legacy JSON once and leaves it available for recovery', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'shard-sync-'));
+		const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-sync-'));
 		directories.push(directory);
 		const legacyFile = join(directory, 'users.json');
 		const legacy = JSON.stringify({
@@ -317,7 +317,7 @@ describe('SQLite sync store', () => {
 			10
 		);
 
-		const snapshotDirectory = mkdtempSync(join(tmpdir(), 'shard-snapshot-'));
+		const snapshotDirectory = mkdtempSync(join(tmpdir(), 'scraps-cache-snapshot-'));
 		directories.push(snapshotDirectory);
 		const snapshotPath = join(snapshotDirectory, 'snapshot.sqlite');
 		await store.backup(snapshotPath);
@@ -325,7 +325,7 @@ describe('SQLite sync store', () => {
 		// Later live writes must not appear in the already-taken snapshot.
 		store.sync('account', 2, [{ id: 'note-3', slot: slot('c'), ciphertext: 'cipher-c' }], 10);
 
-		const restoredDirectory = mkdtempSync(join(tmpdir(), 'shard-restored-'));
+		const restoredDirectory = mkdtempSync(join(tmpdir(), 'scraps-cache-restored-'));
 		directories.push(restoredDirectory);
 		copyFileSync(snapshotPath, join(restoredDirectory, 'sync.sqlite'));
 		const restored = new SyncStore(restoredDirectory);

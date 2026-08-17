@@ -154,7 +154,7 @@
 		if (!event.dataTransfer) return;
 		event.dataTransfer.effectAllowed = 'move';
 		event.dataTransfer.setData(
-			'application/x-shard-kanban',
+			'application/x-scraps-cache-kanban',
 			JSON.stringify({ noteId: note.id, sourceColumnId })
 		);
 		setNativeDragGhost(event);
@@ -204,7 +204,7 @@
 		{/if}
 		{#if note.title}
 			<h3
-				class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--shard-text)]"
+				class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--scraps-cache-text)]"
 			>
 				{note.title}
 			</h3>
@@ -216,7 +216,7 @@
 		<div class="flex flex-wrap gap-1 px-3 pb-3">
 			{#each labelsForNote as label (label.id)}
 				<span
-					class="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-[var(--shard-text-muted)] dark:bg-white/10"
+					class="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-[var(--scraps-cache-text-muted)] dark:bg-white/10"
 					>{label.name}</span
 				>
 			{/each}

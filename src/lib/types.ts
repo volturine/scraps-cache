@@ -1,6 +1,6 @@
 import type { LinkPreview } from './linkPreview';
 
-// Core domain types for Shard notes.
+// Core domain types for Scraps Cache notes.
 
 export type NoteColor =
 	| 'default'
@@ -87,7 +87,7 @@ export interface Label {
 	updatedAt: number;
 }
 
-/** Map of color -> hex used by Shard. */
+/** Map of color -> hex used by Scraps Cache. */
 export const NOTE_COLORS: Record<NoteColor, string> = {
 	default: '#ffffff',
 	red: '#f28b82',

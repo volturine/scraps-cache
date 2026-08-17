@@ -1,6 +1,6 @@
-# Contributing to Shard
+# Contributing to Scraps Cache
 
-Thanks for your interest in improving Shard. This guide covers how to develop
+Thanks for your interest in improving Scraps Cache. This guide covers how to develop
 locally, what we expect in pull requests, and where design docs live.
 
 By participating, you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
@@ -27,8 +27,8 @@ not learn note plaintext.
 ### Install and run
 
 ```sh
-git clone https://github.com/volturine/shard-notes.git
-cd shard-notes
+git clone https://github.com/volturine/scraps-cache.git
+cd scraps-cache
 npm install
 npm run dev -- --host 0.0.0.0
 ```

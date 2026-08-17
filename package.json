@@ -1,17 +1,17 @@
 {
-	"name": "shard-notes",
+	"name": "scraps-cache",
 	"private": true,
 	"version": "0.0.1",
 	"description": "Offline-first notes with optional end-to-end encrypted cloud sync",
 	"license": "MIT",
 	"author": "Roland Rajcsanyi",
-	"homepage": "https://github.com/volturine/shard-notes#readme",
+	"homepage": "https://github.com/volturine/scraps-cache#readme",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/volturine/shard-notes.git"
+		"url": "git+https://github.com/volturine/scraps-cache.git"
 	},
 	"bugs": {
-		"url": "https://github.com/volturine/shard-notes/issues"
+		"url": "https://github.com/volturine/scraps-cache/issues"
 	},
 	"keywords": [
 		"notes",

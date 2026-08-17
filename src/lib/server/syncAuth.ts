@@ -3,7 +3,7 @@ import { sha256 as sha256Bytes } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 
 export function syncSecretHash(secret: string): string {
-	return bytesToHex(sha256Bytes(new TextEncoder().encode(`shard-sync-secret:v1:${secret}`)));
+	return bytesToHex(sha256Bytes(new TextEncoder().encode(`scraps-cache-sync-secret:v1:${secret}`)));
 }
 
 export function sameSyncSecret(expectedHash: string, secret: string): boolean {
