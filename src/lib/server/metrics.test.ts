@@ -1,0 +1,25 @@
+import { describe, expect, it } from 'vitest';
+import { renderMetrics } from './metrics';
+
+describe('renderMetrics', () => {
+	it('emits anonymous storage, activity, and retention gauges', () => {
+		const body = renderMetrics(
+			{ lastAttemptAt: 2_000, lastSuccessAt: 2_000, failures: 0, durationMs: 5 },
+			{
+				accounts: 4,
+				envelopeCount: 8,
+				ciphertextBytes: 1_500_000_000,
+				gigabytes: 1.5,
+				activeByWindowDays: { '1': 1, '7': 3 },
+				staleAccounts: 2
+			},
+			{ enabled: true, inactiveDays: 365, lastRunAt: 2_000, deletedAccountsTotal: 0 }
+		);
+		expect(body).toContain('scraps-cache_sync_storage_gigabytes 1.5');
+		expect(body).toContain('scraps-cache_sync_stale_accounts 2');
+		expect(body).toContain('scraps-cache_sync_accounts_active{window_days="1"} 1');
+		expect(body).toContain('scraps-cache_retention_enabled 1');
+		expect(body).toContain('scraps-cache_retention_inactive_days 365');
+		expect(body).not.toMatch(/account-[a-z0-9]+|credential/i);
+	});
+});

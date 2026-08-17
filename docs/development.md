@@ -38,6 +38,8 @@ a private window) against the same origin and exercise pairing in the Sync UI.
 - Shared setup: `src/tests/setup.ts` (e.g. fake IndexedDB)
 - Server backup/restore: `syncStore.test.ts` (online backup → reopen) and
   `backupManager.test.ts` (verified snapshots, retention, concurrency, failures)
+- Operator monitoring / inactive-account retention: `operatorMonitor.test.ts`,
+  `retentionManager.test.ts`, `operatorConfig.test.ts`
 
 Prefer tests for:
 

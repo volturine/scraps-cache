@@ -2,6 +2,7 @@
 // notes, labels, images, tombstones, or any decryptable user payload.
 import Database from 'better-sqlite3';
 import { env } from '$env/dynamic/private';
+import { ACTIVITY_WINDOWS_DAYS } from '$lib/server/operatorConfig';
 import { accessSync, constants, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -33,6 +34,17 @@ type AccountRow = {
 type UsageRow = {
 	envelopeCount: number;
 	ciphertextBytes: number;
+};
+
+export type SyncQuotas = {
+	maxAccountBytes: number;
+	maxAccountEnvelopes: number;
+};
+
+export type OperatorUsage = UsageRow & {
+	accounts: number;
+	activeByWindowDays: Record<string, number>;
+	staleAccounts: number;
 };
 
 type LegacyUser = {
@@ -123,7 +135,8 @@ export class SyncStore {
 				next_seq INTEGER NOT NULL DEFAULT 0,
 				envelope_count INTEGER NOT NULL DEFAULT 0,
 				ciphertext_bytes INTEGER NOT NULL DEFAULT 0,
-				updated_at INTEGER NOT NULL
+				updated_at INTEGER NOT NULL,
+				last_seen_at INTEGER NOT NULL
 			);
 			CREATE TABLE IF NOT EXISTS envelopes (
 				account_id TEXT NOT NULL,
@@ -175,7 +188,7 @@ export class SyncStore {
 			DROP TABLE IF EXISTS reminder_wakes;
 			DROP TABLE IF EXISTS push_subscriptions;
 		`);
-		this.ensureUsageColumns();
+		this.ensureAccountColumns();
 		this.migrateLegacyJson(join(dataDirectory, 'users.json'));
 		this.migrateUsageCounters();
 	}
@@ -200,12 +213,12 @@ export class SyncStore {
 			.prepare(
 				`
 			INSERT OR IGNORE INTO accounts(
-				account_id, credential_hash, next_seq, envelope_count, ciphertext_bytes, updated_at
+				account_id, credential_hash, next_seq, envelope_count, ciphertext_bytes, updated_at, last_seen_at
 			)
-			VALUES (?, ?, 0, 0, 0, ?)
+			VALUES (?, ?, 0, 0, 0, ?, ?)
 		`
 			)
-			.run(accountId, credentialHash, updatedAt);
+			.run(accountId, credentialHash, updatedAt, updatedAt);
 		return result.changes === 1;
 	}
 
@@ -295,16 +308,19 @@ export class SyncStore {
 				added = true;
 			}
 
+			const seenAt = Date.now();
 			if (added || deletions.length > 0) {
 				this.database
 					.prepare(
 						`
 					UPDATE accounts
-					SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?, updated_at = ?
+					SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?, updated_at = ?, last_seen_at = ?
 					WHERE account_id = ?
 				`
 					)
-					.run(sequence, envelopeCount, ciphertextBytes, Date.now(), accountId);
+					.run(sequence, envelopeCount, ciphertextBytes, seenAt, seenAt, accountId);
+			} else {
+				this.touchAccount(accountId, seenAt);
 			}
 
 			const afterRemote = remote.at(-1)?.seq ?? cursor;
@@ -333,6 +349,67 @@ export class SyncStore {
 			this.database.prepare('DELETE FROM accounts WHERE account_id = ?').run(accountId).changes ===
 			1
 		);
+	}
+
+	touchAccount(accountId: string, now = Date.now()): void {
+		this.database
+			.prepare('UPDATE accounts SET last_seen_at = ? WHERE account_id = ?')
+			.run(now, accountId);
+	}
+
+	getQuotas(): SyncQuotas {
+		return {
+			maxAccountBytes: this.maxAccountBytes,
+			maxAccountEnvelopes: this.maxAccountEnvelopes
+		};
+	}
+
+	operatorUsage(
+		options: {
+			now?: number;
+			staleBefore?: number | null;
+		} = {}
+	): OperatorUsage {
+		const now = options.now ?? Date.now();
+		const windows = ACTIVITY_WINDOWS_DAYS;
+		const staleBefore = options.staleBefore ?? null;
+		const activeSelects = windows
+			.map(
+				(_, index) =>
+					`COALESCE(SUM(CASE WHEN last_seen_at >= ? THEN 1 ELSE 0 END), 0) AS active_${index}`
+			)
+			.join(',\n');
+		const sql = `
+			SELECT
+				COUNT(*) AS accounts,
+				COALESCE(SUM(envelope_count), 0) AS envelopeCount,
+				COALESCE(SUM(ciphertext_bytes), 0) AS ciphertextBytes,
+				${activeSelects ? `${activeSelects},` : ''}
+				COALESCE(SUM(CASE WHEN last_seen_at < ? THEN 1 ELSE 0 END), 0) AS staleAccounts
+			FROM accounts
+		`;
+		const row = this.database
+			.prepare(sql)
+			.get(...windows.map((days) => now - days * 24 * 60 * 60 * 1000), staleBefore ?? 0) as Record<
+			string,
+			number
+		>;
+		const activeByWindowDays: Record<string, number> = {};
+		for (const [index, days] of windows.entries()) {
+			activeByWindowDays[String(days)] = row[`active_${index}`] ?? 0;
+		}
+		return {
+			accounts: row.accounts,
+			envelopeCount: row.envelopeCount,
+			ciphertextBytes: row.ciphertextBytes,
+			activeByWindowDays,
+			staleAccounts: staleBefore == null ? 0 : row.staleAccounts
+		};
+	}
+
+	deleteInactiveAccounts(staleBefore: number): number {
+		return this.database.prepare('DELETE FROM accounts WHERE last_seen_at < ?').run(staleBefore)
+			.changes;
 	}
 
 	getMeta(key: string): string | null {
@@ -409,6 +486,7 @@ export class SyncStore {
 					device.auth,
 					Date.now()
 				);
+			this.touchAccount(device.accountId);
 		})();
 	}
 
@@ -431,6 +509,7 @@ export class SyncStore {
 					)`
 				)
 				.run(accountId);
+			this.touchAccount(accountId);
 		})();
 	}
 
@@ -512,6 +591,7 @@ export class SyncStore {
 		this.database
 			.prepare('DELETE FROM reminder_push_devices WHERE account_id = ? AND device_id = ?')
 			.run(accountId, deviceId);
+		this.touchAccount(accountId);
 	}
 
 	nextWakeAt(now = Date.now()): number | null {
@@ -585,7 +665,7 @@ export class SyncStore {
 			.get() as UsageRow & { accounts: number };
 	}
 
-	private ensureUsageColumns(): void {
+	private ensureAccountColumns(): void {
 		const columns = new Set(
 			(this.database.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>).map(
 				(column) => column.name
@@ -601,6 +681,13 @@ export class SyncStore {
 				'ALTER TABLE accounts ADD COLUMN ciphertext_bytes INTEGER NOT NULL DEFAULT 0'
 			);
 		}
+		if (!columns.has('last_seen_at')) {
+			this.database.exec('ALTER TABLE accounts ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0');
+			this.database.exec('UPDATE accounts SET last_seen_at = updated_at WHERE last_seen_at = 0');
+		}
+		this.database.exec(
+			'CREATE INDEX IF NOT EXISTS accounts_last_seen_at ON accounts(last_seen_at)'
+		);
 	}
 
 	private migrateUsageCounters(): void {
@@ -637,9 +724,9 @@ export class SyncStore {
 				}
 				const insertAccount = this.database.prepare(`
 					INSERT OR IGNORE INTO accounts(
-						account_id, credential_hash, next_seq, envelope_count, ciphertext_bytes, updated_at
+						account_id, credential_hash, next_seq, envelope_count, ciphertext_bytes, updated_at, last_seen_at
 					)
-					VALUES (?, ?, ?, 0, 0, ?)
+					VALUES (?, ?, ?, 0, 0, ?, ?)
 				`);
 				const insertEnvelope = this.database.prepare(`
 					INSERT OR REPLACE INTO envelopes(account_id, slot, seq, id, ciphertext)
@@ -657,12 +744,8 @@ export class SyncStore {
 						...envelopes.map((envelope) => envelope.seq),
 						0
 					);
-					insertAccount.run(
-						accountId,
-						user.credentialHash,
-						maxSequence,
-						Number(user.updatedAt) || Date.now()
-					);
+					const updatedAt = Number(user.updatedAt) || Date.now();
+					insertAccount.run(accountId, user.credentialHash, maxSequence, updatedAt, updatedAt);
 					for (const envelope of envelopes) {
 						insertEnvelope.run(
 							accountId,

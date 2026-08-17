@@ -71,8 +71,13 @@ the long-term attachment format.
   `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, restrictive
   `Permissions-Policy`
 - **Rate limiting** — in-memory token buckets for register, pairing, and sync
-- **Admin token** — required for `/metrics` and `POST /api/admin/backup` in
-  production Compose
+- **Admin token** — required for `/metrics`, `GET /api/admin/status`,
+  `POST /api/admin/backup`, and `POST /api/admin/retention` in production Compose
+- **Operator status** — anonymous aggregates only (storage, account counts,
+  activity windows). No account IDs, ciphertext, or credentials
+- **Account retention** — optional; a daily sweep deletes unused relay accounts
+  after `SCRAPS_CACHE_RETENTION_INACTIVE_DAYS` with no authenticated activity.
+  Disabled by default. Sweep logs report counts only
 - **No remote link previews** — URL cards are local hostname badges only;
   opening a link is an explicit user action
 - **Docker** — unprivileged-oriented Compose, read-only root filesystem,
@@ -135,5 +140,8 @@ app is in use; browser storage isolation is the boundary.
 | Relay storage            | `src/lib/server/syncStore.ts`                   |
 | Reminder wakes           | `src/lib/server/wakeScheduler.ts`, `webPush.ts` |
 | Rate limits              | `src/lib/server/rateLimit.ts`                   |
+| Admin auth               | `src/lib/server/adminAuth.ts`                   |
+| Operator status          | `src/lib/server/operatorMonitor.ts`             |
+| Account retention        | `src/lib/server/retentionManager.ts`            |
 | CSP                      | `svelte.config.js`                              |
 | Security headers         | `src/hooks.server.ts`                           |
