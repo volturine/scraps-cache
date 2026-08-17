@@ -40,6 +40,19 @@ describe('appKeyboardFrame', () => {
 		).toEqual({ viewportOffsetTop: 0, keyboardTop: 21, keyboardBottom: 404 });
 	});
 
+	it('docks a backup sheet to the visual viewport including the suggestion bar', () => {
+		expect(
+			appKeyboardFrame({
+				editorOpen: false,
+				dockToKeyboard: true,
+				visualTop: 0,
+				visualHeight: 420,
+				layoutHeight: 500,
+				occlusion: { top: 0, bottom: 0 }
+			})
+		).toEqual({ viewportOffsetTop: 0, keyboardTop: 0, keyboardBottom: 80 });
+	});
+
 	it('anchors an open note and keeps its keyboard height independent of visual panning', () => {
 		const frame = (visualTop: number, occlusion: { top: number; bottom: number }) =>
 			appKeyboardFrame({

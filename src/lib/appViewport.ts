@@ -96,17 +96,28 @@ export type AppKeyboardFrame = {
 };
 
 /**
- * An open editor or backup dialog is anchored to the visual screen, not
- * Safari's panned layout viewport. Offset is countered at the root while
- * keyboard height stays stable so later field focus does not move the app.
+ * An open editor is anchored to the visual screen, not Safari's panned layout
+ * viewport. Offset is countered at the root while keyboard height stays stable.
+ *
+ * A docked backup sheet uses the visual viewport height even when
+ * resizes-content already shrank innerHeight — the iOS suggestion bar is
+ * often shorter than the occlusion threshold and would otherwise cover it.
  */
 export function appKeyboardFrame(options: {
 	editorOpen: boolean;
+	dockToKeyboard?: boolean;
 	visualTop: number;
 	visualHeight: number;
 	layoutHeight: number;
 	occlusion: { top: number; bottom: number };
 }): AppKeyboardFrame {
+	if (options.dockToKeyboard) {
+		return {
+			viewportOffsetTop: Math.max(0, options.visualTop),
+			keyboardTop: 0,
+			keyboardBottom: Math.max(0, options.layoutHeight - options.visualHeight)
+		};
+	}
 	if (!options.editorOpen) {
 		return {
 			viewportOffsetTop: 0,
@@ -192,7 +203,8 @@ export function attachAppViewport(_node: HTMLElement) {
 				})
 			: { top: 0, bottom: 0 };
 		const keyboardFrame = appKeyboardFrame({
-			editorOpen: onPhone && (editorOpen || (backupDialogOpen && fieldFocused)),
+			editorOpen: onPhone && editorOpen,
+			dockToKeyboard: onPhone && backupDialogOpen && fieldFocused,
 			visualTop,
 			visualHeight,
 			layoutHeight,
