@@ -96,8 +96,9 @@ export type AppKeyboardFrame = {
 };
 
 /**
- * An open editor is anchored to the visual screen, not Safari's panned layout
- * viewport. Offset is countered at the root while keyboard height stays stable.
+ * An open editor or backup dialog is anchored to the visual screen, not
+ * Safari's panned layout viewport. Offset is countered at the root while
+ * keyboard height stays stable so later field focus does not move the app.
  */
 export function appKeyboardFrame(options: {
 	editorOpen: boolean;
@@ -159,6 +160,7 @@ export function attachAppViewport(_node: HTMLElement) {
 	let fieldFocused = isKeyboardField(document.activeElement);
 	let restingLayoutHeight = window.innerHeight;
 	let editorOpen = document.documentElement.classList.contains('editor-open');
+	let backupDialogOpen = document.documentElement.classList.contains('backup-dialog-open');
 	const phone = window.matchMedia(PHONE_MEDIA);
 
 	const apply = () => {
@@ -190,7 +192,7 @@ export function attachAppViewport(_node: HTMLElement) {
 				})
 			: { top: 0, bottom: 0 };
 		const keyboardFrame = appKeyboardFrame({
-			editorOpen: onPhone && editorOpen,
+			editorOpen: onPhone && (editorOpen || (backupDialogOpen && fieldFocused)),
 			visualTop,
 			visualHeight,
 			layoutHeight,
@@ -221,8 +223,10 @@ export function attachAppViewport(_node: HTMLElement) {
 	};
 	const editorClassObserver = new MutationObserver(() => {
 		const nextEditorOpen = document.documentElement.classList.contains('editor-open');
-		if (nextEditorOpen === editorOpen) return;
+		const nextBackupDialogOpen = document.documentElement.classList.contains('backup-dialog-open');
+		if (nextEditorOpen === editorOpen && nextBackupDialogOpen === backupDialogOpen) return;
 		editorOpen = nextEditorOpen;
+		backupDialogOpen = nextBackupDialogOpen;
 		apply();
 	});
 

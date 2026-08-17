@@ -1,10 +1,6 @@
 <script lang="ts">
 	import { portalToAppOverlay } from '$lib/appViewport';
 
-	function keepViewportStill() {
-		window.scrollTo(0, 0);
-	}
-
 	let {
 		mode,
 		busy = false,
@@ -41,13 +37,27 @@
 	function keydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && !busy) onClose();
 	}
+
+	function portalBackupDialog(node: HTMLElement) {
+		document.documentElement.classList.add('backup-dialog-open');
+		const cleanup = portalToAppOverlay(node);
+		return () => {
+			document.documentElement.classList.remove('backup-dialog-open');
+			cleanup();
+		};
+	}
+
+	function focusOnAttach(node: HTMLInputElement) {
+		node.focus();
+	}
 </script>
 
 <svelte:window onkeydown={keydown} />
 
 <div
-	{@attach portalToAppOverlay}
-	class="fixed inset-0 z-[70] grid place-items-start justify-items-center bg-black/45 p-4 md:place-items-center"
+	{@attach portalBackupDialog}
+	data-backup-dialog
+	class="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4"
 	role="presentation"
 	onclick={(event) => {
 		if (event.target === event.currentTarget && !busy) onClose();
@@ -81,11 +91,11 @@
 					>Backup passphrase</span
 				>
 				<input
+					{@attach focusOnAttach}
 					type="password"
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}
 					disabled={busy}
-					onfocus={keepViewportStill}
 					class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-sm"
 				/>
 			</label>
@@ -100,7 +110,6 @@
 						autocomplete="new-password"
 						bind:value={confirmation}
 						disabled={busy}
-						onfocus={keepViewportStill}
 						class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-sm"
 					/>
 				</label>

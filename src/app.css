@@ -65,6 +65,11 @@
 		visibility: hidden;
 		pointer-events: none;
 	}
+	/* Sit the backup sheet on the keyboard once. Both fields are then already
+	 * in the visual area, so moving focus between them does not pan the app. */
+	html.keyboard-open [data-backup-dialog] {
+		align-items: end;
+	}
 }
 
 @media (min-width: 640px) {
@@ -175,7 +180,7 @@ html.editor-open .app-shell {
 /* Global dialogs must sit above the mobile sidebar as well as the canvas. */
 .app-overlay {
 	position: absolute;
-	inset: 0;
+	inset: var(--app-keyboard-top) 0 var(--app-keyboard-bottom);
 	z-index: 100;
 	pointer-events: none;
 }
