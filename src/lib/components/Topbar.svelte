@@ -111,13 +111,7 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		// 'c' or Ctrl+/ focuses composer
-		if (e.key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-			const target = e.target as HTMLElement;
-			if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
-			e.preventDefault();
-			startNewNote();
-		}
+		// Ctrl+/ focuses composer.
 		if ((e.ctrlKey || e.metaKey) && e.key === '/') {
 			e.preventDefault();
 			startNewNote();
