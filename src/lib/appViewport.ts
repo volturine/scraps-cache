@@ -96,8 +96,10 @@ export type AppKeyboardFrame = {
 };
 
 /**
- * An open editor is anchored to the visual screen, not Safari's panned layout
- * viewport. Offset is countered at the root while keyboard height stays stable.
+ * Keep the notes canvas on the visual screen. Safari may pan the layout
+ * viewport when a field is focused; that offset is countered at the root.
+ * The floating layer then shrinks to the remaining visual area so dialogs
+ * and the editor sit above the keyboard without dragging the feed.
  */
 export function appKeyboardFrame(options: {
 	editorOpen: boolean;
@@ -106,14 +108,15 @@ export function appKeyboardFrame(options: {
 	layoutHeight: number;
 	occlusion: { top: number; bottom: number };
 }): AppKeyboardFrame {
-	if (!options.editorOpen) {
+	const keyboardOverlaysLayout = options.occlusion.top > 0 || options.occlusion.bottom > 0;
+	const anchorCanvas = options.editorOpen || keyboardOverlaysLayout;
+	if (!anchorCanvas) {
 		return {
 			viewportOffsetTop: 0,
-			keyboardTop: options.occlusion.top,
-			keyboardBottom: options.occlusion.bottom
+			keyboardTop: 0,
+			keyboardBottom: 0
 		};
 	}
-	const keyboardOverlaysLayout = options.occlusion.top > 0 || options.occlusion.bottom > 0;
 	if (!keyboardOverlaysLayout) {
 		return {
 			viewportOffsetTop: Math.max(0, options.visualTop),

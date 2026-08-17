@@ -172,10 +172,12 @@ html.editor-open .app-shell {
 	pointer-events: auto;
 }
 
-/* Global dialogs must sit above the mobile sidebar as well as the canvas. */
+/* Global dialogs must sit above the mobile sidebar as well as the canvas.
+ * Same keyboard insets as .app-float so a focused dialog lifts without
+ * panning the notes underneath. */
 .app-overlay {
 	position: absolute;
-	inset: 0;
+	inset: var(--app-keyboard-top) 0 var(--app-keyboard-bottom);
 	z-index: 100;
 	pointer-events: none;
 }

@@ -326,6 +326,18 @@ describe('NoteEditor task focus', () => {
 		expect(toggle.getAttribute('aria-pressed')).toBe('true');
 	});
 
+	it('shows restore instead of archive for a trashed note', () => {
+		notesStore.notes = [note({ trashed: true, trashedAt: 1 })];
+		const restore = vi.spyOn(notesStore, 'restoreNote').mockImplementation(() => {});
+		const { getByRole, queryByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		expect(queryByRole('button', { name: 'Archive' })).toBeNull();
+		void fireEvent.click(getByRole('button', { name: 'Restore' }));
+		expect(restore).toHaveBeenCalledWith('note-1');
+	});
+
 	it('drops task focus when the editor loses focus and the keyboard is dismissed', async () => {
 		notesStore.notes = [note({ body: '[ ] Avocados\n  [ ] tes' })];
 		const { container } = render(NoteEditor, {

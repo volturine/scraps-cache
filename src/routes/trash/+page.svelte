@@ -1,5 +1,4 @@
 <script lang="ts">
-	import TrashCard from '$lib/components/TrashCard.svelte';
 	import NotesFeed from '$lib/components/NotesFeed.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { notesShellClass } from '$lib/notesShell';
@@ -62,10 +61,6 @@
 			</div>
 		</div>
 
-		<NotesFeed notes={trashed} onOpen={openEditor}>
-			{#snippet children(note)}
-				<TrashCard {note} onOpen={openEditor} />
-			{/snippet}
-		</NotesFeed>
+		<NotesFeed notes={trashed} onOpen={openEditor} />
 	{/if}
 </div>

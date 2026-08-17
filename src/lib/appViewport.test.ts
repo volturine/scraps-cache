@@ -28,7 +28,7 @@ describe('appBottomInset', () => {
 });
 
 describe('appKeyboardFrame', () => {
-	it('keeps the generic floating layer aligned to the visual viewport', () => {
+	it('keeps the notes canvas still and only shrinks the floating layer for a focused dialog', () => {
 		expect(
 			appKeyboardFrame({
 				editorOpen: false,
@@ -37,7 +37,7 @@ describe('appKeyboardFrame', () => {
 				layoutHeight: 844,
 				occlusion: { top: 21, bottom: 404 }
 			})
-		).toEqual({ viewportOffsetTop: 0, keyboardTop: 21, keyboardBottom: 404 });
+		).toEqual({ viewportOffsetTop: 80, keyboardTop: 0, keyboardBottom: 484 });
 	});
 
 	it('anchors an open note and keeps its keyboard height independent of visual panning', () => {

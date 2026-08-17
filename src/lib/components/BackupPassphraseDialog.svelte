@@ -50,7 +50,7 @@
 	}}
 >
 	<div
-		class="scraps-cache-dialog w-full max-w-sm overflow-hidden"
+		class="scraps-cache-dialog w-full max-w-sm max-h-full overflow-y-auto"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="backup-dialog-title"
