@@ -41,6 +41,30 @@ describe('BodyEditor native editing', () => {
 		expect(toggle.getAttribute('aria-pressed')).toBe('true');
 	});
 
+	it('does not focus a task when a checkbox touch ends over its label', () => {
+		const onFocusTask = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Task', onFocusTask }
+		});
+		const toggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;
+		const label = container.querySelector('[data-line-text]') as HTMLElement;
+		const pointer = (type: string, target: Element) => {
+			const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+			Object.defineProperties(event, {
+				pointerId: { value: 7 },
+				pointerType: { value: 'touch' }
+			});
+			target.dispatchEvent(event);
+		};
+
+		pointer('pointerdown', toggle);
+		pointer('pointerup', label);
+		label.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+		expect(onFocusTask).not.toHaveBeenCalled();
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
+	});
+
 	it('replaces an empty root task with a focused plain-text line', async () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] \nafter' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
