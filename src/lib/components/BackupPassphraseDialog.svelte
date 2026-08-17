@@ -38,20 +38,20 @@
 		if (event.key === 'Escape' && !busy) onClose();
 	}
 
-	function portalBackupDialog(node: HTMLElement) {
-		document.documentElement.classList.add('backup-dialog-open');
-		const cleanup = portalToAppOverlay(node);
-		return () => {
-			document.documentElement.classList.remove('backup-dialog-open');
-			cleanup();
-		};
+	/** iOS pans the page to the focused field. Take focus ourselves so it does not. */
+	function focusWithoutPan(event: PointerEvent) {
+		const input = event.currentTarget;
+		if (!(input instanceof HTMLInputElement) || input.disabled) return;
+		if (document.activeElement === input) return;
+		event.preventDefault();
+		input.focus({ preventScroll: true });
 	}
 </script>
 
 <svelte:window onkeydown={keydown} />
 
 <div
-	{@attach portalBackupDialog}
+	{@attach portalToAppOverlay}
 	class="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 p-4"
 	role="presentation"
 	onclick={(event) => {
@@ -90,6 +90,7 @@
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}
 					disabled={busy}
+					onpointerdown={focusWithoutPan}
 					class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-[16px]"
 				/>
 			</label>
@@ -104,6 +105,7 @@
 						autocomplete="new-password"
 						bind:value={confirmation}
 						disabled={busy}
+						onpointerdown={focusWithoutPan}
 						class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-[16px]"
 					/>
 				</label>
