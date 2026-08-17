@@ -120,10 +120,14 @@
 		if (!isOpen || !editorDialog || !editorScroller) return;
 		const focused = document.activeElement;
 		if (!(focused instanceof HTMLElement) || !editorDialog.contains(focused)) return;
-		const field = focused.closest(
-			'input, textarea, select, [contenteditable]'
-		) as HTMLElement | null;
+		let field = focused.closest('input, textarea, select, [contenteditable]') as HTMLElement | null;
 		if (!field) return;
+		if (field.matches('[data-body-editor]')) {
+			const anchor = window.getSelection()?.anchorNode;
+			const anchorElement = anchor instanceof Element ? anchor : anchor?.parentElement;
+			const selectedLine = anchorElement?.closest('[data-editor-line]') as HTMLElement | null;
+			if (selectedLine && field.contains(selectedLine)) field = selectedLine;
+		}
 
 		revealEditorField(editorScroller, field);
 	}
@@ -476,7 +480,7 @@
 									focusBodySignal++;
 								}
 							}}
-							class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--shard-text)] placeholder:text-[var(--shard-text-muted)] outline-none"
+							class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--scraps-cache-text)] placeholder:text-[var(--scraps-cache-text-muted)] outline-none"
 						/>
 
 						<BodyEditor

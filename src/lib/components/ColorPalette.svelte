@@ -15,7 +15,7 @@
 	}
 </script>
 
-<div class="shard-popover grid grid-cols-4 gap-3 p-4">
+<div class="scraps-cache-popover grid grid-cols-4 gap-3 p-4">
 	{#each NOTE_COLOR_ORDER as c (c)}
 		<button
 			type="button"

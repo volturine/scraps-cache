@@ -5,7 +5,7 @@ import { backupManager } from '$lib/server/backupManager';
 import { getSyncStore } from '$lib/server/syncStore';
 
 export const GET: RequestHandler = ({ request }) => {
-	const expected = env.SHARD_ADMIN_TOKEN;
+	const expected = env.SCRAPS_CACHE_ADMIN_TOKEN;
 	if (!expected || request.headers.get('authorization') !== `Bearer ${expected}`) {
 		return new Response('Not found\n', { status: 404 });
 	}

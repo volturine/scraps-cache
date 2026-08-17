@@ -22,7 +22,7 @@
 	{:else}
 		<div class={shell}>
 			<h2
-				class="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]"
+				class="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-[var(--scraps-cache-text-muted)]"
 			>
 				Reminders
 			</h2>

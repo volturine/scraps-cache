@@ -48,12 +48,12 @@ export class BackupManager {
 	private status: BackupStatus;
 
 	constructor(options: BackupManagerOptions = {}) {
-		this.directory = options.directory ?? env.SHARD_BACKUP_DIR ?? '';
+		this.directory = options.directory ?? env.SCRAPS_CACHE_BACKUP_DIR ?? '';
 		this.intervalMs =
 			positiveNumber(
 				options.intervalHours !== undefined
 					? String(options.intervalHours)
-					: env.SHARD_BACKUP_INTERVAL_HOURS,
+					: env.SCRAPS_CACHE_BACKUP_INTERVAL_HOURS,
 				24
 			) *
 			60 *
@@ -63,7 +63,7 @@ export class BackupManager {
 			1,
 			Math.floor(
 				positiveNumber(
-					options.retain !== undefined ? String(options.retain) : env.SHARD_BACKUP_RETAIN,
+					options.retain !== undefined ? String(options.retain) : env.SCRAPS_CACHE_BACKUP_RETAIN,
 					2
 				)
 			)
@@ -107,8 +107,8 @@ export class BackupManager {
 		this.status.lastAttemptAt = Date.now();
 		const startedAt = Date.now();
 		const stamp = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
-		const temporary = join(this.directory, `.shard-sync-${stamp}.tmp.sqlite`);
-		const destination = join(this.directory, `shard-sync-${stamp}.sqlite`);
+		const temporary = join(this.directory, `.scraps-cache-sync-${stamp}.tmp.sqlite`);
+		const destination = join(this.directory, `scraps-cache-sync-${stamp}.sqlite`);
 		try {
 			mkdirSync(this.directory, { recursive: true });
 			await this.source.backup(temporary);
@@ -161,7 +161,7 @@ export class BackupManager {
 
 	private prune(): void {
 		const files = readdirSync(this.directory)
-			.filter((file) => /^shard-sync-.*\.sqlite$/.test(file))
+			.filter((file) => /^scraps-cache-sync-.*\.sqlite$/.test(file))
 			.sort()
 			.reverse();
 		for (const file of files.slice(this.retain)) {

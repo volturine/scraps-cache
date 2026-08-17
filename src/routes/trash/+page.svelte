@@ -28,13 +28,17 @@
 	{:else}
 		<div class={shell}>
 			<div class="mb-3 flex items-center gap-3 px-2">
-				<h2 class="text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]">
+				<h2
+					class="text-xs font-semibold uppercase tracking-wide text-[var(--scraps-cache-text-muted)]"
+				>
 					Trash
 				</h2>
-				<span class="text-xs text-[var(--shard-text-muted)] opacity-60">{trashed.length}</span>
+				<span class="text-xs text-[var(--scraps-cache-text-muted)] opacity-60"
+					>{trashed.length}</span
+				>
 				<div class="flex-1"></div>
 				{#if confirmEmpty}
-					<span class="text-xs text-[var(--shard-text-muted)]">Delete all?</span>
+					<span class="text-xs text-[var(--scraps-cache-text-muted)]">Delete all?</span>
 					<button
 						type="button"
 						onclick={emptyTrash}
@@ -44,14 +48,14 @@
 					<button
 						type="button"
 						onclick={() => (confirmEmpty = false)}
-						class="rounded-full px-3 py-1 text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+						class="rounded-full px-3 py-1 text-xs text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 						>No</button
 					>
 				{:else}
 					<button
 						type="button"
 						onclick={() => (confirmEmpty = true)}
-						class="rounded-full px-3 py-1 text-xs text-[var(--shard-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+						class="rounded-full px-3 py-1 text-xs text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 						>Empty</button
 					>
 				{/if}

@@ -1,6 +1,6 @@
 {
-	"name": "Shard",
-	"short_name": "Shard",
+	"name": "Scraps Cache",
+	"short_name": "Scraps Cache",
 	"description": "Offline-first notes with optional end-to-end encrypted sync",
 	"start_url": "/",
 	"scope": "/",

@@ -63,9 +63,11 @@ export function identityFromSyncKey(syncKey: string): SyncIdentity {
 	const raw = base64UrlToBytes(syncKey);
 	if (raw.length !== 32) throw new Error('Invalid sync key');
 	const accountId = bytesToBase64Url(
-		sha256(encoder.encode(`shard-account-id:v1:${syncKey}`)).slice(0, 18)
+		sha256(encoder.encode(`scraps-cache-account-id:v1:${syncKey}`)).slice(0, 18)
 	);
-	const authSecret = bytesToBase64Url(sha256(encoder.encode(`shard-account-auth:v1:${syncKey}`)));
+	const authSecret = bytesToBase64Url(
+		sha256(encoder.encode(`scraps-cache-account-auth:v1:${syncKey}`))
+	);
 	return {
 		syncKey,
 		accountId,
@@ -82,16 +84,16 @@ export function randomOpaqueId(): string {
 export function pairingCodeTag(code: string): string {
 	const normalized = normalizePairingCode(code);
 	if (!normalized) throw new Error('Pairing code is invalid');
-	return bytesToHex(sha256(encoder.encode(`shard-pairing-tag:v1:${normalized}`)));
+	return bytesToHex(sha256(encoder.encode(`scraps-cache-pairing-tag:v1:${normalized}`)));
 }
 function pakeInputs(code: string) {
 	const normalized = normalizePairingCode(code);
 	if (!normalized) throw new Error('Pairing code is invalid');
 	const tag = pairingCodeTag(normalized);
 	return {
-		PRS: sha256(encoder.encode(`shard-pake-prs:v1:${normalized}`)),
+		PRS: sha256(encoder.encode(`scraps-cache-pake-prs:v1:${normalized}`)),
 		sid: encoder.encode(tag),
-		CI: encoder.encode('shard-sync-rendezvous:v1')
+		CI: encoder.encode('scraps-cache-sync-rendezvous:v1')
 	};
 }
 export function createPairingRequestKey(code: string): PairingRequestKey {
@@ -111,7 +113,7 @@ function pakeKey(code: string, own: PairingRequestKey, peerShare: string): Uint8
 		ownAD: inputs.CI,
 		peerAD: inputs.CI
 	});
-	return sha256(encoder.encode(`shard-pake-transfer:v1:${bytesToBase64Url(isk)}`));
+	return sha256(encoder.encode(`scraps-cache-pake-transfer:v1:${bytesToBase64Url(isk)}`));
 }
 export function sealSyncKeyForPeer(
 	syncKey: string,
@@ -150,7 +152,7 @@ export function openSyncKeyFromPeer(
 }
 function syncPayloadKey(syncKey: string): Uint8Array {
 	identityFromSyncKey(syncKey);
-	return sha256(encoder.encode(`shard-sync-payload:v1:${syncKey}`));
+	return sha256(encoder.encode(`scraps-cache-sync-payload:v1:${syncKey}`));
 }
 export function encryptSyncPayload(syncKey: string, payload: unknown): string {
 	const nonce = secureBytes(24);

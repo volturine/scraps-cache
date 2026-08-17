@@ -1,6 +1,6 @@
 # Architecture
 
-Shard is a **single-page notes client** plus an optional **opaque sync relay**.
+Scraps Cache is a **single-page notes client** plus an optional **opaque sync relay**.
 The same SvelteKit app serves the UI and the sync API when self-hosted.
 
 ## High-level layout
@@ -50,7 +50,7 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 | IndexedDB      | `src/lib/db/idb.ts`                                    | Persistence, outbox, replace/import                   |
 | Sync crypto    | `src/lib/syncPairing.ts`                               | Identity, pairing PAKE, payload encrypt/decrypt       |
 | Sync records   | `src/lib/syncRecords.ts`, `noteMerge.ts`               | Envelope packing, merge, tombstones                   |
-| Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                 | Export/import encrypted `.shard-backup`               |
+| Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                 | Export/import encrypted `.scraps-cache-backup`        |
 | Images         | `src/lib/imageOptimize.ts`                             | Resize, WebP, strip EXIF before store/sync            |
 | App viewport   | `src/lib/appViewport.ts`                               | Safe area + keyboard frame; overlay host              |
 | Reminder wakes | `src/lib/server/wakeScheduler.ts`, `webPush.ts`        | Contentless Web Push ticks; SW reads notes locally    |

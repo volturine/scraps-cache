@@ -20,7 +20,7 @@ body:
     id: proposal
     attributes:
       label: Proposed solution
-      description: How should Shard behave if this is implemented?
+      description: How should Scraps Cache behave if this is implemented?
     validations:
       required: true
   - type: textarea

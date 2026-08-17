@@ -20,7 +20,7 @@ function device(id: string, endpoint: string, accountId = 'account') {
 }
 
 function createStore(): SyncStore {
-	const directory = mkdtempSync(join(tmpdir(), 'shard-wake-'));
+	const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-wake-'));
 	const store = new SyncStore(directory);
 	directories.push(directory);
 	stores.push(store);
