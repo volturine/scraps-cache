@@ -21,7 +21,7 @@ const NOTE_COLORS = new Set<Note['color']>([
 const VIEWS = new Set<View>(['notes', 'kanban', 'reminders', 'archive', 'trash', 'label']);
 
 /** Full device backup — complete app/DB snapshot including full-resolution attachments. */
-export type ShardBackup = {
+export type ScrapsCacheBackup = {
 	version: 4;
 	exportedAt: number;
 	notes: Note[];
@@ -123,7 +123,7 @@ function normalizeBoard(value: unknown): KanbanBoard | null {
 }
 
 /** Parse older or partially malformed backups into the current safe in-memory shape. */
-export function normalizeBackup(data: unknown): ShardBackup | null {
+export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 	if (!data || typeof data !== 'object') return null;
 	const raw = data as Record<string, unknown>;
 	if (!Array.isArray(raw.notes) || !Array.isArray(raw.labels)) return null;

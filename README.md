@@ -1,16 +1,18 @@
-# Shard
+# Scraps Cache
 
-**Shard** is a self-hostable notes app with **end-to-end encrypted** multi-device
+**Scraps Cache** is a self-hostable notes app with **end-to-end encrypted** multi-device
 sync. Pins, labels, reminders, checklists, attachments, kanban boards,
 trash/archive — and a ciphertext-only relay that never sees your note contents.
 
-[![CI/CD](https://github.com/volturine/shard-notes/actions/workflows/ci-cd.yaml/badge.svg)](https://github.com/volturine/shard-notes/actions/workflows/ci-cd.yaml)
+Visit [scrapscache.com](https://scrapscache.com).
+
+[![CI/CD](https://github.com/volturine/scraps-cache/actions/workflows/ci-cd.yaml/badge.svg)](https://github.com/volturine/scraps-cache/actions/workflows/ci-cd.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-24-brightgreen.svg)](.nvmrc)
 
 ---
 
-## Why Shard
+## Why Scraps Cache
 
 | Principle              | What it means                                                                                                           |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
@@ -18,7 +20,7 @@ trash/archive — and a ciphertext-only relay that never sees your note contents
 | **E2E encrypted sync** | Multi-device sync always encrypts on the client. The relay stores opaque ciphertext only.                               |
 | **Self-hosted**        | Run the app and relay yourself. One Node process, one SQLite database.                                                  |
 | **Local-first data**   | Notes live in the browser (IndexedDB). Day-to-day use does not require the network.                                     |
-| **Recoverable**        | Encrypted client backups (`.shard-backup`) and operator-friendly server snapshots.                                      |
+| **Recoverable**        | Encrypted client backups (`.scraps-cache-backup`) and operator-friendly server snapshots.                               |
 
 ## Features
 
@@ -38,8 +40,8 @@ trash/archive — and a ciphertext-only relay that never sees your note contents
 Requires **Node.js 24** (see [`.nvmrc`](.nvmrc)).
 
 ```sh
-git clone https://github.com/volturine/shard-notes.git
-cd shard-notes
+git clone https://github.com/volturine/scraps-cache.git
+cd scraps-cache
 npm install
 npm run dev -- --host 0.0.0.0
 ```
@@ -57,7 +59,7 @@ The recommended production path pulls the multi-arch image from GitHub Container
 
 ```sh
 cp .env.example .env
-# Edit .env: set SHARD_IMAGE, SHARD_ADMIN_TOKEN, and SHARD_ORIGIN for public HTTPS
+# Edit .env: set SCRAPS_CACHE_IMAGE, SCRAPS_CACHE_ADMIN_TOKEN, and SCRAPS_CACHE_ORIGIN for public HTTPS
 docker compose --project-directory . -f docker/compose.production.yaml pull
 docker compose --project-directory . -f docker/compose.production.yaml up -d
 ```
@@ -129,7 +131,7 @@ Details, threat model, and limits: **[docs/security.md](docs/security.md)**.
 
 ## Status
 
-Shard is under active development. APIs and on-disk formats may evolve; releases
+Scraps Cache is under active development. APIs and on-disk formats may evolve; releases
 aim to keep backup import and sync recoverable across supported versions.
 Please file issues for bugs and ideas.
 
@@ -138,7 +140,7 @@ Please file issues for bugs and ideas.
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup,
 coding guidelines, and PR expectations.
 
-- **Bugs / features** — [GitHub Issues](https://github.com/volturine/shard-notes/issues)
+- **Bugs / features** — [GitHub Issues](https://github.com/volturine/scraps-cache/issues)
 - **Security** — private report via [SECURITY.md](SECURITY.md) (do not open a public issue)
 
 ## License

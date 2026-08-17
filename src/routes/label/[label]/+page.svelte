@@ -37,13 +37,13 @@
 			/>
 		{:else}
 			<div class={shell}>
-				<h1 class="mb-4 px-2 text-xl font-medium text-[var(--shard-text)]">{label.name}</h1>
+				<h1 class="mb-4 px-2 text-xl font-medium text-[var(--scraps-cache-text)]">{label.name}</h1>
 			</div>
 
 			{#if pinned.length > 0}
 				<div class={shell}>
 					<h2
-						class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]"
+						class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--scraps-cache-text-muted)]"
 					>
 						Pinned
 					</h2>
@@ -54,7 +54,7 @@
 			{#if pinned.length > 0 && others.length > 0}
 				<div class={shell}>
 					<h2
-						class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--shard-text-muted)]"
+						class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--scraps-cache-text-muted)]"
 					>
 						Others
 					</h2>

@@ -1,6 +1,6 @@
 # Security and privacy
 
-This document describes Shard's security model for operators and contributors.
+This document describes Scraps Cache's security model for operators and contributors.
 For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 
 ## Goals
@@ -26,7 +26,7 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 
 - Algorithm: **XChaCha20-Poly1305** (`@noble/ciphers`)
 - Key: derived from the client-held sync key
-  (`shard-sync-payload:v1:…` domain separation via SHA-256)
+  (`scraps-cache-sync-payload:v1:…` domain separation via SHA-256)
 - Nonce: random 24 bytes per envelope
 - Server stores only the packed nonce + ciphertext
 
@@ -46,9 +46,9 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
   output; the server only relays opaque PAKE shares and ciphertext. The rendezvous
   tag is a hash of the high-entropy one-time code, not a crackable 14-digit secret.
 
-### Client backups (`.shard-backup`)
+### Client backups (`.scraps-cache-backup`)
 
-- Format name: `shard-encrypted-backup`
+- Format name: `scraps-cache-encrypted-backup`
 - KDF: **Argon2id** (parameters stored in the header so they can evolve)
 - Bulk encryption: **XChaCha20-Poly1305** in authenticated chunks
 - AAD binds format version, KDF params, chunk index, and count
@@ -116,11 +116,11 @@ app is in use; browser storage isolation is the boundary.
 
 ## Operator checklist
 
-1. Terminate **HTTPS** at a reverse proxy; set `SHARD_ORIGIN` to the public URL.
-2. Set a strong random **`SHARD_ADMIN_TOKEN`**.
-3. Pin **`SHARD_IMAGE`** to a release tag or digest.
+1. Terminate **HTTPS** at a reverse proxy; set `SCRAPS_CACHE_ORIGIN` to the public URL.
+2. Set a strong random **`SCRAPS_CACHE_ADMIN_TOKEN`**.
+3. Pin **`SCRAPS_CACHE_IMAGE`** to a release tag or digest.
 4. Configure trusted proxy headers only when appropriate
-   (`SHARD_ADDRESS_HEADER` / `SHARD_XFF_DEPTH`).
+   (`SCRAPS_CACHE_ADDRESS_HEADER` / `SCRAPS_CACHE_XFF_DEPTH`).
 5. Enable **encrypted Restic** backups for the SQLite snapshots if the relay
    matters to you (ciphertext still deserves availability protection).
 6. Run the monthly restore drill documented in

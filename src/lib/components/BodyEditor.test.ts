@@ -1,43 +1,238 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
 
-describe('BodyEditor empty task Enter behavior', () => {
+function textNode(element: Element): Node {
+	return element.firstChild ?? element;
+}
+
+function select(
+	start: Element,
+	startOffset: number,
+	end: Element = start,
+	endOffset = startOffset
+) {
+	const range = document.createRange();
+	range.setStart(textNode(start), startOffset);
+	range.setEnd(textNode(end), endOffset);
+	const selection = window.getSelection();
+	selection?.removeAllRanges();
+	selection?.addRange(range);
+}
+
+function lineTexts(container: HTMLElement): string[] {
+	return [...container.querySelectorAll('[data-line-text]')].map((line) => line.textContent ?? '');
+}
+
+describe('BodyEditor native editing', () => {
+	it('toggles a checklist item without moving focus from the editor', async () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] Task' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const toggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;
+		editor.focus();
+
+		const pointerDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+		toggle.dispatchEvent(pointerDown);
+		await fireEvent.click(toggle);
+
+		expect(pointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(editor);
+		expect(toggle.getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('does not focus a task when a checkbox touch ends over its label', () => {
+		const onFocusTask = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Task', onFocusTask }
+		});
+		const toggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;
+		const label = container.querySelector('[data-line-text]') as HTMLElement;
+		const pointer = (type: string, target: Element) => {
+			const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+			Object.defineProperties(event, {
+				pointerId: { value: 7 },
+				pointerType: { value: 'touch' }
+			});
+			target.dispatchEvent(event);
+		};
+
+		pointer('pointerdown', toggle);
+		pointer('pointerup', label);
+		label.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+		expect(onFocusTask).not.toHaveBeenCalled();
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
+	});
+
 	it('replaces an empty root task with a focused plain-text line', async () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] \nafter' } });
-		const task = container.querySelector('textarea[data-line-id]') as HTMLTextAreaElement;
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const emptyTask = container.querySelector('[data-line-text]') as HTMLElement;
+		select(emptyTask, 0);
 
-		await fireEvent.keyDown(task, { key: 'Enter' });
+		await fireEvent.keyDown(editor, { key: 'Enter' });
 
 		expect(container.querySelector('[data-checklist-toggle]')).toBeNull();
-		const plainText = container.querySelector('[data-plain-run="0"]') as HTMLTextAreaElement;
-		expect(plainText.value).toBe('\nafter');
-		expect(document.activeElement).toBe(plainText);
+		expect(lineTexts(container)).toEqual(['', 'after']);
+		expect(document.activeElement).toBe(editor);
+	});
+
+	it('gives blank lines a full editable line height after Enter', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'before\nafter' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const first = container.querySelector('[data-line-text]') as HTMLElement;
+		select(first, 'before'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+
+		const blank = container.querySelector('[data-editor-line="1"] [data-line-text]');
+		expect(lineTexts(container)).toEqual(['before', '', 'after']);
+		expect(blank?.className).toContain('min-h-[1lh]');
 	});
 
 	it('keeps the existing empty sub-task Enter behavior', async () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] parent\n  [ ] ' } });
-		const tasks = container.querySelectorAll('textarea[data-line-id]');
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const tasks = container.querySelectorAll('[data-line-text]');
+		select(tasks[1], 0);
 
-		await fireEvent.keyDown(tasks[1], { key: 'Enter' });
+		await fireEvent.keyDown(editor, { key: 'Enter' });
 
 		expect(container.querySelectorAll('[data-checklist-toggle]')).toHaveLength(2);
+	});
+
+	it('supports one native selection across multiple task rows and deletes it', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] First task\n[ ] Second task\n[ ] Keep' }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const tasks = container.querySelectorAll('[data-line-text]');
+		select(tasks[0], 0, tasks[1], 'Second task'.length);
+
+		expect(window.getSelection()?.toString()).toContain('First task');
+		expect(window.getSelection()?.toString()).toContain('Second task');
+		const setData = vi.fn();
+		const copy = new Event('copy', { bubbles: true, cancelable: true });
+		Object.defineProperty(copy, 'clipboardData', { value: { setData } });
+		editor.dispatchEvent(copy);
+		expect(setData).toHaveBeenCalledWith('text/plain', '[ ] First task\n[ ] Second task');
+
+		const beforeInput = new InputEvent('beforeinput', {
+			bubbles: true,
+			cancelable: true,
+			inputType: 'deleteContentBackward'
+		});
+		editor.dispatchEvent(beforeInput);
+		await tick();
+
+		expect(beforeInput.defaultPrevented).toBe(true);
+		expect(lineTexts(container)).toEqual(['Keep']);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
+	});
+
+	it('cuts the selected task rows from the model', async () => {
+		const onExitTaskFocus = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: {
+				body: '[ ] First task\n[ ] Second task\n[ ] Keep',
+				focusLine: 0,
+				onExitTaskFocus
+			}
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const tasks = container.querySelectorAll('[data-line-text]');
+		select(tasks[0], 0, tasks[1], 'Second task'.length);
+
+		const setData = vi.fn();
+		const cut = new Event('cut', { bubbles: true, cancelable: true });
+		Object.defineProperty(cut, 'clipboardData', { value: { setData } });
+		editor.dispatchEvent(cut);
+		await tick();
+
+		expect(cut.defaultPrevented).toBe(true);
+		expect(setData).toHaveBeenCalledWith('text/plain', '[ ] First task\n[ ] Second task');
+		expect(lineTexts(container)).toEqual(['Keep']);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
+		expect(onExitTaskFocus).toHaveBeenCalledOnce();
+	});
+
+	it('removes a fully selected single row instead of leaving a micro row', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Keep before\nplain row to remove\n[ ] Keep after', focusLine: 1 }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const row = container.querySelector('[data-editor-line="1"] [data-line-text]') as HTMLElement;
+		select(row, 0, row, 'plain row to remove'.length);
+		const beforeInput = new InputEvent('beforeinput', {
+			bubbles: true,
+			cancelable: true,
+			inputType: 'deleteContentBackward'
+		});
+
+		editor.dispatchEvent(beforeInput);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Keep before', 'Keep after']);
+		expect(container.querySelectorAll('[data-editor-line]')).toHaveLength(2);
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
+	});
+
+	it('pastes multiple clipboard lines as structured task rows', async () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] ' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const emptyTask = container.querySelector('[data-line-text]') as HTMLElement;
+		select(emptyTask, 0);
+
+		const paste = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, 'clipboardData', {
+			value: { getData: () => '[ ] First task\n  [x] Second task' }
+		});
+		editor.dispatchEvent(paste);
+		await tick();
+
+		expect(paste.defaultPrevented).toBe(true);
+		expect(lineTexts(container)).toEqual(['First task', 'Second task']);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(2);
+		expect(
+			container.querySelector('[data-editor-line="1"] [data-checklist-toggle]')?.className
+		).toContain('checked');
+		expect(
+			[...editor.childNodes].filter(
+				(node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
+			)
+		).toHaveLength(0);
+	});
+
+	it('restores a single copied checklist line as a task', async () => {
+		const { container } = render(BodyEditor, { props: { body: '' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+		const paste = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, 'clipboardData', {
+			value: { getData: () => '[x] Finished task' }
+		});
+
+		editor.dispatchEvent(paste);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Finished task']);
+		expect(container.querySelector('[data-checklist-toggle]')?.className).toContain('checked');
 	});
 });
 
 describe('BodyEditor task focus chrome', () => {
-	it('keeps plain text in place when a task group receives focus', async () => {
+	it('keeps every line in the same native editing host when a task receives focus', async () => {
 		const { container } = render(BodyEditor, {
 			props: { body: '[ ] Parent\ncontext between tasks\n  [ ] Child', focusLine: 0 }
 		});
 		await tick();
 
-		expect([...container.querySelectorAll('textarea')].map((field) => field.value)).toEqual([
-			'Parent',
-			'context between tasks',
-			'Child'
-		]);
+		expect(lineTexts(container)).toEqual(['Parent', 'context between tasks', 'Child']);
+		expect(container.querySelectorAll('[contenteditable="plaintext-only"]')).toHaveLength(1);
 	});
 
 	it('shows Add sub-task on the focused root and drops it when focus leaves', async () => {
@@ -48,6 +243,39 @@ describe('BodyEditor task focus chrome', () => {
 
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
 		expect(container.querySelector('[data-add-subtask]')).not.toBeNull();
+		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
+			container.querySelector('[data-editor-line="1"]')
+		);
+		expect(container.querySelector('[data-editor-line="0"]')?.className).toContain('rounded-t-lg');
+		expect(container.querySelector('[data-editor-line="1"]')?.className).toContain('rounded-b-lg');
+
+		await fireEvent.pointerDown(
+			container.querySelector('[data-add-subtask]') as HTMLButtonElement,
+			{
+				pointerType: 'touch'
+			}
+		);
+
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
+		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain(
+			'rounded-b-lg'
+		);
+		expect(container.querySelector('[data-editor-line="2"]')?.className).toContain('rounded-b-lg');
+		expect(
+			container
+				.querySelector('[data-editor-line="2"] [data-line-text]')
+				?.getAttribute('data-placeholder')
+		).toBe('Sub-task');
+		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
+			container.querySelector('[data-editor-line="2"]')
+		);
+		expect(document.activeElement).toBe(container.querySelector('[data-body-editor]'));
+
+		const draft = container.querySelector('[data-editor-line="2"] [data-line-text]') as HTMLElement;
+		draft.textContent = 'a';
+		await fireEvent.input(draft, { inputType: 'insertText', data: 'a' });
+		await tick();
+		expect(draft.textContent).toBe('a');
 
 		await rerender({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate', focusLine: null });
 		await tick();

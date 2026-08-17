@@ -2,7 +2,7 @@
 // JS/CSS must not be cache-first forever: hashed builds change filenames, but
 // a stale shell HTML or long-lived module cache leaves phones on old UI bugs.
 
-const CACHE_NAME = 'shard-notes-v2';
+const CACHE_NAME = 'scraps-cache-v2';
 const APP_SHELL = [
 	'/',
 	'/manifest.json',
@@ -99,7 +99,7 @@ const NOTES_STORE = 'notes';
 const SYNC_STATE_STORE = 'sync-state';
 const FIRED_KEY = 'gkc-fired-reminders';
 const WAKE_ID_RE = /^[A-Za-z0-9_-]{43}$/;
-const WAKE_DOMAIN = 'shard-reminder-wake:v1\0';
+const WAKE_DOMAIN = 'scraps-cache-reminder-wake:v1\0';
 
 function openNotesDb() {
 	return new Promise((resolve, reject) => {
@@ -147,8 +147,8 @@ async function loadLocalReminderState() {
 
 function showGenericReminder(wakeId) {
 	return self.registration.showNotification('Reminder', {
-		body: 'Open Shard to check your notes.',
-		tag: 'shard-reminder:' + wakeId,
+		body: 'Open Scraps Cache to check your notes.',
+		tag: 'scraps-cache-reminder:' + wakeId,
 		renotify: false,
 		icon: '/icon-192.png',
 		data: { type: 'reminder', wakeId }
@@ -226,7 +226,7 @@ async function showReminderWake(wake) {
 	if (matching) {
 		await self.registration.showNotification(reminderPreview(matching), {
 			body: formatWhen(wake.fireAt),
-			tag: 'shard-reminder:' + wake.id,
+			tag: 'scraps-cache-reminder:' + wake.id,
 			renotify: false,
 			icon: '/icon-192.png',
 			data: { type: 'reminder', noteId: matching.id, wakeId: wake.id }

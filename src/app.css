@@ -17,31 +17,31 @@
 	--note-brown: #d6c5b0;
 	--note-gray: #f0f0f0;
 
-	--shard-bg: #ffffff;
-	--shard-surface: #f8f9fa;
-	--shard-text: #202124;
-	--shard-text-muted: #5f6368;
-	--shard-border: #e0e0e0;
-	--shard-accent: #2563eb;
-	--shard-accent-hover: #1d4ed8;
-	--shard-accent-foreground: #ffffff;
-	--shard-focus: #1d4ed8;
-	--shard-success: #15803d;
-	--shard-success-foreground: #ffffff;
-	--shard-success-subtle: #dcfce7;
-	--shard-warning: #b45309;
-	--shard-warning-subtle: #fef3c7;
-	--shard-danger: #dc2626;
-	--shard-danger-foreground: #ffffff;
-	--shard-danger-subtle: #fee2e2;
-	--shard-interactive-hover: rgba(0, 0, 0, 0.05);
-	--shard-interactive-active: rgba(0, 0, 0, 0.1);
-	--shard-radius-sm: 0.375rem;
-	--shard-radius-md: 0.5rem;
-	--shard-radius-lg: 0.75rem;
-	--shard-radius-xl: 1rem;
-	--shard-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.14);
-	--shard-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.24);
+	--scraps-cache-bg: #ffffff;
+	--scraps-cache-surface: #f8f9fa;
+	--scraps-cache-text: #202124;
+	--scraps-cache-text-muted: #5f6368;
+	--scraps-cache-border: #e0e0e0;
+	--scraps-cache-accent: #2563eb;
+	--scraps-cache-accent-hover: #1d4ed8;
+	--scraps-cache-accent-foreground: #ffffff;
+	--scraps-cache-focus: #1d4ed8;
+	--scraps-cache-success: #15803d;
+	--scraps-cache-success-foreground: #ffffff;
+	--scraps-cache-success-subtle: #dcfce7;
+	--scraps-cache-warning: #b45309;
+	--scraps-cache-warning-subtle: #fef3c7;
+	--scraps-cache-danger: #dc2626;
+	--scraps-cache-danger-foreground: #ffffff;
+	--scraps-cache-danger-subtle: #fee2e2;
+	--scraps-cache-interactive-hover: rgba(0, 0, 0, 0.05);
+	--scraps-cache-interactive-active: rgba(0, 0, 0, 0.1);
+	--scraps-cache-radius-sm: 0.375rem;
+	--scraps-cache-radius-md: 0.5rem;
+	--scraps-cache-radius-lg: 0.75rem;
+	--scraps-cache-radius-xl: 1rem;
+	--scraps-cache-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.14);
+	--scraps-cache-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.24);
 
 	/* Published by attachAppViewport(); CSS env() is the pre-JS default. */
 	--app-inset-top: env(safe-area-inset-top, 0px);
@@ -87,31 +87,31 @@
 	--note-brown: #4f4a44;
 	--note-gray: #3c3c3c;
 
-	--shard-bg: #1a1a1a;
-	--shard-surface: #242424;
-	--shard-text: #e8eaed;
-	--shard-text-muted: #9aa0a6;
-	--shard-border: #3c4043;
-	--shard-accent: #60a5fa;
-	--shard-accent-hover: #93c5fd;
-	--shard-accent-foreground: #172554;
-	--shard-focus: #93c5fd;
-	--shard-success: #4ade80;
-	--shard-success-foreground: #052e16;
-	--shard-success-subtle: #14351f;
-	--shard-warning: #fbbf24;
-	--shard-warning-subtle: #3d2e0b;
-	--shard-danger: #f87171;
-	--shard-danger-foreground: #450a0a;
-	--shard-danger-subtle: #3b1717;
-	--shard-interactive-hover: rgba(255, 255, 255, 0.08);
-	--shard-interactive-active: rgba(255, 255, 255, 0.12);
-	--shard-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
-	--shard-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.55);
+	--scraps-cache-bg: #1a1a1a;
+	--scraps-cache-surface: #242424;
+	--scraps-cache-text: #e8eaed;
+	--scraps-cache-text-muted: #9aa0a6;
+	--scraps-cache-border: #3c4043;
+	--scraps-cache-accent: #60a5fa;
+	--scraps-cache-accent-hover: #93c5fd;
+	--scraps-cache-accent-foreground: #172554;
+	--scraps-cache-focus: #93c5fd;
+	--scraps-cache-success: #4ade80;
+	--scraps-cache-success-foreground: #052e16;
+	--scraps-cache-success-subtle: #14351f;
+	--scraps-cache-warning: #fbbf24;
+	--scraps-cache-warning-subtle: #3d2e0b;
+	--scraps-cache-danger: #f87171;
+	--scraps-cache-danger-foreground: #450a0a;
+	--scraps-cache-danger-subtle: #3b1717;
+	--scraps-cache-interactive-hover: rgba(255, 255, 255, 0.08);
+	--scraps-cache-interactive-active: rgba(255, 255, 255, 0.12);
+	--scraps-cache-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
+	--scraps-cache-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.55);
 }
 
 html {
-	background-color: var(--shard-bg);
+	background-color: var(--scraps-cache-bg);
 	color-scheme: light;
 }
 html.dark {
@@ -189,7 +189,7 @@ body {
 	margin: 0;
 	overflow: hidden;
 	overscroll-behavior: none;
-	background-color: var(--shard-bg);
+	background-color: var(--scraps-cache-bg);
 }
 
 /* Focus is communicated by the control state/caret without an extra browser ring. */
@@ -200,100 +200,100 @@ body {
 /* Shared interactive primitives. Components compose sizing and layout around these roles.
  * Button treatments: primary = accent action, secondary = outlined choice,
  * quiet = low-emphasis action, destructive = irreversible action. */
-.shard-dialog,
-.shard-popover {
-	border: 1px solid var(--shard-border);
-	background: var(--shard-surface);
+.scraps-cache-dialog,
+.scraps-cache-popover {
+	border: 1px solid var(--scraps-cache-border);
+	background: var(--scraps-cache-surface);
 }
-.shard-dialog {
-	border-radius: var(--shard-radius-xl);
-	box-shadow: var(--shard-elevation-dialog);
+.scraps-cache-dialog {
+	border-radius: var(--scraps-cache-radius-xl);
+	box-shadow: var(--scraps-cache-elevation-dialog);
 }
-.shard-popover {
-	border-radius: var(--shard-radius-lg);
-	box-shadow: var(--shard-elevation-popover);
+.scraps-cache-popover {
+	border-radius: var(--scraps-cache-radius-lg);
+	box-shadow: var(--scraps-cache-elevation-popover);
 }
-.shard-button,
-.shard-input {
-	border-radius: var(--shard-radius-md);
+.scraps-cache-button,
+.scraps-cache-input {
+	border-radius: var(--scraps-cache-radius-md);
 	transition:
 		background-color 120ms ease,
 		border-color 120ms ease,
 		color 120ms ease;
 }
-.shard-button {
+.scraps-cache-button {
 	border: 1px solid transparent;
 	touch-action: manipulation;
 }
-.shard-button:disabled,
-.shard-input:disabled {
+.scraps-cache-button:disabled,
+.scraps-cache-input:disabled {
 	opacity: 0.55;
 }
-.shard-button-primary {
-	background: var(--shard-accent);
-	color: var(--shard-accent-foreground);
+.scraps-cache-button-primary {
+	background: var(--scraps-cache-accent);
+	color: var(--scraps-cache-accent-foreground);
 }
-.shard-button-primary:hover:not(:disabled) {
-	background: var(--shard-accent-hover);
+.scraps-cache-button-primary:hover:not(:disabled) {
+	background: var(--scraps-cache-accent-hover);
 }
-.shard-button-secondary {
-	border-color: var(--shard-border);
-	background: var(--shard-bg);
-	color: var(--shard-text);
+.scraps-cache-button-secondary {
+	border-color: var(--scraps-cache-border);
+	background: var(--scraps-cache-bg);
+	color: var(--scraps-cache-text);
 }
-.shard-button-quiet {
-	color: var(--shard-text-muted);
+.scraps-cache-button-quiet {
+	color: var(--scraps-cache-text-muted);
 }
-.shard-button-secondary:hover:not(:disabled),
-.shard-button-quiet:hover:not(:disabled) {
-	background: var(--shard-interactive-hover);
-	color: var(--shard-text);
+.scraps-cache-button-secondary:hover:not(:disabled),
+.scraps-cache-button-quiet:hover:not(:disabled) {
+	background: var(--scraps-cache-interactive-hover);
+	color: var(--scraps-cache-text);
 }
-.shard-button-destructive {
-	color: var(--shard-danger);
+.scraps-cache-button-destructive {
+	color: var(--scraps-cache-danger);
 }
-.shard-button-destructive-solid {
-	background: var(--shard-danger);
-	color: var(--shard-danger-foreground);
+.scraps-cache-button-destructive-solid {
+	background: var(--scraps-cache-danger);
+	color: var(--scraps-cache-danger-foreground);
 }
-.shard-button-destructive-solid:hover:not(:disabled) {
+.scraps-cache-button-destructive-solid:hover:not(:disabled) {
 	filter: brightness(0.92);
 }
-.shard-input {
-	border: 1px solid var(--shard-border);
-	background: var(--shard-bg);
-	color: var(--shard-text);
+.scraps-cache-input {
+	border: 1px solid var(--scraps-cache-border);
+	background: var(--scraps-cache-bg);
+	color: var(--scraps-cache-text);
 }
-.shard-input[aria-invalid='true'] {
-	border-color: var(--shard-danger);
+.scraps-cache-input[aria-invalid='true'] {
+	border-color: var(--scraps-cache-danger);
 }
-.shard-status-success,
-.shard-status-warning,
-.shard-status-accent,
-.shard-status-danger {
+.scraps-cache-status-success,
+.scraps-cache-status-warning,
+.scraps-cache-status-accent,
+.scraps-cache-status-danger {
 	border: 1px solid currentColor;
 }
-.shard-status-success {
-	background: var(--shard-success-subtle);
-	color: var(--shard-success);
+.scraps-cache-status-success {
+	background: var(--scraps-cache-success-subtle);
+	color: var(--scraps-cache-success);
 }
-.shard-status-warning {
-	background: var(--shard-warning-subtle);
-	color: var(--shard-warning);
+.scraps-cache-status-warning {
+	background: var(--scraps-cache-warning-subtle);
+	color: var(--scraps-cache-warning);
 }
-.shard-status-accent {
-	background: color-mix(in srgb, var(--shard-accent) 14%, var(--shard-surface));
-	color: var(--shard-accent);
+.scraps-cache-status-accent {
+	background: color-mix(in srgb, var(--scraps-cache-accent) 14%, var(--scraps-cache-surface));
+	color: var(--scraps-cache-accent);
 }
-.shard-status-danger {
-	background: var(--shard-danger-subtle);
-	color: var(--shard-danger);
+.scraps-cache-status-danger {
+	background: var(--scraps-cache-danger-subtle);
+	color: var(--scraps-cache-danger);
 }
-.shard-progress-track {
-	background: var(--shard-interactive-active);
+.scraps-cache-progress-track {
+	background: var(--scraps-cache-interactive-active);
 }
-.shard-progress-value {
-	background: var(--shard-accent);
+.scraps-cache-progress-value {
+	background: var(--scraps-cache-accent);
 }
 
 /* Respect system motion preferences while retaining the final UI state. */
@@ -309,8 +309,8 @@ body {
 }
 
 body {
-	background-color: var(--shard-bg);
-	color: var(--shard-text);
+	background-color: var(--scraps-cache-bg);
+	color: var(--scraps-cache-text);
 	font-family: 'Google Sans', 'Roboto', system-ui, Arial, sans-serif;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
@@ -411,7 +411,7 @@ body {
 	font-size: 1.375rem;
 	font-weight: 700;
 	line-height: 1;
-	color: var(--shard-success);
+	color: var(--scraps-cache-success);
 }
 .labels-edit-add:disabled {
 	opacity: 0.35;
@@ -420,11 +420,11 @@ body {
 	width: 100%;
 	min-width: 0;
 	border-radius: 0.375rem;
-	border: 1px solid var(--shard-border);
-	background: var(--shard-bg);
+	border: 1px solid var(--scraps-cache-border);
+	background: var(--scraps-cache-bg);
 	padding: 0.375rem 0.5rem;
 	font-size: 0.875rem;
-	color: var(--shard-text);
+	color: var(--scraps-cache-text);
 }
 .labels-edit-delete {
 	display: inline-flex;
@@ -433,10 +433,10 @@ body {
 	width: 2rem;
 	height: 2rem;
 	flex-shrink: 0;
-	color: var(--shard-text-muted);
+	color: var(--scraps-cache-text-muted);
 }
 .labels-edit-delete:hover {
-	color: var(--shard-danger);
+	color: var(--scraps-cache-danger);
 }
 
 /* Hide scrollbar on the sidebar for a cleaner look. */
@@ -447,6 +447,7 @@ body {
 /* Checklist toggle — fixed box + SVG so the mark is optically centered on mobile. */
 .checklist-toggle {
 	box-sizing: border-box;
+	position: relative;
 	display: inline-grid;
 	place-items: center;
 	width: 1.125rem; /* 18px */
@@ -462,6 +463,12 @@ body {
 	-webkit-appearance: none;
 	touch-action: manipulation;
 	-webkit-tap-highlight-color: transparent;
+}
+.checklist-toggle::before {
+	/* A 32px hit target without changing the checkbox's visual size or row layout. */
+	content: '';
+	position: absolute;
+	inset: -0.4375rem;
 }
 .dark .checklist-toggle {
 	border-color: rgba(255, 255, 255, 0.4);
@@ -518,13 +525,13 @@ body {
 
 @media (hover: hover) and (pointer: fine) {
 	.icon-btn:hover {
-		background-color: var(--shard-interactive-hover);
+		background-color: var(--scraps-cache-interactive-hover);
 	}
 }
 
 @media (hover: hover) and (pointer: fine) {
 	.icon-btn:active {
-		background-color: var(--shard-interactive-active);
+		background-color: var(--scraps-cache-interactive-active);
 	}
 }
 
@@ -547,11 +554,11 @@ body {
 
 /* Cloud sync spin — class on <html> so Svelte re-renders don't reset the animation.
  * Own keyframes: Tailwind tree-shakes its `spin` keyframes unless `animate-spin` is used. */
-@keyframes shard-spin {
+@keyframes scraps-cache-spin {
 	to {
 		transform: rotate(360deg);
 	}
 }
-html.shard-sync-active [data-shard-sync-icon] {
-	animation: shard-spin 1s linear infinite;
+html.scraps-cache-sync-active [data-scraps-cache-sync-icon] {
+	animation: scraps-cache-spin 1s linear infinite;
 }

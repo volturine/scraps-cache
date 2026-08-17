@@ -126,7 +126,7 @@ describe('system notifications', () => {
 		expect(show).toHaveBeenCalledWith(
 			'Groceries',
 			expect.objectContaining({
-				tag: `shard-reminder:${wakeId}`,
+				tag: `scraps-cache-reminder:${wakeId}`,
 				data: { type: 'reminder', noteId: 'n1', wakeId }
 			})
 		);

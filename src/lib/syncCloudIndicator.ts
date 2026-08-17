@@ -1,7 +1,7 @@
 /** DOM-only cloud indicator: spins for the whole sync, with a short minimum
  * so instant syncs read as a deliberate pulse instead of a flicker. */
 
-const ROOT_CLASS = 'shard-sync-active';
+const ROOT_CLASS = 'scraps-cache-sync-active';
 const MIN_SPIN_MS = 900;
 
 let inFlight = 0;
@@ -11,7 +11,9 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null;
 function setSpin(on: boolean): void {
 	if (typeof document === 'undefined') return;
 	document.documentElement.classList.toggle(ROOT_CLASS, on);
-	for (const control of document.querySelectorAll<HTMLElement>('[data-shard-sync-control]')) {
+	for (const control of document.querySelectorAll<HTMLElement>(
+		'[data-scraps-cache-sync-control]'
+	)) {
 		control.setAttribute('aria-label', on ? 'Sync settings, syncing' : 'Sync settings');
 		control.setAttribute('aria-busy', String(on));
 	}

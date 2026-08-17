@@ -27,7 +27,7 @@
 	}
 </script>
 
-<section class="border-t border-[var(--shard-border)]" aria-label="Notifications">
+<section class="border-t border-[var(--scraps-cache-border)]" aria-label="Notifications">
 	{#if permission === 'default'}
 		<button
 			type="button"
@@ -35,16 +35,24 @@
 			class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-black/5 dark:hover:bg-white/10"
 			aria-label="Turn on notifications"
 		>
-			<Bell class="h-4 w-4 shrink-0 text-[var(--shard-text)]" aria-hidden="true" />
-			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--shard-text)]">Notifications</span>
-			<span class="shrink-0 text-xs font-medium text-[var(--shard-text-muted)]">Not set</span>
-			<ChevronRight class="h-4 w-4 shrink-0 text-[var(--shard-text-muted)]" aria-hidden="true" />
+			<Bell class="h-4 w-4 shrink-0 text-[var(--scraps-cache-text)]" aria-hidden="true" />
+			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--scraps-cache-text)]"
+				>Notifications</span
+			>
+			<span class="shrink-0 text-xs font-medium text-[var(--scraps-cache-text-muted)]">Not set</span
+			>
+			<ChevronRight
+				class="h-4 w-4 shrink-0 text-[var(--scraps-cache-text-muted)]"
+				aria-hidden="true"
+			/>
 		</button>
 	{:else}
 		<div class="flex items-center gap-2.5 px-3 py-2.5">
-			<Bell class="h-4 w-4 shrink-0 text-[var(--shard-text)]" aria-hidden="true" />
-			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--shard-text)]">Notifications</span>
-			<span class="shrink-0 text-xs font-medium text-[var(--shard-text-muted)]">
+			<Bell class="h-4 w-4 shrink-0 text-[var(--scraps-cache-text)]" aria-hidden="true" />
+			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--scraps-cache-text)]"
+				>Notifications</span
+			>
+			<span class="shrink-0 text-xs font-medium text-[var(--scraps-cache-text-muted)]">
 				{permission === 'granted'
 					? 'Enabled'
 					: permission === 'denied'

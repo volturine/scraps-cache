@@ -13,7 +13,7 @@
 
 <div class="pt-4 pb-8">
 	<div class={shell}>
-		<h1 class="mb-4 px-2 text-xl font-medium text-[var(--shard-text)]">Archive</h1>
+		<h1 class="mb-4 px-2 text-xl font-medium text-[var(--scraps-cache-text)]">Archive</h1>
 	</div>
 
 	{#if archived.length === 0}

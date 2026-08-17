@@ -11,18 +11,20 @@ const META_PRIVATE = 'vapid-private-v1';
 export type WakeSendResult = 'sent' | 'gone' | 'failed';
 
 function vapidSubject(): string {
-	const subject = env.SHARD_VAPID_SUBJECT?.trim();
+	const subject = env.SCRAPS_CACHE_VAPID_SUBJECT?.trim();
 	if (subject && (/^mailto:/i.test(subject) || /^https:/i.test(subject))) return subject;
-	const origin = env.SHARD_ORIGIN?.trim() || env.ORIGIN?.trim();
+	const origin = env.SCRAPS_CACHE_ORIGIN?.trim() || env.ORIGIN?.trim();
 	if (origin && /^https:/i.test(origin)) return origin.replace(/\/$/, '');
-	return 'mailto:shard@localhost';
+	return 'mailto:scraps-cache@localhost';
 }
 
 export function getVapidKeys(): { publicKey: string; privateKey: string } {
-	const fromEnvPublic = env.SHARD_VAPID_PUBLIC_KEY?.trim();
-	const fromEnvPrivate = env.SHARD_VAPID_PRIVATE_KEY?.trim();
+	const fromEnvPublic = env.SCRAPS_CACHE_VAPID_PUBLIC_KEY?.trim();
+	const fromEnvPrivate = env.SCRAPS_CACHE_VAPID_PRIVATE_KEY?.trim();
 	if (Boolean(fromEnvPublic) !== Boolean(fromEnvPrivate)) {
-		throw new Error('Both SHARD_VAPID_PUBLIC_KEY and SHARD_VAPID_PRIVATE_KEY are required');
+		throw new Error(
+			'Both SCRAPS_CACHE_VAPID_PUBLIC_KEY and SCRAPS_CACHE_VAPID_PRIVATE_KEY are required'
+		);
 	}
 	if (fromEnvPublic && fromEnvPrivate) {
 		return { publicKey: fromEnvPublic, privateKey: fromEnvPrivate };
