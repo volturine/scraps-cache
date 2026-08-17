@@ -159,6 +159,7 @@ export function attachAppViewport(_node: HTMLElement) {
 	let fieldFocused = isKeyboardField(document.activeElement);
 	let restingLayoutHeight = window.innerHeight;
 	let editorOpen = document.documentElement.classList.contains('editor-open');
+	let backupDialogOpen = document.documentElement.classList.contains('backup-dialog-open');
 	const phone = window.matchMedia(PHONE_MEDIA);
 
 	const apply = () => {
@@ -204,7 +205,13 @@ export function attachAppViewport(_node: HTMLElement) {
 		// the phone keyboard is active, its own occlusion replaces this inset.
 		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, fieldFocused));
 		setInsetVar('--app-inset-left', cachedSafe.left);
-		setInsetVar('--app-visual-offset-top', keyboardFrame.viewportOffsetTop);
+		// Hold the notes canvas still while the backup sheet is open. iOS pans
+		// the visual viewport when the confirm field is focused; this undoes
+		// that pan and does not change keyboard insets or frame height.
+		setInsetVar(
+			'--app-visual-offset-top',
+			onPhone && backupDialogOpen ? Math.max(0, visualTop) : keyboardFrame.viewportOffsetTop
+		);
 		setInsetVar('--app-keyboard-top', keyboardFrame.keyboardTop);
 		setInsetVar('--app-keyboard-bottom', keyboardFrame.keyboardBottom);
 	};
@@ -221,8 +228,10 @@ export function attachAppViewport(_node: HTMLElement) {
 	};
 	const editorClassObserver = new MutationObserver(() => {
 		const nextEditorOpen = document.documentElement.classList.contains('editor-open');
-		if (nextEditorOpen === editorOpen) return;
+		const nextBackupDialogOpen = document.documentElement.classList.contains('backup-dialog-open');
+		if (nextEditorOpen === editorOpen && nextBackupDialogOpen === backupDialogOpen) return;
 		editorOpen = nextEditorOpen;
+		backupDialogOpen = nextBackupDialogOpen;
 		apply();
 	});
 

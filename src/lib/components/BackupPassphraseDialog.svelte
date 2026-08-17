@@ -37,12 +37,21 @@
 	function keydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && !busy) onClose();
 	}
+
+	function portalBackupDialog(node: HTMLElement) {
+		document.documentElement.classList.add('backup-dialog-open');
+		const cleanup = portalToAppOverlay(node);
+		return () => {
+			document.documentElement.classList.remove('backup-dialog-open');
+			cleanup();
+		};
+	}
 </script>
 
 <svelte:window onkeydown={keydown} />
 
 <div
-	{@attach portalToAppOverlay}
+	{@attach portalBackupDialog}
 	class="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 p-4"
 	role="presentation"
 	onclick={(event) => {
@@ -81,7 +90,7 @@
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}
 					disabled={busy}
-					class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-sm"
+					class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-[16px]"
 				/>
 			</label>
 
@@ -95,7 +104,7 @@
 						autocomplete="new-password"
 						bind:value={confirmation}
 						disabled={busy}
-						class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-sm"
+						class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-[16px]"
 					/>
 				</label>
 			{/if}
