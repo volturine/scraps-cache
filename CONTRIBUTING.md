@@ -81,7 +81,7 @@ Production-style deployment is documented in
 | `src/lib/db/`           | IndexedDB persistence                     |
 | `src/lib/server/`       | Sync relay, rate limits, backups, metrics |
 | `src/routes/api/sync/`  | HTTP sync and pairing endpoints           |
-| `src/routes/api/admin/` | Admin-only backup trigger                 |
+| `src/routes/api/admin/` | Admin-only status, backup, and retention  |
 | `docs/`                 | Architecture, security, self-hosting      |
 | `docker/`               | Docker Compose templates and image        |
 

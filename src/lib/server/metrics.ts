@@ -15,9 +15,34 @@ function routeLabel(pathname: string): string {
 	if (pathname.startsWith('/api/sync/push/')) return '/api/sync/push/*';
 	if (pathname.startsWith('/api/sync/pair/')) return '/api/sync/pair/*';
 	if (pathname.startsWith('/api/sync/')) return '/api/sync/*';
+	if (pathname.startsWith('/api/admin/')) return '/api/admin/*';
 	if (pathname.startsWith('/health/')) return pathname;
 	if (pathname === '/metrics') return '/metrics';
 	return 'app';
+}
+
+export type ProcessActivity = {
+	syncRequests: number;
+	syncUploadEnvelopes: number;
+	syncDeleteSlots: number;
+	rateLimited: number;
+	sqliteBusy: number;
+	reminderWakesSent: number;
+	reminderWakesGone: number;
+	reminderWakesFailed: number;
+};
+
+export function processActivity(): ProcessActivity {
+	return {
+		syncRequests,
+		syncUploadEnvelopes,
+		syncDeleteSlots,
+		rateLimited,
+		sqliteBusy,
+		reminderWakesSent,
+		reminderWakesGone,
+		reminderWakesFailed
+	};
 }
 
 export function recordHttpRequest(pathname: string, status: number, durationMs: number): void {
@@ -67,7 +92,20 @@ export function renderMetrics(
 		failures: number;
 		durationMs: number;
 	},
-	usage: { accounts: number; envelopeCount: number; ciphertextBytes: number }
+	usage: {
+		accounts: number;
+		envelopeCount: number;
+		ciphertextBytes: number;
+		gigabytes?: number;
+		activeByWindowDays?: Record<string, number>;
+		staleAccounts?: number;
+	},
+	retention?: {
+		enabled: boolean;
+		inactiveDays: number;
+		lastRunAt: number;
+		deletedAccountsTotal: number;
+	}
 ): string {
 	const lines = [
 		'# TYPE scraps-cache_http_requests_total counter',
@@ -92,6 +130,23 @@ export function renderMetrics(
 		line('scraps-cache_sync_accounts', usage.accounts),
 		line('scraps-cache_sync_envelopes', usage.envelopeCount),
 		line('scraps-cache_sync_ciphertext_bytes', usage.ciphertextBytes),
+		line('scraps-cache_sync_storage_gigabytes', usage.gigabytes ?? 0),
+		line('scraps-cache_sync_stale_accounts', usage.staleAccounts ?? 0)
+	);
+	for (const [windowDays, count] of Object.entries(usage.activeByWindowDays ?? {})) {
+		lines.push(
+			line('scraps-cache_sync_accounts_active', count, `window_days=${JSON.stringify(windowDays)}`)
+		);
+	}
+	if (retention) {
+		lines.push(
+			line('scraps-cache_retention_enabled', retention.enabled ? 1 : 0),
+			line('scraps-cache_retention_inactive_days', retention.inactiveDays),
+			line('scraps-cache_retention_last_run_timestamp_seconds', retention.lastRunAt / 1000),
+			line('scraps-cache_retention_deleted_accounts_total', retention.deletedAccountsTotal)
+		);
+	}
+	lines.push(
 		line('scraps-cache_backup_last_attempt_timestamp_seconds', backup.lastAttemptAt / 1000),
 		line('scraps-cache_backup_last_success_timestamp_seconds', backup.lastSuccessAt / 1000),
 		line('scraps-cache_backup_failures_total', backup.failures),

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -253,6 +254,84 @@ describe('SQLite sync store', () => {
 		expect(store.countPushDevices('account-a')).toBe(32);
 		expect(store.countPushDevices('account-b')).toBe(1);
 		expect(store.countPushDevices()).toBe(33);
+	});
+
+	it('counts anonymous activity windows and deletes only stale accounts', () => {
+		const { store } = createStore();
+		const now = 60 * 24 * 60 * 60 * 1000;
+		store.createAccount('fresh', 'credential', now);
+		store.createAccount('week-old', 'credential', now - 8 * 24 * 60 * 60 * 1000);
+		store.createAccount('stale', 'credential', 1);
+		store.sync('fresh', 0, [{ id: 'note', slot: slot('a'), ciphertext: 'opaque' }], 10);
+		store.touchAccount('fresh', now);
+		store.touchAccount('week-old', now - 8 * 24 * 60 * 60 * 1000);
+		store.touchAccount('stale', 1);
+
+		expect(
+			store.operatorUsage({
+				now,
+				staleBefore: now - 20 * 24 * 60 * 60 * 1000
+			})
+		).toEqual({
+			accounts: 3,
+			envelopeCount: 1,
+			ciphertextBytes: 'opaque'.length,
+			activeByWindowDays: { '1': 1, '7': 1, '30': 2 },
+			staleAccounts: 1
+		});
+
+		expect(store.deleteInactiveAccounts(now - 20 * 24 * 60 * 60 * 1000)).toBe(1);
+		expect(store.getCredentialHash('stale')).toBeNull();
+		expect(store.getCredentialHash('fresh')).toBe('credential');
+		expect(store.getCredentialHash('week-old')).toBe('credential');
+	});
+
+	it('treats pull-only sync as activity without changing stored ciphertext', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential', 1);
+		store.touchAccount('account', 1);
+		store.sync('account', 0, [], 10);
+		expect(store.deleteInactiveAccounts(Date.now() - 1_000)).toBe(0);
+		expect(store.getCredentialHash('account')).toBe('credential');
+		expect(store.aggregateUsage()).toEqual({
+			accounts: 1,
+			envelopeCount: 0,
+			ciphertextBytes: 0
+		});
+	});
+
+	it('backfills last_seen_at from updated_at on existing databases', () => {
+		const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-sync-'));
+		directories.push(directory);
+		const legacy = new Database(join(directory, 'sync.sqlite'));
+		legacy.exec(`
+			CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+			CREATE TABLE accounts (
+				account_id TEXT PRIMARY KEY,
+				credential_hash TEXT NOT NULL,
+				next_seq INTEGER NOT NULL DEFAULT 0,
+				envelope_count INTEGER NOT NULL DEFAULT 0,
+				ciphertext_bytes INTEGER NOT NULL DEFAULT 0,
+				updated_at INTEGER NOT NULL
+			);
+			INSERT INTO accounts(account_id, credential_hash, next_seq, envelope_count, ciphertext_bytes, updated_at)
+			VALUES ('old-account', 'credential', 0, 0, 0, 42);
+		`);
+		legacy.close();
+
+		const store = new SyncStore(directory);
+		stores.push(store);
+		expect(
+			store.operatorUsage({
+				now: 40 * 24 * 60 * 60 * 1000,
+				staleBefore: 50
+			})
+		).toMatchObject({
+			accounts: 1,
+			staleAccounts: 1,
+			activeByWindowDays: { '1': 0, '7': 0, '30': 0 }
+		});
+		expect(store.deleteInactiveAccounts(50)).toBe(1);
 	});
 
 	it('deletes an account and all of its opaque envelopes', () => {

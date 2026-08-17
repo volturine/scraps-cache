@@ -83,19 +83,21 @@ verifies `accountId` + `authSecret` but cannot decrypt envelopes.
 
 ## Server
 
-| Area           | Location                                | Responsibility                                   |
-| -------------- | --------------------------------------- | ------------------------------------------------ |
-| Sync store     | `src/lib/server/syncStore.ts`           | SQLite accounts, envelopes, quotas, migrations   |
-| Delta API      | `src/routes/api/sync/delta/`            | Upload/download encrypted records, slot deletes  |
-| Register       | `src/routes/api/sync/register/`         | Create account credentials                       |
-| Pairing        | `src/routes/api/sync/pair/*`            | Rendezvous for PAKE shares (no plaintext key)    |
-| Reminder wakes | `src/routes/api/sync/push/*`            | Device subscriptions + opaque wake ticks         |
-| Account delete | `src/routes/api/sync/account/`          | Wipe cloud ciphertext for an account             |
-| Rate limits    | `src/lib/server/rateLimit.ts`           | In-memory token buckets (single-node)            |
-| Backups        | `src/lib/server/backupManager.ts`       | Online SQLite snapshot + integrity check         |
-| Metrics        | `src/lib/server/metrics.ts`, `/metrics` | Operator metrics (admin token)                   |
-| Health         | `/health/live`, `/health/ready`         | Liveness and readiness probes                    |
-| Hooks          | `src/hooks.server.ts`                   | Security headers, request IDs, graceful shutdown |
+| Area            | Location                                                 | Responsibility                                     |
+| --------------- | -------------------------------------------------------- | -------------------------------------------------- |
+| Sync store      | `src/lib/server/syncStore.ts`                            | SQLite accounts, envelopes, quotas, migrations     |
+| Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes    |
+| Register        | `src/routes/api/sync/register/`                          | Create account credentials                         |
+| Pairing         | `src/routes/api/sync/pair/*`                             | Rendezvous for PAKE shares (no plaintext key)      |
+| Reminder wakes  | `src/routes/api/sync/push/*`                             | Device subscriptions + opaque wake ticks           |
+| Account delete  | `src/routes/api/sync/account/`                           | Wipe cloud ciphertext for an account               |
+| Rate limits     | `src/lib/server/rateLimit.ts`                            | In-memory token buckets (single-node)              |
+| Backups         | `src/lib/server/backupManager.ts`                        | Online SQLite snapshot + integrity check           |
+| Metrics         | `src/lib/server/metrics.ts`, `/metrics`                  | Operator metrics (admin token)                     |
+| Operator status | `src/lib/server/operatorMonitor.ts`, `/api/admin/status` | Anonymous JSON usage + activity                    |
+| Retention       | `src/lib/server/retentionManager.ts`                     | Optional inactive-account sweep (env, admin token) |
+| Health          | `/health/live`, `/health/ready`                          | Liveness and readiness probes                      |
+| Hooks           | `src/hooks.server.ts`                                    | Security headers, request IDs, graceful shutdown   |
 
 ### Opaque envelopes
 

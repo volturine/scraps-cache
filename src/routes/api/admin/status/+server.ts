@@ -1,13 +1,11 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { isAdminAuthorized, unauthorizedAdminResponse } from '$lib/server/adminAuth';
-import { backupManager } from '$lib/server/backupManager';
+import { getOperatorSnapshot } from '$lib/server/operatorMonitor';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const GET: RequestHandler = ({ request }) => {
 	if (!isAdminAuthorized(request)) return unauthorizedAdminResponse();
-	try {
-		return json(await backupManager.runNow());
-	} catch {
-		return json({ error: 'Backup failed' }, { status: 503 });
-	}
+	return json(getOperatorSnapshot(), {
+		headers: { 'cache-control': 'no-store' }
+	});
 };

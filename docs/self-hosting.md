@@ -23,7 +23,7 @@ Edit `.env` at minimum:
 | Variable                   | Guidance                                                                           |
 | -------------------------- | ---------------------------------------------------------------------------------- |
 | `SCRAPS_CACHE_IMAGE`       | Pin a release, e.g. `ghcr.io/volturine/scraps-cache:1.2.3`, or an immutable digest |
-| `SCRAPS_CACHE_ADMIN_TOKEN` | Long random secret (metrics + manual backup)                                       |
+| `SCRAPS_CACHE_ADMIN_TOKEN` | Long random secret (metrics, JSON status, backup, retention)                       |
 | `SCRAPS_CACHE_ORIGIN`      | Exact public origin, e.g. `https://scrapscache.com`                                |
 | `SCRAPS_CACHE_PORT`        | Host port (default `3000`)                                                         |
 
@@ -131,20 +131,21 @@ Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
 
 ### Application / Node
 
-| Variable                                    |                         Default | Purpose                                                       |
-| ------------------------------------------- | ------------------------------: | ------------------------------------------------------------- |
-| `SCRAPS_CACHE_SYNC_DATA_DIR`                |                     `sync-data` | Persistent sync-data directory (`/data` in Compose)           |
-| `SCRAPS_CACHE_SYNC_MAX_ACCOUNT_BYTES`       |                    `1000000000` | Ciphertext quota per account                                  |
-| `SCRAPS_CACHE_SYNC_MAX_ACCOUNT_ENVELOPES`   |                         `50000` | Record quota per account                                      |
-| `SCRAPS_CACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                             `8` | Max sync requests in flight                                   |
-| `SCRAPS_CACHE_BACKUP_DIR`                   |                        disabled | Directory for consistent online SQLite snapshots              |
-| `SCRAPS_CACHE_BACKUP_INTERVAL_HOURS`        |                            `24` | Snapshot interval                                             |
-| `SCRAPS_CACHE_BACKUP_RETAIN`                |                             `2` | Raw verified staging snapshots retained locally               |
-| `SCRAPS_CACHE_ADMIN_TOKEN`                  |                               — | Protects metrics and manual backup (required in prod Compose) |
-| `SCRAPS_CACHE_VAPID_PUBLIC_KEY`             |                  auto-generated | Optional stable Web Push VAPID public key                     |
-| `SCRAPS_CACHE_VAPID_PRIVATE_KEY`            |                  auto-generated | Optional stable Web Push VAPID private key                    |
-| `SCRAPS_CACHE_VAPID_SUBJECT`                | `mailto:scraps-cache@localhost` | Contact URI for VAPID (`mailto:` or `https:`)                 |
-| `ADDRESS_HEADER` / `XFF_DEPTH`              |                    direct / `1` | Trusted proxy client-address configuration                    |
+| Variable                                    |                         Default | Purpose                                                                         |
+| ------------------------------------------- | ------------------------------: | ------------------------------------------------------------------------------- |
+| `SCRAPS_CACHE_SYNC_DATA_DIR`                |                     `sync-data` | Persistent sync-data directory (`/data` in Compose)                             |
+| `SCRAPS_CACHE_SYNC_MAX_ACCOUNT_BYTES`       |                    `1000000000` | Ciphertext quota per account                                                    |
+| `SCRAPS_CACHE_SYNC_MAX_ACCOUNT_ENVELOPES`   |                         `50000` | Record quota per account                                                        |
+| `SCRAPS_CACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                             `8` | Max sync requests in flight                                                     |
+| `SCRAPS_CACHE_BACKUP_DIR`                   |                        disabled | Directory for consistent online SQLite snapshots                                |
+| `SCRAPS_CACHE_BACKUP_INTERVAL_HOURS`        |                            `24` | Snapshot interval                                                               |
+| `SCRAPS_CACHE_BACKUP_RETAIN`                |                             `2` | Raw verified staging snapshots retained locally                                 |
+| `SCRAPS_CACHE_ADMIN_TOKEN`                  |                               — | Protects metrics, JSON status, backup, and retention (required in prod Compose) |
+| `SCRAPS_CACHE_RETENTION_INACTIVE_DAYS`      |                             `0` | Delete accounts with no authenticated activity for this many days; `0` disables |
+| `SCRAPS_CACHE_VAPID_PUBLIC_KEY`             |                  auto-generated | Optional stable Web Push VAPID public key                                       |
+| `SCRAPS_CACHE_VAPID_PRIVATE_KEY`            |                  auto-generated | Optional stable Web Push VAPID private key                                      |
+| `SCRAPS_CACHE_VAPID_SUBJECT`                | `mailto:scraps-cache@localhost` | Contact URI for VAPID (`mailto:` or `https:`)                                   |
+| `ADDRESS_HEADER` / `XFF_DEPTH`              |                    direct / `1` | Trusted proxy client-address configuration                                      |
 
 Compose maps `SCRAPS_CACHE_ADDRESS_HEADER` → `ADDRESS_HEADER` and
 `SCRAPS_CACHE_XFF_DEPTH` → `XFF_DEPTH`.
@@ -173,12 +174,33 @@ and left in place as a recovery copy.
 
 ## Health, metrics, and admin backup
 
-| Endpoint                 | Auth                                              | Purpose                                |
-| ------------------------ | ------------------------------------------------- | -------------------------------------- |
-| `GET /health/live`       | none                                              | Process liveness                       |
-| `GET /health/ready`      | none                                              | SQLite + migrations + volume readiness |
-| `GET /metrics`           | `Authorization: Bearer $SCRAPS_CACHE_ADMIN_TOKEN` | Prometheus-style metrics               |
-| `POST /api/admin/backup` | same bearer token                                 | Trigger an online snapshot now         |
+| Endpoint                    | Auth                                              | Purpose                                             |
+| --------------------------- | ------------------------------------------------- | --------------------------------------------------- |
+| `GET /health/live`          | none                                              | Process liveness                                    |
+| `GET /health/ready`         | none                                              | SQLite + migrations + volume readiness              |
+| `GET /metrics`              | `Authorization: Bearer $SCRAPS_CACHE_ADMIN_TOKEN` | Prometheus-style metrics                            |
+| `GET /api/admin/status`     | same bearer token                                 | Anonymous JSON: storage, users, activity, retention |
+| `POST /api/admin/backup`    | same bearer token                                 | Trigger an online snapshot now                      |
+| `POST /api/admin/retention` | same bearer token                                 | Run the inactive-account sweeper now                |
+
+`GET /api/admin/status` is the JSON companion to `/metrics`. It reports
+ciphertext bytes and decimal GB, account totals, activity in the last 1 / 7 / 30
+days, process-lifetime sync counters, backup status, and the retention
+policy. Counts are aggregates only — no account IDs, ciphertext, or credentials.
+
+Inactive-account retention is **off** unless
+`SCRAPS_CACHE_RETENTION_INACTIVE_DAYS` is a positive integer. When enabled, a
+daily sweep deletes every account with no authenticated activity for that many
+days. Last-seen is updated on authenticated sync and push activity, including
+pull-only deltas. Existing databases backfill last-seen from the last ciphertext
+write, so enable retention only after live traffic has refreshed last-seen (or
+after a deliberate grace period). The sweeper logs deleted counts, never account
+IDs.
+
+```sh
+curl -fsS -H "Authorization: Bearer $SCRAPS_CACHE_ADMIN_TOKEN" \
+  http://localhost:3000/api/admin/status
+```
 
 Trigger a snapshot before upgrades:
 
