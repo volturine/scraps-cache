@@ -26,6 +26,20 @@ function lineTexts(container: HTMLElement): string[] {
 }
 
 describe('BodyEditor native editing', () => {
+	it('renders exactly one block row for each saved newline', () => {
+		const { container } = render(BodyEditor, {
+			props: { body: 'Plain line\n[ ] Task line\nLast line' }
+		});
+		const rows = [...container.querySelectorAll('[data-editor-line]')];
+
+		expect(rows).toHaveLength(3);
+		expect(lineTexts(container)).toEqual(['Plain line', 'Task line', 'Last line']);
+		for (const row of rows) {
+			expect(row.querySelector(':scope > [data-line-text]')).not.toBeNull();
+			expect(row.querySelector(':scope > div')).toBeNull();
+		}
+	});
+
 	it('toggles a checklist item without moving focus from the editor', async () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] Task' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
