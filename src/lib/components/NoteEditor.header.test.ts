@@ -356,4 +356,21 @@ describe('NoteEditor task focus', () => {
 
 		expect(container.querySelector('[data-focus-group]')).toBeNull();
 	});
+
+	it('blurs the body when empty editor chrome is tapped, then focuses it from an idle tap', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		editor.focus();
+
+		await fireEvent.click(scroller);
+		expect(document.activeElement).not.toBe(editor);
+
+		await fireEvent.click(scroller);
+		await tick();
+		expect(document.activeElement).toBe(editor);
+	});
 });
