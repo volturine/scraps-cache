@@ -356,4 +356,62 @@ describe('NoteEditor task focus', () => {
 
 		expect(container.querySelector('[data-focus-group]')).toBeNull();
 	});
+
+	it('blurs the body when empty editor chrome is tapped, then focuses it from an idle tap', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		editor.focus();
+
+		await fireEvent.click(scroller);
+		expect(document.activeElement).not.toBe(editor);
+
+		await fireEvent.click(scroller);
+		await tick();
+		expect(document.activeElement).toBe(editor);
+	});
+
+	it('runs a touched footer action without dismissing the keyboard', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const color = container.querySelector('footer button[aria-label="Color"]') as HTMLButtonElement;
+		editor.focus();
+
+		const pointerDown = dispatchTouchPointer(color, 'pointerdown');
+		expect(pointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(editor);
+
+		await fireEvent.click(color);
+		await tick();
+		expect(container.querySelector('[data-editor-popup]')).not.toBeNull();
+		expect(document.activeElement).toBe(editor);
+	});
+
+	it('dismisses the keyboard before opening the attachment picker', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const inputClick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const attach = container.querySelector(
+			'footer button[aria-label="Attach"]'
+		) as HTMLButtonElement;
+		editor.focus();
+
+		const pointerDown = dispatchTouchPointer(attach, 'pointerdown');
+		expect(pointerDown.defaultPrevented).toBe(true);
+		await fireEvent.click(attach);
+
+		expect(inputClick).toHaveBeenCalledOnce();
+		expect(document.activeElement).not.toBe(editor);
+		const picker = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+		picker.dispatchEvent(new Event('change'));
+	});
 });

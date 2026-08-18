@@ -100,19 +100,19 @@
 		// Task rows and the focused envelope manage their own chrome.
 		if (el?.closest('[data-focus-group], [data-task-row], [data-add-subtask]')) return;
 
-		if (taskFocusLine !== null) {
-			exitTaskFocus();
-			// Empty note chrome: blur so iOS can dismiss the keyboard.
-			if (!el?.closest('button, input, textarea, select, a, [contenteditable]')) {
-				const active = document.activeElement;
-				if (active instanceof HTMLElement && editorDialog?.contains(active)) active.blur();
-			}
-			return;
-		}
-
 		// Match any contenteditable host (including plaintext-only). A strict ="true"
 		// check lets page clicks steal focus and collapse multi-line iOS selections.
 		if (el?.closest('button, input, textarea, select, a, [contenteditable]')) return;
+		const active = document.activeElement;
+		if (active instanceof HTMLElement && editorDialog?.contains(active)) {
+			// Android keeps a contenteditable focused after its software-keyboard
+			// dismiss action. Treat a tap on empty note chrome like the header buttons:
+			// explicitly blur the field so the keyboard can close reliably.
+			exitTaskFocus();
+			active.blur();
+			return;
+		}
+		if (taskFocusLine !== null) exitTaskFocus();
 		focusBodySignal++;
 	}
 

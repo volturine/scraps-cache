@@ -16,6 +16,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
 	import { formatStorageError } from '$lib/imageBlob';
+	import { isKeyboardField } from '$lib/appViewport';
 	import {
 		Archive,
 		Check,
@@ -83,6 +84,8 @@
 	 */
 	function openAttach() {
 		attachError = '';
+		const active = document.activeElement;
+		if (active instanceof HTMLElement && isKeyboardField(active)) active.blur();
 		const input = document.createElement('input');
 		input.type = 'file';
 		input.multiple = true;
@@ -218,6 +221,24 @@
 	function openPhoto(id: string) {
 		const idx = photoIndexById.get(id);
 		if (idx != null) focusedImageIndex = idx;
+	}
+
+	function keepFooterStationary(event: PointerEvent) {
+		if (event.pointerType !== 'touch') return;
+		const target = event.target instanceof Element ? event.target : null;
+		if (!target?.closest('button')) return;
+		// Moving focus on pointerdown starts Android's keyboard-close resize. The
+		// footer then moves before pointerup and Chrome cancels the button click.
+		event.preventDefault();
+	}
+
+	function footerInteractions(node: HTMLElement) {
+		node.addEventListener('pointerdown', keepFooterStationary);
+		return {
+			destroy() {
+				node.removeEventListener('pointerdown', keepFooterStationary);
+			}
+		};
 	}
 </script>
 
@@ -369,6 +390,7 @@
 {/if}
 
 <footer
+	use:footerInteractions
 	class="flex shrink-0 items-center justify-between gap-2 border-t border-black/5 px-3 py-2 dark:border-white/10"
 >
 	<div class="flex shrink-0 items-center gap-1">
