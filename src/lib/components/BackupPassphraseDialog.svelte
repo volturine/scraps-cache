@@ -43,7 +43,7 @@
 
 <div
 	{@attach portalToAppOverlay}
-	class="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 px-4 pb-4 pt-[calc(var(--app-topbar-height)+0.5rem)]"
+	class="absolute inset-0 z-[70] flex items-start justify-center bg-black/45 px-4 pb-4 pt-[calc(var(--app-topbar-height)+0.5rem)]"
 	role="presentation"
 	onclick={(event) => {
 		if (event.target === event.currentTarget && !busy) onClose();

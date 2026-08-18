@@ -22,5 +22,8 @@ describe('BackupPassphraseDialog', () => {
 
 		expect(pointerDown.defaultPrevented).toBe(false);
 		expect(input.classList.contains('bg-transparent')).toBe(false);
+		const overlay = input.closest('[role="presentation"]') as HTMLElement;
+		expect(overlay.classList.contains('absolute')).toBe(true);
+		expect(overlay.classList.contains('fixed')).toBe(false);
 	});
 });

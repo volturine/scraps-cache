@@ -176,7 +176,10 @@ html.editor-open .app-shell {
  * paint input carets inside a transformed, overflow-clipped ancestor. */
 .app-overlay {
 	position: fixed;
-	inset: 0;
+	top: calc(var(--app-inset-top) + var(--app-visual-offset-top));
+	right: var(--app-inset-right);
+	bottom: var(--app-inset-bottom);
+	left: var(--app-inset-left);
 	z-index: 100;
 	pointer-events: none;
 }
