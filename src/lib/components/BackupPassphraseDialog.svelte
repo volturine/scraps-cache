@@ -45,6 +45,8 @@
 		if (document.activeElement === input) return;
 		event.preventDefault();
 		input.focus({ preventScroll: true });
+		const end = input.value.length;
+		input.setSelectionRange(end, end);
 	}
 </script>
 

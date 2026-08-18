@@ -472,6 +472,52 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).toBe(input);
 	});
 
+	it('creates and assigns the first label on the first touch', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		notesStore.labels = [];
+		vi.spyOn(notesStore, 'toggleLabel').mockImplementation((noteId, labelId) => {
+			notesStore.notes = notesStore.notes.map((item) =>
+				item.id === noteId ? { ...item, labels: [...item.labels, labelId] } : item
+			);
+		});
+		vi.spyOn(notesStore, 'createLabel').mockImplementation((name) => {
+			const label = { id: 'label-1', name: name.trim(), createdAt: 1, updatedAt: 1 };
+			notesStore.labels = [label];
+			return label;
+		});
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const labels = container.querySelector(
+			'footer button[aria-label="Labels"]'
+		) as HTMLButtonElement;
+		editor.focus();
+
+		dispatchTouchPointer(labels, 'pointerdown');
+		await fireEvent.click(labels);
+		await tick();
+		const popup = container.querySelector('[data-editor-popup]') as HTMLElement;
+		const input = popup.querySelector('input[placeholder="Create new label…"]') as HTMLInputElement;
+		input.focus();
+		await fireEvent.input(input, { target: { value: 'First label' } });
+		await tick();
+		const create = popup.querySelector('button[aria-label="Create label"]') as HTMLButtonElement;
+		expect(create.disabled).toBe(false);
+
+		const pointerDown = dispatchTouchPointer(create, 'pointerdown');
+		expect(pointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(input);
+		await fireEvent.click(create);
+		await tick();
+
+		expect(notesStore.labels).toEqual([
+			expect.objectContaining({ id: 'label-1', name: 'First label' })
+		]);
+		expect(notesStore.notes[0].labels).toContain('label-1');
+		expect(document.activeElement).toBe(input);
+	});
+
 	it('dismisses the keyboard before opening the attachment picker', async () => {
 		notesStore.notes = [note({ body: 'Plain note' })];
 		const inputClick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});

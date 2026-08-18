@@ -229,11 +229,16 @@ body {
 		border-color 120ms ease,
 		color 120ms ease;
 }
+.scraps-cache-input {
+	color: var(--scraps-cache-text);
+	caret-color: var(--scraps-cache-focus);
+}
 .scraps-cache-button {
 	border: 1px solid transparent;
 	touch-action: manipulation;
 }
 .scraps-cache-button:disabled,
+.scraps-cache-button[aria-disabled='true'],
 .scraps-cache-input:disabled {
 	opacity: 0.55;
 }
