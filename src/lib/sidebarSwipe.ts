@@ -1,4 +1,4 @@
-/** Open the mobile sidebar from a rightward swipe at the left edge. */
+/** Swipe the mobile sidebar open from the left edge, or closed with a left swipe. */
 
 export const SIDEBAR_EDGE_PX = 28;
 const THRESHOLD_PX = 48;
@@ -7,16 +7,30 @@ export function isSidebarEdgeStart(clientX: number, left = 0): boolean {
 	return clientX - left <= SIDEBAR_EDGE_PX;
 }
 
-export function attachOpenSidebarFromEdge(opts: { getOpen: () => boolean; open: () => void }) {
+export function attachSidebarSwipe(opts: {
+	getOpen: () => boolean;
+	open: () => void;
+	close: () => void;
+}) {
 	return (node: HTMLElement) => {
 		let tracking = false;
 		let startX = 0;
 		let startY = 0;
+		let startOpen = false;
 
 		function onPointerDown(event: PointerEvent) {
-			if (opts.getOpen()) return;
 			if (document.documentElement.classList.contains('editor-open')) return;
-			if (!isSidebarEdgeStart(event.clientX, node.getBoundingClientRect().left)) return;
+			const target = event.target;
+			startOpen = opts.getOpen();
+			if (startOpen) {
+				if (!(target instanceof Element)) return;
+				if (!target.closest('[data-sidebar-drawer], [data-sidebar-backdrop]')) return;
+				if (target.closest('a, input, textarea, select, [contenteditable]')) return;
+				const button = target.closest('button');
+				if (button && !button.closest('[data-sidebar-backdrop]')) return;
+			} else if (!isSidebarEdgeStart(event.clientX, node.getBoundingClientRect().left)) {
+				return;
+			}
 			tracking = true;
 			startX = event.clientX;
 			startY = event.clientY;
@@ -27,13 +41,18 @@ export function attachOpenSidebarFromEdge(opts: { getOpen: () => boolean; open: 
 			const dx = event.clientX - startX;
 			const dy = event.clientY - startY;
 			if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-			if (Math.abs(dy) >= Math.abs(dx) || dx <= 0) {
+			if (Math.abs(dy) >= Math.abs(dx)) {
 				tracking = false;
 				return;
 			}
-			if (dx >= THRESHOLD_PX) {
+			if (!startOpen && dx >= THRESHOLD_PX) {
 				tracking = false;
 				opts.open();
+			} else if (startOpen && dx <= -THRESHOLD_PX) {
+				tracking = false;
+				opts.close();
+			} else if ((!startOpen && dx <= 0) || (startOpen && dx >= 0)) {
+				tracking = false;
 			}
 		}
 

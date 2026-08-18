@@ -17,7 +17,7 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 	import { attachAppViewport } from '$lib/appViewport';
-	import { attachOpenSidebarFromEdge } from '$lib/sidebarSwipe';
+	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
 
 	let { children } = $props();
 	const mobile = new MediaQuery('max-width: 767px');
@@ -137,10 +137,13 @@
 	<div
 		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scraps-cache-bg)] text-[var(--scraps-cache-text)]"
 		{@attach mobile.current &&
-			attachOpenSidebarFromEdge({
+			attachSidebarSwipe({
 				getOpen: () => uiStore.sidebarOpen,
 				open: () => {
 					uiStore.sidebarOpen = true;
+				},
+				close: () => {
+					uiStore.sidebarOpen = false;
 				}
 			})}
 	>
@@ -149,6 +152,7 @@
 				<button
 					type="button"
 					aria-label="Close sidebar"
+					data-sidebar-backdrop
 					class="fixed inset-0 z-20 bg-black/30"
 					onclick={() => {
 						uiStore.sidebarOpen = false;
@@ -160,6 +164,7 @@
 					transition:fly={{ x: -288, duration: 200 }}
 					role="navigation"
 					aria-label="Sidebar"
+					data-sidebar-drawer
 				>
 					<Sidebar onNavigate={closeMobileSidebar} />
 				</div>
