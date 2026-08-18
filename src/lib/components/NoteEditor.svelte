@@ -65,7 +65,9 @@
 		  }
 		| undefined;
 	const TOUCH_TAP_SLOP = 8;
-	const editorDialogClass = 'flex h-full w-full flex-col overflow-hidden rounded-2xl';
+	const editorDialogClass = $derived(
+		`flex h-full w-full flex-col overflow-hidden rounded-2xl${paletteOpen || labelOpen ? ' editor-caret-hidden' : ''}`
+	);
 	const editorDialogStyle = $derived(
 		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
 	);
@@ -302,6 +304,10 @@
 	function openReminder() {
 		closePopups();
 		reminderOpen = true;
+	}
+
+	function keepEditorFocused(event: PointerEvent) {
+		if (event.pointerType === 'touch') event.preventDefault();
 	}
 
 	function bgColor(c: NoteColor): string {
@@ -543,12 +549,18 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			class="fixed inset-0 z-[60] bg-black/30"
+			onpointerdown={keepEditorFocused}
 			onclick={() => {
 				paletteOpen = false;
 			}}
 			role="presentation"
 		></div>
-		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<div
+			data-editor-popup
+			class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+			onpointerdown={keepEditorFocused}
+			role="presentation"
+		>
 			<ColorPalette
 				color={note.color}
 				onSelect={(c) => {
@@ -587,6 +599,7 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			class="fixed inset-0 z-[60] bg-black/30"
+			onpointerdown={keepEditorFocused}
 			onclick={() => {
 				labelOpen = false;
 			}}

@@ -182,6 +182,12 @@ html.editor-open .app-shell {
 .app-overlay > * {
 	pointer-events: auto;
 }
+
+/* Keep the editor selection alive for the software keyboard while preventing
+ * its caret from painting through the color-picker overlay on mobile. */
+.editor-caret-hidden :is(input, textarea, [contenteditable]) {
+	caret-color: transparent;
+}
 html,
 body {
 	min-height: 100lvh;

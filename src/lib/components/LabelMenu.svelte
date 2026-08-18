@@ -26,9 +26,24 @@
 		newName = '';
 		if (label && note) notesStore.toggleLabel(noteId, label.id);
 	}
+
+	function keepKeyboardOpen(event: PointerEvent) {
+		if (event.pointerType !== 'touch') return;
+		const target = event.target instanceof Element ? event.target : null;
+		if (target?.closest('button')) event.preventDefault();
+	}
+
+	function labelMenuInteractions(node: HTMLElement) {
+		node.addEventListener('pointerdown', keepKeyboardOpen);
+		return {
+			destroy() {
+				node.removeEventListener('pointerdown', keepKeyboardOpen);
+			}
+		};
+	}
 </script>
 
-<div class="scraps-cache-popover w-80 p-4">
+<div use:labelMenuInteractions class="scraps-cache-popover w-80 p-4">
 	<div class="mb-3 text-sm font-medium text-[var(--scraps-cache-text)]">Label as</div>
 
 	<!-- Create new label -->
