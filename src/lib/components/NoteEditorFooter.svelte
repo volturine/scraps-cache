@@ -84,6 +84,8 @@
 	 */
 	function openAttach() {
 		attachError = '';
+		const active = document.activeElement;
+		if (active instanceof HTMLElement && isKeyboardField(active)) active.blur();
 		const input = document.createElement('input');
 		input.type = 'file';
 		input.multiple = true;
@@ -230,20 +232,11 @@
 		event.preventDefault();
 	}
 
-	function releaseKeyboardAfterAction(event: MouseEvent) {
-		const target = event.target instanceof Element ? event.target : null;
-		if (!target?.closest('button')) return;
-		const active = document.activeElement;
-		if (active instanceof HTMLElement && isKeyboardField(active)) active.blur();
-	}
-
 	function footerInteractions(node: HTMLElement) {
 		node.addEventListener('pointerdown', keepFooterStationary);
-		node.addEventListener('click', releaseKeyboardAfterAction);
 		return {
 			destroy() {
 				node.removeEventListener('pointerdown', keepFooterStationary);
-				node.removeEventListener('click', releaseKeyboardAfterAction);
 			}
 		};
 	}

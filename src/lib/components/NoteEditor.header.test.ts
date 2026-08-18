@@ -374,7 +374,7 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).toBe(editor);
 	});
 
-	it('keeps a touched footer action stationary until click, then dismisses the keyboard', async () => {
+	it('runs a touched footer action without dismissing the keyboard', async () => {
 		notesStore.notes = [note({ body: 'Plain note' })];
 		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
@@ -390,6 +390,28 @@ describe('NoteEditor task focus', () => {
 		await fireEvent.click(color);
 		await tick();
 		expect(container.querySelector('[data-editor-popup]')).not.toBeNull();
+		expect(document.activeElement).toBe(editor);
+	});
+
+	it('dismisses the keyboard before opening the attachment picker', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const inputClick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const attach = container.querySelector(
+			'footer button[aria-label="Attach"]'
+		) as HTMLButtonElement;
+		editor.focus();
+
+		const pointerDown = dispatchTouchPointer(attach, 'pointerdown');
+		expect(pointerDown.defaultPrevented).toBe(true);
+		await fireEvent.click(attach);
+
+		expect(inputClick).toHaveBeenCalledOnce();
 		expect(document.activeElement).not.toBe(editor);
+		const picker = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+		picker.dispatchEvent(new Event('change'));
 	});
 });
