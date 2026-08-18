@@ -6,6 +6,7 @@ import {
 	appKeyboardFrame,
 	isKeyboardField,
 	isKeyboardOccluding,
+	isSoftwareKeyboardVisible,
 	keyboardOcclusion,
 	portalToAppFloat,
 	portalToAppOverlay,
@@ -92,6 +93,41 @@ describe('isKeyboardOccluding', () => {
 		expect(isKeyboardOccluding({ fieldFocused: true, visualHeight: 400, layoutHeight: 800 })).toBe(
 			true
 		);
+	});
+});
+
+describe('isSoftwareKeyboardVisible', () => {
+	it('detects an overlay keyboard from the visual viewport', () => {
+		expect(
+			isSoftwareKeyboardVisible({
+				fieldFocused: true,
+				visualHeight: 420,
+				layoutHeight: 844,
+				restingLayoutHeight: 844
+			})
+		).toBe(true);
+	});
+
+	it('detects an Android resize-mode keyboard when both viewports shrink', () => {
+		expect(
+			isSoftwareKeyboardVisible({
+				fieldFocused: true,
+				visualHeight: 500,
+				layoutHeight: 500,
+				restingLayoutHeight: 844
+			})
+		).toBe(true);
+	});
+
+	it('recognizes native Android dismissal even though the field stays focused', () => {
+		expect(
+			isSoftwareKeyboardVisible({
+				fieldFocused: true,
+				visualHeight: 844,
+				layoutHeight: 844,
+				restingLayoutHeight: 844
+			})
+		).toBe(false);
 	});
 });
 
