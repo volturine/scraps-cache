@@ -1,10 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { attachOpenSidebarFromEdge, isSidebarEdgeStart } from './sidebarSwipe';
+import { attachSidebarSwipe, isSidebarEdgeStart } from './sidebarSwipe';
 
 function pointer(type: string, target: EventTarget, clientX: number, clientY = 200) {
 	target.dispatchEvent(
 		new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, clientX, clientY })
 	);
+}
+
+function mount(open = false) {
+	const node = document.createElement('div');
+	const backdrop = document.createElement('button');
+	backdrop.setAttribute('data-sidebar-backdrop', '');
+	const drawer = document.createElement('div');
+	drawer.setAttribute('data-sidebar-drawer', '');
+	node.append(backdrop, drawer);
+	document.body.appendChild(node);
+	let isOpen = open;
+	const cleanup = attachSidebarSwipe({
+		getOpen: () => isOpen,
+		open: () => {
+			isOpen = true;
+		},
+		close: () => {
+			isOpen = false;
+		}
+	})(node);
+	return {
+		node,
+		backdrop,
+		isOpen: () => isOpen,
+		cleanup: () => {
+			cleanup();
+			node.remove();
+		}
+	};
 }
 
 describe('isSidebarEdgeStart', () => {
@@ -14,40 +43,28 @@ describe('isSidebarEdgeStart', () => {
 	});
 });
 
-describe('attachOpenSidebarFromEdge', () => {
+describe('attachSidebarSwipe', () => {
 	it('opens after a rightward swipe from the left edge', () => {
-		const node = document.createElement('div');
-		document.body.appendChild(node);
-		let open = false;
-		const cleanup = attachOpenSidebarFromEdge({
-			getOpen: () => open,
-			open: () => {
-				open = true;
-			}
-		})(node);
-
-		pointer('pointerdown', node, 4);
+		const session = mount(false);
+		pointer('pointerdown', session.node, 4);
 		pointer('pointermove', window, 80);
-		expect(open).toBe(true);
-		cleanup();
-		node.remove();
+		expect(session.isOpen()).toBe(true);
+		session.cleanup();
 	});
 
 	it('ignores a swipe that starts away from the edge', () => {
-		const node = document.createElement('div');
-		document.body.appendChild(node);
-		let open = false;
-		const cleanup = attachOpenSidebarFromEdge({
-			getOpen: () => open,
-			open: () => {
-				open = true;
-			}
-		})(node);
-
-		pointer('pointerdown', node, 80);
+		const session = mount(false);
+		pointer('pointerdown', session.node, 80);
 		pointer('pointermove', window, 180);
-		expect(open).toBe(false);
-		cleanup();
-		node.remove();
+		expect(session.isOpen()).toBe(false);
+		session.cleanup();
+	});
+
+	it('closes after a leftward swipe on the backdrop', () => {
+		const session = mount(true);
+		pointer('pointerdown', session.backdrop, 320);
+		pointer('pointermove', window, 240);
+		expect(session.isOpen()).toBe(false);
+		session.cleanup();
 	});
 });
