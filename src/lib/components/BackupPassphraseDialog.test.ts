@@ -21,5 +21,6 @@ describe('BackupPassphraseDialog', () => {
 		const pointerDown = dispatchPointerDown(input);
 
 		expect(pointerDown.defaultPrevented).toBe(false);
+		expect(input.classList.contains('bg-transparent')).toBe(false);
 	});
 });

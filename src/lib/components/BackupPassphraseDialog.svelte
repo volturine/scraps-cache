@@ -81,7 +81,7 @@
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}
 					disabled={busy}
-					class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-[16px]"
+					class="scraps-cache-input w-full px-3 py-2.5 text-[16px]"
 				/>
 			</label>
 
@@ -95,7 +95,7 @@
 						autocomplete="new-password"
 						bind:value={confirmation}
 						disabled={busy}
-						class="scraps-cache-input w-full bg-transparent px-3 py-2.5 text-[16px]"
+						class="scraps-cache-input w-full px-3 py-2.5 text-[16px]"
 					/>
 				</label>
 			{/if}

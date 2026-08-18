@@ -172,9 +172,10 @@ html.editor-open .app-shell {
 	pointer-events: auto;
 }
 
-/* Global dialogs must sit above the mobile sidebar as well as the canvas. */
+/* Global dialogs sit outside the transformed app viewport. WebKit can fail to
+ * paint input carets inside a transformed, overflow-clipped ancestor. */
 .app-overlay {
-	position: absolute;
+	position: fixed;
 	inset: 0;
 	z-index: 100;
 	pointer-events: none;
