@@ -198,5 +198,5 @@
 			</div>
 		</div>
 	</div>
-	<div class="app-overlay" data-app-overlay></div>
 </div>
+<div class="app-overlay" data-app-overlay></div>
