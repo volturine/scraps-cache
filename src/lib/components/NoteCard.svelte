@@ -6,7 +6,7 @@
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Archive, Trash2 } from '@lucide/svelte';
+	import { Archive, RotateCcw, Trash2 } from '@lucide/svelte';
 
 	let {
 		note,
@@ -49,8 +49,14 @@
 	let dragging = $state(false);
 
 	const swipe = createCardSwipe({
-		onSwipeLeft: () => notesStore.toggleArchive(note.id),
-		onSwipeRight: () => notesStore.trashNote(note.id),
+		onSwipeLeft: () => {
+			if (note.trashed) notesStore.restoreNote(note.id);
+			else notesStore.toggleArchive(note.id);
+		},
+		onSwipeRight: () => {
+			if (note.trashed) void notesStore.deleteNoteForever(note.id);
+			else notesStore.trashNote(note.id);
+		},
 		setVisual: (s) => {
 			offsetX = s.offsetX;
 			dragging = s.dragging;
@@ -63,7 +69,11 @@
 		<div
 			class="absolute inset-0 flex items-center justify-end rounded-lg bg-green-500 pr-4 text-white"
 		>
-			<Archive class="h-6 w-6" aria-hidden="true" />
+			{#if note.trashed}
+				<RotateCcw class="h-6 w-6" aria-hidden="true" />
+			{:else}
+				<Archive class="h-6 w-6" aria-hidden="true" />
+			{/if}
 		</div>
 	{:else if offsetX > 0}
 		<div
@@ -87,12 +97,14 @@
 		onclick={openUnlessAction}
 		onkeydown={(event) => activateOnKeyboard(event, () => onOpen(note.id))}
 	>
-		<div class="scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-			{#if note.reminder != null}
+		{#if note.reminder != null}
+			<div class="shrink-0">
 				<ReminderLabel reminder={note.reminder} />
-			{/if}
+			</div>
+		{/if}
 
-			<div class="block w-full p-3 pb-2 text-left">
+		<div class="scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+			<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
 				{#if note.title}
 					<h3
 						class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--scraps-cache-text)]"

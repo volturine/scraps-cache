@@ -172,23 +172,35 @@ html.editor-open .app-shell {
 	pointer-events: auto;
 }
 
-/* Global dialogs must sit above the mobile sidebar as well as the canvas. */
+/* Global dialogs sit outside the transformed app viewport. WebKit can fail to
+ * paint input carets inside a transformed, overflow-clipped ancestor. */
 .app-overlay {
-	position: absolute;
-	inset: 0;
+	position: fixed;
+	top: calc(var(--app-inset-top) + var(--app-visual-offset-top));
+	right: var(--app-inset-right);
+	bottom: var(--app-inset-bottom);
+	left: var(--app-inset-left);
 	z-index: 100;
 	pointer-events: none;
 }
 .app-overlay > * {
 	pointer-events: auto;
 }
+
+/* Keep the editor selection alive for the software keyboard while preventing
+ * its caret from painting through the color-picker overlay on mobile. */
+.editor-caret-hidden :is(input, textarea, [contenteditable]) {
+	caret-color: transparent;
+}
 html,
 body {
 	min-height: 100lvh;
 	height: 100%;
 	margin: 0;
-	overflow: hidden;
-	overscroll-behavior: none;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior-x: none;
+	overscroll-behavior-y: auto;
 	background-color: var(--scraps-cache-bg);
 }
 
@@ -221,11 +233,16 @@ body {
 		border-color 120ms ease,
 		color 120ms ease;
 }
+.scraps-cache-input {
+	color: var(--scraps-cache-text);
+	caret-color: var(--scraps-cache-focus);
+}
 .scraps-cache-button {
 	border: 1px solid transparent;
 	touch-action: manipulation;
 }
 .scraps-cache-button:disabled,
+.scraps-cache-button[aria-disabled='true'],
 .scraps-cache-input:disabled {
 	opacity: 0.55;
 }
@@ -321,6 +338,12 @@ body {
 	-webkit-overflow-scrolling: touch;
 	touch-action: pan-y;
 	overscroll-behavior: contain;
+}
+
+/* Let the primary feed chain a top-edge pull to Android Chrome's native
+ * refresh gesture. Nested editor and attachment scrollers remain contained. */
+.app-feed {
+	overscroll-behavior-y: auto;
 }
 
 /* Horizontal Kanban board scroller. It remains a block scroll container so iOS keeps native panning. */

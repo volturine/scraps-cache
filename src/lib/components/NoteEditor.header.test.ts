@@ -65,6 +65,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.restoreAllMocks();
 	notesStore.notes = [];
+	notesStore.labels = [];
 });
 
 describe('NoteEditor header reminder controls', () => {
@@ -326,6 +327,18 @@ describe('NoteEditor task focus', () => {
 		expect(toggle.getAttribute('aria-pressed')).toBe('true');
 	});
 
+	it('shows restore instead of archive for a trashed note', () => {
+		notesStore.notes = [note({ trashed: true, trashedAt: 1 })];
+		const restore = vi.spyOn(notesStore, 'restoreNote').mockImplementation(() => {});
+		const { getByRole, queryByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		expect(queryByRole('button', { name: 'Archive' })).toBeNull();
+		void fireEvent.click(getByRole('button', { name: 'Restore' }));
+		expect(restore).toHaveBeenCalledWith('note-1');
+	});
+
 	it('drops task focus when the editor loses focus and the keyboard is dismissed', async () => {
 		notesStore.notes = [note({ body: '[ ] Avocados\n  [ ] tes' })];
 		const { container } = render(NoteEditor, {
@@ -343,5 +356,187 @@ describe('NoteEditor task focus', () => {
 		await tick();
 
 		expect(container.querySelector('[data-focus-group]')).toBeNull();
+	});
+
+	it('blurs the body when empty editor chrome is tapped, then focuses it from an idle tap', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		editor.focus();
+
+		await fireEvent.click(scroller);
+		expect(document.activeElement).not.toBe(editor);
+
+		await fireEvent.click(scroller);
+		await tick();
+		expect(document.activeElement).toBe(editor);
+	});
+
+	it('applies a touched color without dismissing the keyboard', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const color = container.querySelector('footer button[aria-label="Color"]') as HTMLButtonElement;
+		editor.focus();
+
+		const pointerDown = dispatchTouchPointer(color, 'pointerdown');
+		expect(pointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(editor);
+
+		await fireEvent.click(color);
+		await tick();
+		const popup = container.querySelector('[data-editor-popup]') as HTMLElement;
+		expect(popup).not.toBeNull();
+		expect(document.activeElement).toBe(editor);
+		expect(editor.closest('[role="dialog"]')?.classList.contains('editor-caret-hidden')).toBe(true);
+
+		const yellow = popup.querySelector(
+			'button[aria-label="Set color yellow"]'
+		) as HTMLButtonElement;
+		const palettePointerDown = dispatchTouchPointer(yellow, 'pointerdown');
+		expect(palettePointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(editor);
+
+		await fireEvent.click(yellow);
+		await tick();
+		expect(container.querySelector('[data-editor-popup]')).toBeNull();
+		expect(document.activeElement).toBe(editor);
+		expect(notesStore.notes[0].color).toBe('yellow');
+		expect(editor.closest('[role="dialog"]')?.classList.contains('editor-caret-hidden')).toBe(
+			false
+		);
+	});
+
+	it('handles label buttons on the first touch without dismissing the keyboard', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		notesStore.labels = [{ id: 'label-1', name: 'Work', createdAt: 1, updatedAt: 1 }];
+		vi.spyOn(notesStore, 'toggleLabel').mockImplementation((noteId, labelId) => {
+			notesStore.notes = notesStore.notes.map((item) =>
+				item.id === noteId
+					? {
+							...item,
+							labels: item.labels.includes(labelId)
+								? item.labels.filter((id) => id !== labelId)
+								: [...item.labels, labelId]
+						}
+					: item
+			);
+		});
+		vi.spyOn(notesStore, 'createLabel').mockImplementation((name) => {
+			const label = { id: 'label-2', name: name.trim(), createdAt: 2, updatedAt: 2 };
+			notesStore.labels = [...notesStore.labels, label];
+			return label;
+		});
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const labels = container.querySelector(
+			'footer button[aria-label="Labels"]'
+		) as HTMLButtonElement;
+		editor.focus();
+
+		dispatchTouchPointer(labels, 'pointerdown');
+		await fireEvent.click(labels);
+		await tick();
+		const popup = container.querySelector('[data-editor-popup]') as HTMLElement;
+		const work = popup.querySelector('button:not([aria-label])') as HTMLButtonElement;
+		const labelPointerDown = dispatchTouchPointer(work, 'pointerdown');
+		expect(labelPointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(editor);
+
+		await fireEvent.click(work);
+		await tick();
+		expect(notesStore.notes[0].labels).toContain('label-1');
+		expect(document.activeElement).toBe(editor);
+
+		const input = popup.querySelector('input[placeholder="Create new label…"]') as HTMLInputElement;
+		input.focus();
+		await fireEvent.input(input, { target: { value: 'Personal' } });
+		await tick();
+		const create = popup.querySelector('button[aria-label="Create label"]') as HTMLButtonElement;
+		const createPointerDown = dispatchTouchPointer(create, 'pointerdown');
+		expect(createPointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(input);
+
+		await fireEvent.click(create);
+		await tick();
+		const personal = notesStore.labels.find((label) => label.name === 'Personal');
+		expect(personal).toBeDefined();
+		expect(notesStore.notes[0].labels).toContain(personal?.id);
+		expect(document.activeElement).toBe(input);
+	});
+
+	it('creates and assigns the first label on the first touch', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		notesStore.labels = [];
+		vi.spyOn(notesStore, 'toggleLabel').mockImplementation((noteId, labelId) => {
+			notesStore.notes = notesStore.notes.map((item) =>
+				item.id === noteId ? { ...item, labels: [...item.labels, labelId] } : item
+			);
+		});
+		vi.spyOn(notesStore, 'createLabel').mockImplementation((name) => {
+			const label = { id: 'label-1', name: name.trim(), createdAt: 1, updatedAt: 1 };
+			notesStore.labels = [label];
+			return label;
+		});
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const labels = container.querySelector(
+			'footer button[aria-label="Labels"]'
+		) as HTMLButtonElement;
+		editor.focus();
+
+		dispatchTouchPointer(labels, 'pointerdown');
+		await fireEvent.click(labels);
+		await tick();
+		const popup = container.querySelector('[data-editor-popup]') as HTMLElement;
+		const input = popup.querySelector('input[placeholder="Create new label…"]') as HTMLInputElement;
+		input.focus();
+		await fireEvent.input(input, { target: { value: 'First label' } });
+		await tick();
+		const create = popup.querySelector('button[aria-label="Create label"]') as HTMLButtonElement;
+		expect(create.disabled).toBe(false);
+
+		const pointerDown = dispatchTouchPointer(create, 'pointerdown');
+		expect(pointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(input);
+		await fireEvent.click(create);
+		await tick();
+
+		expect(notesStore.labels).toEqual([
+			expect.objectContaining({ id: 'label-1', name: 'First label' })
+		]);
+		expect(notesStore.notes[0].labels).toContain('label-1');
+		expect(document.activeElement).toBe(input);
+	});
+
+	it('dismisses the keyboard before opening the attachment picker', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const inputClick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const attach = container.querySelector(
+			'footer button[aria-label="Attach"]'
+		) as HTMLButtonElement;
+		editor.focus();
+
+		const pointerDown = dispatchTouchPointer(attach, 'pointerdown');
+		expect(pointerDown.defaultPrevented).toBe(true);
+		await fireEvent.click(attach);
+
+		expect(inputClick).toHaveBeenCalledOnce();
+		expect(document.activeElement).not.toBe(editor);
+		const picker = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+		picker.dispatchEvent(new Event('change'));
 	});
 });

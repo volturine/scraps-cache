@@ -65,7 +65,9 @@
 		  }
 		| undefined;
 	const TOUCH_TAP_SLOP = 8;
-	const editorDialogClass = 'flex h-full w-full flex-col overflow-hidden rounded-2xl';
+	const editorDialogClass = $derived(
+		`flex h-full w-full flex-col overflow-hidden rounded-2xl${paletteOpen || labelOpen ? ' editor-caret-hidden' : ''}`
+	);
 	const editorDialogStyle = $derived(
 		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
 	);
@@ -100,19 +102,19 @@
 		// Task rows and the focused envelope manage their own chrome.
 		if (el?.closest('[data-focus-group], [data-task-row], [data-add-subtask]')) return;
 
-		if (taskFocusLine !== null) {
-			exitTaskFocus();
-			// Empty note chrome: blur so iOS can dismiss the keyboard.
-			if (!el?.closest('button, input, textarea, select, a, [contenteditable]')) {
-				const active = document.activeElement;
-				if (active instanceof HTMLElement && editorDialog?.contains(active)) active.blur();
-			}
-			return;
-		}
-
 		// Match any contenteditable host (including plaintext-only). A strict ="true"
 		// check lets page clicks steal focus and collapse multi-line iOS selections.
 		if (el?.closest('button, input, textarea, select, a, [contenteditable]')) return;
+		const active = document.activeElement;
+		if (active instanceof HTMLElement && editorDialog?.contains(active)) {
+			// Android keeps a contenteditable focused after its software-keyboard
+			// dismiss action. Treat a tap on empty note chrome like the header buttons:
+			// explicitly blur the field so the keyboard can close reliably.
+			exitTaskFocus();
+			active.blur();
+			return;
+		}
+		if (taskFocusLine !== null) exitTaskFocus();
 		focusBodySignal++;
 	}
 
@@ -302,6 +304,10 @@
 	function openReminder() {
 		closePopups();
 		reminderOpen = true;
+	}
+
+	function keepEditorFocused(event: PointerEvent) {
+		if (event.pointerType === 'touch') event.preventDefault();
 	}
 
 	function bgColor(c: NoteColor): string {
@@ -510,6 +516,7 @@
 						showArchive={true}
 						showDelete={true}
 						archived={note.archived}
+						trashed={note.trashed}
 						{copyFlash}
 						onOpenColor={() => {
 							closePopups();
@@ -521,11 +528,13 @@
 						}}
 						onCopy={() => void copyText()}
 						onArchive={() => {
-							notesStore.toggleArchive(note.id);
+							if (note.trashed) notesStore.restoreNote(note.id);
+							else notesStore.toggleArchive(note.id);
 							void close();
 						}}
 						onDelete={() => {
-							notesStore.trashNote(note.id);
+							if (note.trashed) void notesStore.deleteNoteForever(note.id);
+							else notesStore.trashNote(note.id);
 							close();
 						}}
 						onImagesChange={(imgs) => commitNow(imgs)}
@@ -540,12 +549,18 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			class="fixed inset-0 z-[60] bg-black/30"
+			onpointerdown={keepEditorFocused}
 			onclick={() => {
 				paletteOpen = false;
 			}}
 			role="presentation"
 		></div>
-		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<div
+			data-editor-popup
+			class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+			onpointerdown={keepEditorFocused}
+			role="presentation"
+		>
 			<ColorPalette
 				color={note.color}
 				onSelect={(c) => {
@@ -584,6 +599,7 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			class="fixed inset-0 z-[60] bg-black/30"
+			onpointerdown={keepEditorFocused}
 			onclick={() => {
 				labelOpen = false;
 			}}

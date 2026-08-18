@@ -17,6 +17,7 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 	import { attachAppViewport } from '$lib/appViewport';
+	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
 
 	let { children } = $props();
 	const mobile = new MediaQuery('max-width: 767px');
@@ -135,12 +136,23 @@
 <div class="app-viewport" {@attach attachAppViewport}>
 	<div
 		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scraps-cache-bg)] text-[var(--scraps-cache-text)]"
+		{@attach mobile.current &&
+			attachSidebarSwipe({
+				getOpen: () => uiStore.sidebarOpen,
+				open: () => {
+					uiStore.sidebarOpen = true;
+				},
+				close: () => {
+					uiStore.sidebarOpen = false;
+				}
+			})}
 	>
 		{#if mobile.current}
 			{#if uiStore.sidebarOpen}
 				<button
 					type="button"
 					aria-label="Close sidebar"
+					data-sidebar-backdrop
 					class="fixed inset-0 z-20 bg-black/30"
 					onclick={() => {
 						uiStore.sidebarOpen = false;
@@ -152,6 +164,7 @@
 					transition:fly={{ x: -288, duration: 200 }}
 					role="navigation"
 					aria-label="Sidebar"
+					data-sidebar-drawer
 				>
 					<Sidebar onNavigate={closeMobileSidebar} />
 				</div>
@@ -168,7 +181,7 @@
 			<Topbar />
 			<div class="app-canvas relative min-h-0 min-w-0 flex-1">
 				<main
-					class="scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+					class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
 				>
 					{@render children()}
 				</main>
@@ -185,5 +198,5 @@
 			</div>
 		</div>
 	</div>
-	<div class="app-overlay" data-app-overlay></div>
 </div>
+<div class="app-overlay" data-app-overlay></div>

@@ -369,7 +369,7 @@
 {#if pendingDelete}
 	<div
 		{@attach portalToAppOverlay}
-		class="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center"
+		class="absolute inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center"
 		role="presentation"
 		data-sidebar-stay-open
 		onclick={(event) => {

@@ -11,6 +11,7 @@
 	} = $props();
 
 	let newName = $state('');
+	let newNameInput = $state<HTMLInputElement | null>(null);
 
 	const note = $derived(notesStore.notes.find((n) => n.id === noteId));
 
@@ -20,20 +21,38 @@
 	}
 
 	function createAndAssign() {
-		const name = newName.trim();
+		// Read the input directly as well as the bound state. On mobile, a very
+		// quick first tap can arrive before the reactive binding settles.
+		const name = (newNameInput?.value ?? newName).trim();
 		if (!name) return;
 		const label = notesStore.createLabel(name);
 		newName = '';
 		if (label && note) notesStore.toggleLabel(noteId, label.id);
 	}
+
+	function keepKeyboardOpen(event: PointerEvent) {
+		if (event.pointerType !== 'touch') return;
+		const target = event.target instanceof Element ? event.target : null;
+		if (target?.closest('button')) event.preventDefault();
+	}
+
+	function labelMenuInteractions(node: HTMLElement) {
+		node.addEventListener('pointerdown', keepKeyboardOpen);
+		return {
+			destroy() {
+				node.removeEventListener('pointerdown', keepKeyboardOpen);
+			}
+		};
+	}
 </script>
 
-<div class="scraps-cache-popover w-80 p-4">
+<div use:labelMenuInteractions class="scraps-cache-popover w-80 p-4">
 	<div class="mb-3 text-sm font-medium text-[var(--scraps-cache-text)]">Label as</div>
 
 	<!-- Create new label -->
 	<div class="mb-3 flex gap-2">
 		<input
+			bind:this={newNameInput}
 			type="text"
 			bind:value={newName}
 			placeholder="Create new label…"
@@ -43,7 +62,7 @@
 		<button
 			type="button"
 			onclick={createAndAssign}
-			disabled={!newName.trim()}
+			aria-disabled={!newName.trim()}
 			class="scraps-cache-button scraps-cache-button-secondary grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--scraps-cache-text-muted)]"
 			aria-label="Create label"
 			title="Create label"

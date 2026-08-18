@@ -39,6 +39,21 @@ export function isKeyboardOccluding(options: {
 	);
 }
 
+/** Detect an open software keyboard in both overlay and Android resize modes. */
+export function isSoftwareKeyboardVisible(options: {
+	fieldFocused: boolean;
+	visualHeight: number;
+	layoutHeight: number;
+	restingLayoutHeight: number;
+}): boolean {
+	if (!options.fieldFocused) return false;
+	return (
+		isKeyboardOccluding(options) ||
+		Math.min(options.visualHeight, options.layoutHeight) <
+			options.restingLayoutHeight - KEYBOARD_HEIGHT_THRESHOLD_PX
+	);
+}
+
 /** Extra inset inside the safe rectangle while the software keyboard is up. */
 export function keyboardOcclusion(options: {
 	fieldFocused: boolean;
@@ -84,9 +99,9 @@ export function rememberSafeArea(
 export function appBottomInset(
 	safeBottom: number,
 	onPhone: boolean,
-	fieldFocused: boolean
+	keyboardVisible: boolean
 ): number {
-	return onPhone && fieldFocused ? 0 : safeBottom;
+	return onPhone && keyboardVisible ? 0 : safeBottom;
 }
 
 export type AppKeyboardFrame = {
@@ -159,6 +174,7 @@ export function attachAppViewport(_node: HTMLElement) {
 	let fieldFocused = isKeyboardField(document.activeElement);
 	let restingLayoutHeight = window.innerHeight;
 	let editorOpen = document.documentElement.classList.contains('editor-open');
+	let keyboardVisible = false;
 	const phone = window.matchMedia(PHONE_MEDIA);
 
 	const apply = () => {
@@ -170,6 +186,24 @@ export function attachAppViewport(_node: HTMLElement) {
 		if (!fieldFocused) {
 			restingLayoutHeight = Math.max(layoutHeight, visualHeight);
 		}
+
+		const nextKeyboardVisible =
+			onPhone &&
+			isSoftwareKeyboardVisible({
+				fieldFocused,
+				visualHeight,
+				layoutHeight,
+				restingLayoutHeight
+			});
+		if (keyboardVisible && !nextKeyboardVisible && fieldFocused) {
+			// Android's native keyboard dismiss keeps contenteditable focused. Once
+			// the viewport has returned to its resting height, release that stale
+			// focus so editor state follows the keyboard that is actually visible.
+			const active = document.activeElement;
+			fieldFocused = false;
+			if (active instanceof HTMLElement && isKeyboardField(active)) active.blur();
+		}
+		keyboardVisible = nextKeyboardVisible;
 
 		const occluding =
 			onPhone &&
@@ -197,12 +231,12 @@ export function attachAppViewport(_node: HTMLElement) {
 			occlusion
 		});
 
-		document.documentElement.classList.toggle('keyboard-open', onPhone && fieldFocused);
+		document.documentElement.classList.toggle('keyboard-open', keyboardVisible);
 		setInsetVar('--app-inset-top', cachedSafe.top);
 		setInsetVar('--app-inset-right', cachedSafe.right);
 		// Keep installed iPhone and iPad controls above the home indicator. When
 		// the phone keyboard is active, its own occlusion replaces this inset.
-		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, fieldFocused));
+		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, keyboardVisible));
 		setInsetVar('--app-inset-left', cachedSafe.left);
 		setInsetVar('--app-visual-offset-top', keyboardFrame.viewportOffsetTop);
 		setInsetVar('--app-keyboard-top', keyboardFrame.keyboardTop);
