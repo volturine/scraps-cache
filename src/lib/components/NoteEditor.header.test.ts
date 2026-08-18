@@ -373,4 +373,23 @@ describe('NoteEditor task focus', () => {
 		await tick();
 		expect(document.activeElement).toBe(editor);
 	});
+
+	it('keeps a touched footer action stationary until click, then dismisses the keyboard', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const color = container.querySelector('footer button[aria-label="Color"]') as HTMLButtonElement;
+		editor.focus();
+
+		const pointerDown = dispatchTouchPointer(color, 'pointerdown');
+		expect(pointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(editor);
+
+		await fireEvent.click(color);
+		await tick();
+		expect(container.querySelector('[data-editor-popup]')).not.toBeNull();
+		expect(document.activeElement).not.toBe(editor);
+	});
 });

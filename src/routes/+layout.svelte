@@ -181,7 +181,7 @@
 			<Topbar />
 			<div class="app-canvas relative min-h-0 min-w-0 flex-1">
 				<main
-					class="scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+					class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
 				>
 					{@render children()}
 				</main>

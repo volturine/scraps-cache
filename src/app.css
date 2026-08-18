@@ -187,8 +187,10 @@ body {
 	min-height: 100lvh;
 	height: 100%;
 	margin: 0;
-	overflow: hidden;
-	overscroll-behavior: none;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior-x: none;
+	overscroll-behavior-y: auto;
 	background-color: var(--scraps-cache-bg);
 }
 
@@ -321,6 +323,12 @@ body {
 	-webkit-overflow-scrolling: touch;
 	touch-action: pan-y;
 	overscroll-behavior: contain;
+}
+
+/* Let the primary feed chain a top-edge pull to Android Chrome's native
+ * refresh gesture. Nested editor and attachment scrollers remain contained. */
+.app-feed {
+	overscroll-behavior-y: auto;
 }
 
 /* Horizontal Kanban board scroller. It remains a block scroll container so iOS keeps native panning. */
