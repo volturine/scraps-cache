@@ -97,11 +97,13 @@
 		onclick={openUnlessAction}
 		onkeydown={(event) => activateOnKeyboard(event, () => onOpen(note.id))}
 	>
-		<div class="scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-			{#if note.reminder != null}
+		{#if note.reminder != null}
+			<div class="shrink-0">
 				<ReminderLabel reminder={note.reminder} />
-			{/if}
+			</div>
+		{/if}
 
+		<div class="scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
 			<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
 				{#if note.title}
 					<h3
