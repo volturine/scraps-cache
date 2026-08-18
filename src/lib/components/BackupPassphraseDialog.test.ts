@@ -9,7 +9,7 @@ function dispatchPointerDown(target: Element): MouseEvent {
 }
 
 describe('BackupPassphraseDialog', () => {
-	it('focuses the passphrase caret without allowing native viewport panning', () => {
+	it('leaves passphrase pointer focus and caret placement to the browser', () => {
 		render(BackupPassphraseDialog, {
 			props: {
 				mode: 'import',
@@ -18,13 +18,8 @@ describe('BackupPassphraseDialog', () => {
 			}
 		});
 		const input = document.body.querySelector('input[type="password"]') as HTMLInputElement;
-		input.value = 'secret passphrase';
-
 		const pointerDown = dispatchPointerDown(input);
 
-		expect(pointerDown.defaultPrevented).toBe(true);
-		expect(document.activeElement).toBe(input);
-		expect(input.selectionStart).toBe(input.value.length);
-		expect(input.selectionEnd).toBe(input.value.length);
+		expect(pointerDown.defaultPrevented).toBe(false);
 	});
 });
