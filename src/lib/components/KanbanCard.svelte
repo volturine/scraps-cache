@@ -3,6 +3,8 @@
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { NOTE_COLORS, NOTE_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
 	import { activateOnKeyboard } from '$lib/utils';
+	import { PHONE_MEDIA } from '$lib/appViewport';
+	import { isSidebarEdgeStart } from '$lib/sidebarSwipe';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 
@@ -58,6 +60,7 @@
 	function onPointerDown(event: PointerEvent) {
 		// Desktop gets the native HTML drag path; this path makes touch dragging work on iPhone.
 		if (event.pointerType === 'mouse' || interactiveTarget(event.target)) return;
+		if (window.matchMedia(PHONE_MEDIA).matches && isSidebarEdgeStart(event.clientX)) return;
 		pointerId = event.pointerId;
 		startX = event.clientX;
 		startY = event.clientY;

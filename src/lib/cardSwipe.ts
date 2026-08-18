@@ -1,5 +1,8 @@
 /** Shared pointer swipe for note cards (touch + trackpad + mouse). */
 
+import { PHONE_MEDIA } from './appViewport';
+import { isSidebarEdgeStart } from './sidebarSwipe';
+
 export type CardSwipeHandlers = {
 	onPointerDown: (e: PointerEvent) => void;
 	onPointerMove: (e: PointerEvent) => void;
@@ -45,6 +48,8 @@ export function createCardSwipe(opts: {
 			target.closest('[data-checklist-toggle], [data-photo], [data-file], button, input, textarea')
 		)
 			return;
+		// The left edge belongs to the navigation drawer.
+		if (window.matchMedia(PHONE_MEDIA).matches && isSidebarEdgeStart(e.clientX)) return;
 
 		// Keep the pointer until we can identify its direction, but do not promote
 		// the card to a transformed layer yet. On iOS, transforming a card before
