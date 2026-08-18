@@ -12,17 +12,12 @@
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { preloadVapidPublicKey } from '$lib/reminderWake';
 	import { provideEditorActions } from '$lib/editorContext';
+	import { fade, fly } from 'svelte/transition';
 	import { onMount } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 	import { attachAppViewport } from '$lib/appViewport';
-	import {
-		attachSidebarSwipe,
-		restSidebarOffset,
-		sidebarDrawerStyle,
-		sidebarProgress,
-		SIDEBAR_WIDTH_PX
-	} from '$lib/sidebarSwipe';
+	import { attachOpenSidebarFromEdge } from '$lib/sidebarSwipe';
 
 	let { children } = $props();
 	const mobile = new MediaQuery('max-width: 767px');
@@ -45,9 +40,6 @@
 	}
 
 	onMount(() => {
-		const shell = document.querySelector('.app-shell');
-		const stopSidebarSwipe =
-			shell instanceof HTMLElement ? attachSidebarSwipe(sidebarSwipe)(shell) : undefined;
 		attachSyncCloudIndicator(syncStore);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
 		if (mobile.current) uiStore.sidebarOpen = false;
@@ -85,7 +77,6 @@
 			document.removeEventListener('visibilitychange', onForeground);
 			window.removeEventListener('focus', onForeground);
 			stopReminders();
-			stopSidebarSwipe?.();
 		};
 	});
 
@@ -135,30 +126,6 @@
 	function closeMobileSidebar() {
 		uiStore.sidebarOpen = false;
 	}
-
-	let sidebarOffset = $state(restSidebarOffset(false));
-	let sidebarDragging = $state(false);
-	const sidebarTranslate = $derived(
-		sidebarDragging ? sidebarOffset : restSidebarOffset(uiStore.sidebarOpen)
-	);
-	const sidebarRevealed = $derived(
-		mobile.current &&
-			(uiStore.sidebarOpen || sidebarDragging || sidebarTranslate > -SIDEBAR_WIDTH_PX)
-	);
-	const desktopSidebarOpen = $derived(!mobile.current && uiStore.sidebarOpen);
-
-	const sidebarSwipe = {
-		getOpen: () => uiStore.sidebarOpen,
-		setOpen: (open: boolean) => {
-			uiStore.sidebarOpen = open;
-		},
-		setVisual: (state: { offset: number; dragging: boolean }) => {
-			sidebarOffset = state.offset;
-			sidebarDragging = state.dragging;
-		},
-		isEnabled: () => mobile.current,
-		isBlocked: () => document.documentElement.classList.contains('editor-open')
-	};
 </script>
 
 <svelte:head>
@@ -169,35 +136,36 @@
 <div class="app-viewport" {@attach attachAppViewport}>
 	<div
 		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scraps-cache-bg)] text-[var(--scraps-cache-text)]"
-		data-sidebar-open={uiStore.sidebarOpen}
+		{@attach mobile.current &&
+			attachOpenSidebarFromEdge({
+				getOpen: () => uiStore.sidebarOpen,
+				open: () => {
+					uiStore.sidebarOpen = true;
+				}
+			})}
 	>
 		{#if mobile.current}
-			<button
-				type="button"
-				aria-label="Close sidebar"
-				data-sidebar-backdrop
-				class="fixed inset-0 z-20 bg-black/30"
-				class:pointer-events-none={!sidebarRevealed}
-				style="opacity: {sidebarProgress(sidebarTranslate)}; {sidebarDragging
-					? 'transition: none;'
-					: 'transition: opacity 0.2s ease;'}"
-				onclick={() => {
-					uiStore.sidebarOpen = false;
-				}}
-			></button>
-			<div
-				class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)]"
-				style={sidebarDrawerStyle(sidebarTranslate, sidebarDragging)}
-				role="navigation"
-				aria-label="Sidebar"
-				data-sidebar-drawer
-				inert={!sidebarRevealed}
-				aria-hidden={!sidebarRevealed}
-			>
-				<Sidebar onNavigate={closeMobileSidebar} />
-			</div>
+			{#if uiStore.sidebarOpen}
+				<button
+					type="button"
+					aria-label="Close sidebar"
+					class="fixed inset-0 z-20 bg-black/30"
+					onclick={() => {
+						uiStore.sidebarOpen = false;
+					}}
+					transition:fade={{ duration: 150 }}
+				></button>
+				<div
+					class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)]"
+					transition:fly={{ x: -288, duration: 200 }}
+					role="navigation"
+					aria-label="Sidebar"
+				>
+					<Sidebar onNavigate={closeMobileSidebar} />
+				</div>
+			{/if}
 		{:else}
-			{#if desktopSidebarOpen}
+			{#if uiStore.sidebarOpen}
 				<div class="w-64 shrink-0 border-r border-[var(--scraps-cache-border)]">
 					<Sidebar />
 				</div>
