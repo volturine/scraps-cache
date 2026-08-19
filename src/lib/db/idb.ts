@@ -184,7 +184,7 @@ async function prepareImageBlobs(note: Note): Promise<Array<{ key: string; blob:
 }
 
 /** Note metadata and all image blobs commit in one transaction or not at all. */
-async function putNoteSnapshot(note: Note): Promise<void> {
+async function putNoteSnapshot(note: Note, syncOutboxKeys: string[] = []): Promise<void> {
 	const db = await getDB();
 	const blobs = await prepareImageBlobs(note);
 	const existingKeys = (await db.getAllKeys(IMAGES_STORE)).filter((key) =>
@@ -192,15 +192,33 @@ async function putNoteSnapshot(note: Note): Promise<void> {
 	);
 	const desiredKeys = new Set((note.images ?? []).map((image) => imageKey(note.id, image.id)));
 	const lean = detachNote(note);
-	const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
-	// A metadata-only note is normal during asynchronous hydration. Keep its
-	// existing blobs; only an attachment removed from the current list is deleted.
-	for (const key of existingKeys) {
-		if (!desiredKeys.has(String(key))) tx.objectStore(IMAGES_STORE).delete(key);
+	const stores = syncOutboxKeys.length
+		? [NOTES_STORE, IMAGES_STORE, SYNC_OUTBOX_STORE]
+		: [NOTES_STORE, IMAGES_STORE];
+	const tx = db.transaction(stores, 'readwrite');
+	try {
+		// A metadata-only note is normal during asynchronous hydration. Keep its
+		// existing blobs; only an attachment removed from the current list is deleted.
+		for (const key of existingKeys) {
+			if (!desiredKeys.has(String(key))) await tx.objectStore(IMAGES_STORE).delete(key);
+		}
+		for (const { key, blob } of blobs) await tx.objectStore(IMAGES_STORE).put(blob, key);
+		await tx.objectStore(NOTES_STORE).put(lean);
+		if (syncOutboxKeys.length) {
+			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+			const markedAt = Date.now();
+			for (const key of syncOutboxKeys) await outbox.put(markedAt, key);
+		}
+		await tx.done;
+	} catch (error) {
+		try {
+			tx.abort();
+		} catch {
+			// The transaction may already have aborted after a failed request.
+		}
+		await tx.done.catch(() => undefined);
+		throw error;
 	}
-	for (const { key, blob } of blobs) tx.objectStore(IMAGES_STORE).put(blob, key);
-	tx.objectStore(NOTES_STORE).put(lean);
-	await tx.done;
 }
 
 function enqueueNote<T>(noteId: string, operation: () => Promise<T>): Promise<T> {
@@ -236,14 +254,15 @@ export async function getAllNotes(): Promise<Note[]> {
 	return hydrated;
 }
 
-export function putNote(note: Note): Promise<void> {
+export function putNote(note: Note, syncOutboxKeys: Iterable<string> = []): Promise<void> {
 	const snapshot = snapshotNote(note);
+	const outboxKeys = [...new Set(syncOutboxKeys)];
 	const generation = writeGeneration;
 	return enqueueNote(snapshot.id, () =>
 		enqueueDeviceWrite(async () => {
 			// A replacement requested after this save owns the final device state.
 			if (generation !== writeGeneration) return;
-			await putNoteSnapshot(snapshot);
+			await putNoteSnapshot(snapshot, outboxKeys);
 		})
 	);
 }

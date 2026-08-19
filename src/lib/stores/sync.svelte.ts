@@ -161,16 +161,15 @@ export class SyncStore {
 	}
 
 	requestAutoSync(keys: Iterable<string> = []): void {
-		void this.queueOutbox(keys);
+		void this.queueOutbox(keys).catch((err) => {
+			console.error('[sync] could not persist outbox:', err);
+		});
 	}
 
 	async queueOutbox(keys: Iterable<string> = []): Promise<void> {
-		const write = markSyncOutbox(keys)
-			.catch((err) => {
-				console.error('[sync] could not persist outbox:', err);
-			})
-			.then(() => undefined);
-		this.pendingOutboxWrites = Promise.all([this.pendingOutboxWrites, write]).then(() => undefined);
+		const pendingKeys = [...new Set(keys)];
+		const write = this.pendingOutboxWrites.then(() => markSyncOutbox(pendingKeys));
+		this.pendingOutboxWrites = write.catch(() => undefined);
 		await write;
 		this.onLocalDataChange?.();
 	}

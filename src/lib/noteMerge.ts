@@ -26,8 +26,8 @@ export function fieldTime(note: Note, field: NoteField): number {
 
 export function touchNoteFields(note: Note, fields: NoteField[], at = Date.now()): Note {
 	const fieldTimes: NoteFieldTimes = { ...note.fieldTimes };
-	for (const field of fields) fieldTimes[field] = at;
-	return { ...note, updatedAt: at, fieldTimes };
+	for (const field of fields) fieldTimes[field] = Math.max(at, fieldTime(note, field) + 1);
+	return { ...note, updatedAt: Math.max(note.updatedAt, ...Object.values(fieldTimes)), fieldTimes };
 }
 
 /** Permanent delete wins until the tombstone is explicitly cleared. */

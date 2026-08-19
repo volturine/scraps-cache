@@ -1,13 +1,34 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
+import type { Note } from '$lib/types';
 import {
 	clearSyncOutbox,
 	commitSyncControl,
+	getAllNotesMetadata,
 	getSyncOutboxKeys,
 	getSyncState,
 	markSyncOutbox,
+	putNote,
 	setSyncState
 } from './idb';
+
+function note(title: string): Note {
+	return {
+		id: 'atomic-note',
+		title,
+		body: '',
+		color: 'default',
+		pinned: false,
+		archived: false,
+		trashed: false,
+		trashedAt: null,
+		createdAt: 1,
+		updatedAt: 1,
+		reminder: null,
+		labels: [],
+		images: []
+	};
+}
 
 describe('durable sync outbox', () => {
 	it('deduplicates keys and clears only acknowledged generations', async () => {
@@ -50,5 +71,25 @@ describe('durable sync outbox', () => {
 
 		expect(await getSyncState('test-cursor')).toBe(4);
 		expect(await getSyncOutboxKeys()).toEqual(['note:atomic']);
+	});
+
+	it('commits a note and its outbox marker together or rolls both back', async () => {
+		await clearSyncOutbox(await getSyncOutboxKeys());
+		await putNote(note('before'));
+
+		await putNote(note('saved'), ['note:atomic-note', 'note:atomic-note']);
+		expect((await getAllNotesMetadata()).find(({ id }) => id === 'atomic-note')?.title).toBe(
+			'saved'
+		);
+		expect(await getSyncOutboxKeys()).toEqual(['note:atomic-note']);
+
+		await clearSyncOutbox(['note:atomic-note']);
+		await expect(
+			putNote(note('must roll back'), [Number.NaN as unknown as string])
+		).rejects.toThrow();
+		expect((await getAllNotesMetadata()).find(({ id }) => id === 'atomic-note')?.title).toBe(
+			'saved'
+		);
+		expect(await getSyncOutboxKeys()).toEqual([]);
 	});
 });

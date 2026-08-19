@@ -11,6 +11,7 @@ import { syncControlKeys } from '$lib/syncEngine';
 const controlState = new Map<string, unknown>();
 const outbox = new Map<string, number>();
 const durabilityEvents: string[] = [];
+let outboxWriteError: Error | null = null;
 
 vi.mock('$lib/db/idb', () => ({
 	commitSyncControl: vi.fn(
@@ -35,6 +36,7 @@ vi.mock('$lib/db/idb', () => ({
 	getSyncOutboxKeys: vi.fn(async () => [...outbox.keys()]),
 	getSyncState: vi.fn(async (key: string) => controlState.get(key)),
 	markSyncOutbox: vi.fn(async (keys: Iterable<string>, markedAt = Date.now()) => {
+		if (outboxWriteError) throw outboxWriteError;
 		for (const key of keys) outbox.set(key, markedAt);
 	})
 }));
@@ -163,7 +165,22 @@ describe('client sync state machine', () => {
 		controlState.clear();
 		outbox.clear();
 		durabilityEvents.length = 0;
+		outboxWriteError = null;
 		vi.restoreAllMocks();
+	});
+
+	it('reports an outbox failure and allows the next durable marker write to retry', async () => {
+		const store = new SyncStore();
+		outboxWriteError = new Error('IndexedDB transaction aborted');
+
+		await expect(store.queueOutbox(['note:note-1'])).rejects.toThrow(
+			'IndexedDB transaction aborted'
+		);
+		expect(outbox.has('note:note-1')).toBe(false);
+
+		outboxWriteError = null;
+		await store.queueOutbox(['note:note-1']);
+		expect(outbox.has('note:note-1')).toBe(true);
 	});
 
 	it('durably applies a downloaded page before committing its cursor', async () => {

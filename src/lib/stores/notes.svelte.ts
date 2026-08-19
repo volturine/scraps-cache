@@ -77,6 +77,10 @@ export function noteIsBlank(note: Note): boolean {
 	);
 }
 
+function noteSyncKeys(note: Note): string[] {
+	return [`note:${note.id}`, ...(note.images ?? []).map((image) => `attachment:${image.id}`)];
+}
+
 export class NotesStore {
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
@@ -288,7 +292,7 @@ export class NotesStore {
 			this.notes[idx] = {
 				...current,
 				...patch,
-				updatedAt: Date.now(),
+				updatedAt: Math.max(current.updatedAt, Date.now()),
 				labels: patch.labels ? [...patch.labels] : current.labels,
 				images: patch.images ? patch.images.map((image) => ({ ...image })) : current.images,
 				linkPreviews: patch.linkPreviews
@@ -299,12 +303,10 @@ export class NotesStore {
 		const note = this.notes[idx];
 		this.mirrorToLS();
 		try {
-			await putNote(note);
-			await syncStore.queueOutbox([
-				`note:${id}`,
-				...(note.images ?? []).map((image) => `attachment:${image.id}`)
-			]);
+			await putNote(note, noteSyncKeys(note));
 			this.lastPersistError = null;
+			this.dirty = true;
+			this.scheduleSyncPush();
 		} catch (err) {
 			this.recordPersistenceError(`Could not save note ${id}`, err);
 			throw err;
@@ -760,10 +762,12 @@ export class NotesStore {
 			this.noteRetryTimers.delete(id);
 			const note = this.notes.find((item) => item.id === id);
 			if (!note) return;
-			putNote(note)
+			putNote(note, noteSyncKeys(note))
 				.then(() => {
 					this.noteRetryAttempts.delete(id);
 					this.lastPersistError = null;
+					this.dirty = true;
+					this.scheduleSyncPush();
 				})
 				.catch((err) => {
 					this.noteRetryAttempts.set(id, attempt + 1);
@@ -777,13 +781,9 @@ export class NotesStore {
 	private persist(id: string) {
 		const note = this.notes.find((x) => x.id === id);
 		if (!note) return;
-		syncStore.requestAutoSync([
-			`note:${id}`,
-			...(note.images ?? []).map((image) => `attachment:${image.id}`)
-		]);
 		// Preserve a crash-safe, blob-free copy synchronously before async IDB work.
 		this.mirrorToLS();
-		putNote(note)
+		putNote(note, noteSyncKeys(note))
 			.then(async () => {
 				this.lastPersistError = null;
 				// Keep only small thumbs in memory after a durable write of full blobs.

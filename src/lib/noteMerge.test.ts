@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeTwoNotes } from './noteMerge';
+import { mergeTwoNotes, touchNoteFields } from './noteMerge';
 import type { Note, NoteImage } from './types';
 
 function image(id: string, dataUrl: string): NoteImage {
@@ -47,5 +47,22 @@ describe('mergeTwoNotes', () => {
 		const merged = mergeTwoNotes(edited, pinned);
 		expect(merged.body).toBe('edited');
 		expect(merged.pinned).toBe(true);
+	});
+
+	it('advances an edited field beyond a timestamp pulled from a fast device clock', () => {
+		const pulled = {
+			...note(10_000, []),
+			title: 'older edit from fast clock',
+			fieldTimes: { title: 10_000 }
+		};
+		const editedLater = touchNoteFields(
+			{ ...pulled, title: 'newer intentional edit' },
+			['title'],
+			1_000
+		);
+
+		expect(editedLater.fieldTimes?.title).toBe(10_001);
+		expect(editedLater.updatedAt).toBe(10_001);
+		expect(mergeTwoNotes(pulled, editedLater).title).toBe('newer intentional edit');
 	});
 });
