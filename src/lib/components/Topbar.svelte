@@ -240,7 +240,7 @@
 						onclick={() => {
 							uiStore.toggleDark();
 						}}
-						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-10 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						{#if uiStore.effectiveDark}
 							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -253,7 +253,7 @@
 					<button
 						type="button"
 						onclick={startBackupExport}
-						class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-10 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Export backup
@@ -261,7 +261,7 @@
 					<button
 						type="button"
 						onclick={() => fileInputEl?.click()}
-						class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-10 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Import backup
@@ -272,7 +272,7 @@
 						href="https://github.com/volturine/scraps-cache/issues/new/choose"
 						target="_blank"
 						rel="noreferrer"
-						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-10 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Report an issue
