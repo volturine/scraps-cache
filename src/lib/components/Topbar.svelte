@@ -267,7 +267,7 @@
 						Import backup
 					</button>
 					<ReminderNotificationSettings />
-					<div class="my-1 border-t border-[var(--scraps-cache-border)]"></div>
+					<div class="border-t border-[var(--scraps-cache-border)]"></div>
 					<a
 						href="https://github.com/volturine/scraps-cache/issues/new/choose"
 						target="_blank"
