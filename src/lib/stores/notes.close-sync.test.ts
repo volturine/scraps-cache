@@ -34,5 +34,19 @@ describe('syncing when a note closes', () => {
 
 		expect(await notesStore.syncPendingChanges()).toBe(true);
 		expect(flush).toHaveBeenCalledOnce();
+		expect(flush).toHaveBeenCalledWith(true);
+	});
+
+	it('asks the cloud request to spin the icon', async () => {
+		await markSyncOutbox(['note:note-1']);
+		vi.spyOn(syncStore, 'needsCurrentStateBootstrap').mockResolvedValue(false);
+		const sync = vi.spyOn(syncStore, 'sync').mockResolvedValue({
+			success: true,
+			notes: [],
+			labels: []
+		});
+
+		expect(await notesStore.syncPendingChanges()).toBe(true);
+		expect(sync.mock.calls[0]?.[6]).toBe(true);
 	});
 });

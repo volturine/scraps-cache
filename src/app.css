@@ -583,5 +583,6 @@ body {
 	}
 }
 html.scraps-cache-sync-active [data-scraps-cache-sync-icon] {
+	/* Keep in lockstep with SYNC_ICON_ROTATION_MS — one full turn. */
 	animation: scraps-cache-spin 1s linear infinite;
 }
