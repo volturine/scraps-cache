@@ -22,6 +22,33 @@ export function formatReminder(ts: number | null, nowMs = Date.now()): string {
 	return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
+function countLabel(n: number, unit: string): string {
+	return `${n} ${unit}${n === 1 ? '' : 's'}`;
+}
+
+/** Remaining time until a reminder fires, e.g. "in 2 hours 15 minutes". */
+export function formatReminderCountdown(ts: number, nowMs = Date.now()): string {
+	if (ts < nowMs) return 'Overdue';
+	const totalSeconds = Math.floor((ts - nowMs) / 1000);
+	if (totalSeconds < 1) return 'Due now';
+	const days = Math.floor(totalSeconds / 86_400);
+	const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+	const minutes = Math.floor((totalSeconds % 3_600) / 60);
+	const seconds = totalSeconds % 60;
+	if (days > 0) {
+		return hours > 0
+			? `in ${countLabel(days, 'day')} ${countLabel(hours, 'hour')}`
+			: `in ${countLabel(days, 'day')}`;
+	}
+	if (hours > 0) {
+		return minutes > 0
+			? `in ${countLabel(hours, 'hour')} ${countLabel(minutes, 'minute')}`
+			: `in ${countLabel(hours, 'hour')}`;
+	}
+	if (minutes > 0) return `in ${countLabel(minutes, 'minute')}`;
+	return `in ${countLabel(seconds, 'second')}`;
+}
+
 /** True when a reminder timestamp is in the past. */
 export function isReminderOverdue(ts: number | null, now = Date.now()): boolean {
 	return ts != null && ts < now;

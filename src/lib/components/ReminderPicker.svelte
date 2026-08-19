@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { SvelteDate } from 'svelte/reactivity';
+	import { createSubscriber, SvelteDate } from 'svelte/reactivity';
 	import WheelPicker from './WheelPicker.svelte';
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import { requestReminderPermission } from '$lib/reminderNotify';
 	import { ensurePushSubscription } from '$lib/reminderWake';
+	import { formatReminderCountdown } from '$lib/utils';
 
 	let {
 		reminder,
@@ -75,13 +76,15 @@
 		})
 	);
 
-	function formatCompact(d: Date): string {
-		const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-		return `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} · ${time}`;
-	}
-
-	const willSaveLabel = $derived(formatCompact(selected));
+	const subscribeNow = createSubscriber((update) => {
+		const id = setInterval(update, 1000);
+		return () => clearInterval(id);
+	});
 	const draftMs = $derived(selected.getTime());
+	const remainingLabel = $derived.by(() => {
+		subscribeNow();
+		return formatReminderCountdown(draftMs);
+	});
 
 	/** off = no reminder on note; active = saved & unchanged; unsaved = edits or new before Save */
 	const uiStatus = $derived.by(() => {
@@ -180,10 +183,10 @@
 			class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--scraps-cache-text)]"
 		>
 			<AlarmClock class="h-4 w-4 shrink-0" aria-hidden="true" />
-			<span class="min-w-0 truncate">{willSaveLabel}</span>
+			<span class="min-w-0 truncate">{remainingLabel}</span>
 		</div>
 		<div class="mt-1 text-[11px] leading-snug text-[var(--gkc-text-muted)]">
-			Notifies on this device. Closed-app alerts need Sync on this device.
+			Closed-app alerts need Sync on this device.
 		</div>
 	</div>
 

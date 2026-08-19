@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isReminderOverdue } from './utils';
+import { formatReminderCountdown, isReminderOverdue } from './utils';
 
 describe('isReminderOverdue', () => {
 	const now = new Date(2026, 7, 13, 6, 48, 0, 0).getTime();
@@ -18,5 +18,42 @@ describe('isReminderOverdue', () => {
 
 	it('is true when the reminder is in the past', () => {
 		expect(isReminderOverdue(now - 1, now)).toBe(true);
+	});
+});
+
+describe('formatReminderCountdown', () => {
+	const now = new Date(2026, 7, 13, 6, 48, 0, 0).getTime();
+
+	it('marks a past reminder as overdue', () => {
+		expect(formatReminderCountdown(now - 1, now)).toBe('Overdue');
+	});
+
+	it('marks a reminder that is due this second as due now', () => {
+		expect(formatReminderCountdown(now, now)).toBe('Due now');
+		expect(formatReminderCountdown(now + 999, now)).toBe('Due now');
+	});
+
+	it('uses seconds under a minute', () => {
+		expect(formatReminderCountdown(now + 1_000, now)).toBe('in 1 second');
+		expect(formatReminderCountdown(now + 45_000, now)).toBe('in 45 seconds');
+	});
+
+	it('uses minutes under an hour', () => {
+		expect(formatReminderCountdown(now + 60_000, now)).toBe('in 1 minute');
+		expect(formatReminderCountdown(now + 12 * 60_000 + 30_000, now)).toBe('in 12 minutes');
+	});
+
+	it('uses hours and leftover minutes under a day', () => {
+		expect(formatReminderCountdown(now + 3_600_000, now)).toBe('in 1 hour');
+		expect(formatReminderCountdown(now + 2 * 3_600_000 + 15 * 60_000, now)).toBe(
+			'in 2 hours 15 minutes'
+		);
+	});
+
+	it('uses days and leftover hours', () => {
+		expect(formatReminderCountdown(now + 86_400_000, now)).toBe('in 1 day');
+		expect(formatReminderCountdown(now + 3 * 86_400_000 + 4 * 3_600_000, now)).toBe(
+			'in 3 days 4 hours'
+		);
 	});
 });
