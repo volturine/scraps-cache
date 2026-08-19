@@ -17,4 +17,15 @@ describe('kanban persist during sync', () => {
 		);
 		expect(() => structuredClone(stored)).not.toThrow();
 	});
+
+	it('keeps a newer localStorage board over a stale IndexedDB copy', async () => {
+		const store = new KanbanStore();
+		const base = store.boardsForSync()[0];
+		store.boards = [{ ...base, name: 'stale', updatedAt: 1 }];
+		await store.persistSyncState();
+		store.boards = [{ ...base, name: 'from-ls', updatedAt: 2 }];
+		await store.hydrateFromDevice();
+		expect(store.boards[0]?.name).toBe('from-ls');
+		expect((await loadBoardsFromDevice([]))[0]?.name).toBe('from-ls');
+	});
 });

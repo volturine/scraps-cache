@@ -407,6 +407,8 @@ export class SyncStore {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
 			const UPLOAD_RECORD_BUDGET = 500;
 			const DOWNLOAD_LIMIT = 12;
+			const quotaBlockedKeys = new Set<string>();
+			let quotaSingleUpload = false;
 			const keys = syncControlKeys(this.account.accountId);
 			let baseline: Record<string, string> = {};
 			try {
@@ -471,13 +473,18 @@ export class SyncStore {
 				);
 				const changed =
 					pullOnly || !downloadsDrained ? [] : changedRecords(currentRecords, baseline);
-				const nonAttachments = changed.filter((record) => record.payload.kind !== 'attachment');
-				const changedAttachments = changed.filter((record) => record.payload.kind === 'attachment');
-				// Photo bytes move in small fractions so initial/device syncs stay interactive.
-				const outgoing = [
-					...nonAttachments,
-					...changedAttachments.slice(0, ATTACHMENT_UPLOAD_BUDGET)
-				].slice(0, UPLOAD_RECORD_BUDGET);
+				const nonAttachments = changed.filter(
+					(record) => record.payload.kind !== 'attachment' && !quotaBlockedKeys.has(record.key)
+				);
+				const changedAttachments = changed.filter(
+					(record) => record.payload.kind === 'attachment' && !quotaBlockedKeys.has(record.key)
+				);
+				// Notes/labels/boards go before photos so one over-quota image cannot strand text.
+				const recordBudget = quotaSingleUpload ? 1 : UPLOAD_RECORD_BUDGET;
+				const attachBudget = quotaSingleUpload ? 1 : ATTACHMENT_UPLOAD_BUDGET;
+				const outgoing = nonAttachments.length
+					? nonAttachments.slice(0, recordBudget)
+					: changedAttachments.slice(0, attachBudget);
 				const sentRecordKeys = new Set(outgoing.map((record) => record.key));
 				const sentIds = new Set<string>();
 				const sentRecordIds = new Map<string, string>();
@@ -532,6 +539,22 @@ export class SyncStore {
 					new Blob([payload]).size,
 					indicate
 				);
+				if (
+					!response.success &&
+					(response.error || '').toLowerCase().includes('quota') &&
+					outgoing.length > 0
+				) {
+					if (outgoing.length > 1) quotaSingleUpload = true;
+					else {
+						const blockedKey = outgoing[0].key;
+						quotaBlockedKeys.add(blockedKey);
+						const markedAt = Date.now();
+						await markSyncOutbox([blockedKey], markedAt);
+						outboxKeys.add(blockedKey);
+					}
+					hasMore = true;
+					continue;
+				}
 				if (!response.success || !response.data) return this.fail(response);
 				const remoteUsage = response.data.usage;
 				if (remoteUsage && typeof remoteUsage === 'object') {
@@ -765,7 +788,7 @@ export class SyncStore {
 					!pullOnly &&
 					(!startedWithDownloadsDrained ||
 						(!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) ||
-						changed.length > outgoing.length);
+						changed.filter((record) => !quotaBlockedKeys.has(record.key)).length > outgoing.length);
 				const pendingDeletes =
 					downloadsDrained &&
 					planDeletableKeys({
@@ -786,6 +809,8 @@ export class SyncStore {
 
 			if (poisonCount > 0) {
 				this.lastError = `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`;
+			} else if (quotaBlockedKeys.size > 0) {
+				this.lastError = 'Some records exceed the account storage quota';
 			} else {
 				this.lastError = null;
 			}

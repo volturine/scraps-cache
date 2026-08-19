@@ -109,6 +109,7 @@ export class NotesStore {
 			window.addEventListener('visibilitychange', () => {
 				if (document.visibilityState === 'hidden') this.mirrorToLS();
 			});
+			window.addEventListener('pagehide', () => this.mirrorToLS());
 		}
 	}
 
@@ -173,11 +174,9 @@ export class NotesStore {
 			this.notes = withoutTombstoned(notes, this.deletedNoteIds);
 			this.labels = withoutTombstoned(labels, this.deletedLabelIds);
 			this.mirrorToLS();
-			// Recover the primary store from a valid mirror after an IDB reset.
-			if (!deviceReadFailed && dbNotes.length === 0 && notes.length > 0) {
+			if (!deviceReadFailed) {
 				try {
-					await bulkPutNotes(notes);
-					await bulkPutLabels(labels);
+					await this.recoverMirrorIntoIndexedDB(dbNotes, dbLabels);
 				} catch (err) {
 					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
 				}
@@ -778,6 +777,23 @@ export class NotesStore {
 		this.noteRetryTimers.set(id, timer);
 	}
 
+	/** Replay localStorage notes/labels that never landed in IndexedDB after a crash. */
+	private async recoverMirrorIntoIndexedDB(dbNotes: Note[], dbLabels: Label[]): Promise<void> {
+		const dbById = new Map(dbNotes.map((item) => [item.id, item]));
+		for (const item of this.notes) {
+			if (noteNeedsDurableWrite(dbById.get(item.id), item)) await putNote(item, noteSyncKeys(item));
+		}
+		const dbLabelById = new Map(dbLabels.map((item) => [item.id, item]));
+		const labelKeys: string[] = [];
+		for (const label of this.labels) {
+			const current = dbLabelById.get(label.id);
+			if (current && current.name === label.name && current.updatedAt === label.updatedAt) continue;
+			await putLabel(label);
+			labelKeys.push(`label:${label.id}`);
+		}
+		if (labelKeys.length) await syncStore.queueOutbox(labelKeys);
+	}
+
 	private persist(id: string) {
 		const note = this.notes.find((x) => x.id === id);
 		if (!note) return;
@@ -897,15 +913,13 @@ export class NotesStore {
 			.map((label) => label.id);
 
 		kanbanStore.applySync(snapshot.boards, snapshot.boardTombstones);
-		await Promise.all([
-			writeTombstones(tombstones),
-			writeLabelTombstones(labelTombstones),
-			...notesToPersist.map((note) => putNote(note)),
-			...tombstonedNoteIds.map((id) => deleteNote(id)),
-			...tombstonedLabelIds.map((id) => deleteLabel(id)),
-			...(labelsChanged ? [bulkPutLabels(mergedLabels)] : []),
-			kanbanStore.persistSyncState()
-		]);
+		await writeTombstones(tombstones);
+		await writeLabelTombstones(labelTombstones);
+		for (const note of notesToPersist) await putNote(note);
+		for (const id of tombstonedNoteIds) await deleteNote(id);
+		for (const id of tombstonedLabelIds) await deleteLabel(id);
+		if (labelsChanged) await bulkPutLabels(mergedLabels);
+		await kanbanStore.persistSyncState();
 
 		// Preserve edits made while the device writes were in flight.
 		durableNotes = withoutTombstoned(mergeNoteLists(this.notes, durableNotes), tombstones).sort(
@@ -953,11 +967,9 @@ export class NotesStore {
 		this.deletedNoteIds = { ...snapshot.tombstones };
 		this.deletedLabelIds = { ...snapshot.labelTombstones };
 		kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
-		await Promise.all([
-			writeTombstones(this.deletedNoteIds),
-			writeLabelTombstones(this.deletedLabelIds),
-			kanbanStore.persistSyncState()
-		]);
+		await writeTombstones(this.deletedNoteIds);
+		await writeLabelTombstones(this.deletedLabelIds);
+		await kanbanStore.persistSyncState();
 		this.mirrorToLS();
 		return {
 			notes,

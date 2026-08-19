@@ -3,7 +3,6 @@ import type { Label, Note, NoteImage } from './types';
 /** Canonical fast-boot mirrors. IndexedDB remains the durable device store. */
 export const NOTES_MIRROR_KEY = 'gkc-notes-mirror';
 export const LABELS_MIRROR_KEY = 'gkc-labels-mirror';
-export const MAX_MIRRORED_NOTES = 50;
 
 type MirroredImage = Omit<NoteImage, 'dataUrl'>;
 type MirroredNote = Omit<Note, 'images'> & { images?: MirroredImage[] };
@@ -61,13 +60,32 @@ function readJson<T>(key: string): T[] {
 	}
 }
 
-function writeJson<T>(key: string, value: T[]): void {
-	if (typeof localStorage === 'undefined') return;
+function writeJson<T>(key: string, value: T[]): boolean {
+	if (typeof localStorage === 'undefined') return false;
 	try {
 		localStorage.setItem(key, JSON.stringify(value));
+		return true;
 	} catch (err) {
 		console.error('[storage] write mirror failed:', key, err);
+		return false;
 	}
+}
+
+function slimMirroredNote(note: MirroredNote): MirroredNote {
+	const { images, linkPreviews, ...rest } = note;
+	return {
+		...rest,
+		...(images?.length
+			? {
+					images: images.map(({ thumbUrl: _thumb, ...image }) => image)
+				}
+			: {}),
+		...(linkPreviews?.length
+			? {
+					linkPreviews: linkPreviews.map(({ image: _image, icon: _icon, ...preview }) => preview)
+				}
+			: {})
+	};
 }
 
 export function readNotesMirror(): Note[] {
@@ -84,13 +102,9 @@ export function readNotesMirror(): Note[] {
 }
 
 export function writeNotesMirror(notes: Note[]): void {
-	writeJson(
-		NOTES_MIRROR_KEY,
-		[...notes]
-			.sort((left, right) => right.updatedAt - left.updatedAt)
-			.slice(0, MAX_MIRRORED_NOTES)
-			.map(noteForLocalStorage)
-	);
+	const payload = notes.map(noteForLocalStorage);
+	if (writeJson(NOTES_MIRROR_KEY, payload)) return;
+	writeJson(NOTES_MIRROR_KEY, payload.map(slimMirroredNote));
 }
 
 export function readLabelsMirror(): Label[] {
