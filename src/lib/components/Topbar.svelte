@@ -209,7 +209,7 @@
 		</button>
 		{#if settingsOpen}
 			<div
-				class="absolute right-0 top-12 z-30 w-64 rounded-lg border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] py-1 shadow-lg"
+				class="absolute right-0 top-12 z-30 w-64 overflow-hidden rounded-lg border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] pt-1 shadow-lg"
 			>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
@@ -272,7 +272,7 @@
 						href="https://github.com/volturine/scraps-cache/issues/new/choose"
 						target="_blank"
 						rel="noreferrer"
-						class="mt-1 flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Report an issue
