@@ -5,17 +5,19 @@
 	let {
 		label,
 		count,
+		class: className = '',
 		children
 	}: {
 		label: string;
 		count: number;
+		class?: string;
 		children?: Snippet;
 	} = $props();
 
 	const shell = $derived(notesShellClass());
 </script>
 
-<div class={shell}>
+<div class="{shell} {className}">
 	<div class="mb-3 flex items-center gap-3 px-2">
 		<h2 class="text-xs font-semibold uppercase tracking-wide text-[var(--scraps-cache-text-muted)]">
 			{label}
