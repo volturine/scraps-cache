@@ -16,6 +16,7 @@
 	import {
 		Cloud,
 		Download,
+		ExternalLink,
 		LayoutGrid,
 		List,
 		Menu,
@@ -208,7 +209,7 @@
 		</button>
 		{#if settingsOpen}
 			<div
-				class="absolute right-0 top-12 z-30 w-64 rounded-lg border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] py-1 shadow-lg"
+				class="absolute right-0 top-12 z-30 w-64 overflow-hidden rounded-lg border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] pt-1 shadow-lg"
 			>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
@@ -239,7 +240,7 @@
 						onclick={() => {
 							uiStore.toggleDark();
 						}}
-						class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						{#if uiStore.effectiveDark}
 							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -252,7 +253,7 @@
 					<button
 						type="button"
 						onclick={startBackupExport}
-						class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Export backup
@@ -260,12 +261,22 @@
 					<button
 						type="button"
 						onclick={() => fileInputEl?.click()}
-						class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Import backup
 					</button>
 					<ReminderNotificationSettings />
+					<div class="border-t border-[var(--scraps-cache-border)]"></div>
+					<a
+						href="https://github.com/volturine/scraps-cache/issues/new/choose"
+						target="_blank"
+						rel="noreferrer"
+						class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					>
+						<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
+						Report an issue
+					</a>
 				{/if}
 				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">
 						{backupImportError}
