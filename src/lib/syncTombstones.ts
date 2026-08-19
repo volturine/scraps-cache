@@ -96,5 +96,7 @@ export async function loadBoardsFromDevice<T>(fallback: T): Promise<T> {
 }
 
 export async function saveBoardsToDevice<T>(boards: T): Promise<void> {
-	await setSyncState(BOARDS_IDB, boards);
+	// `$state` board proxies throw DataCloneError in IndexedDB; JSON is already how
+	// localStorage snapshots them.
+	await setSyncState(BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? [])));
 }

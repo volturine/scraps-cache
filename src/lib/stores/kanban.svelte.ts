@@ -179,8 +179,8 @@ export class KanbanStore {
 
 	async persistSyncState(): Promise<void> {
 		await Promise.all([
-			saveBoardsToDevice(this.boards),
-			writeBoardTombstones(this.boardTombstones)
+			saveBoardsToDevice(this.boardsForSync()),
+			writeBoardTombstones(this.boardTombstonesForSync())
 		]);
 	}
 
