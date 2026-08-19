@@ -1,8 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import ReminderPicker from './ReminderPicker.svelte';
 
 const reminder = new Date(2026, 7, 12, 15, 30, 0, 0).getTime();
+
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 function monthName(month: number): string {
 	return new Date(2020, month, 1).toLocaleDateString([], { month: 'long' });
@@ -86,5 +90,39 @@ describe('ReminderPicker date and time controls', () => {
 
 		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('21');
 		expect(screen.getByRole('option', { name: '21' }).getAttribute('aria-selected')).toBe('true');
+	});
+});
+
+describe('ReminderPicker remaining time', () => {
+	it('shows time left and only the closed-app sync note', () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(2026, 7, 12, 14, 30, 0, 0));
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		expect(screen.getByText('in 1 hour')).toBeTruthy();
+		expect(screen.queryByText(/Notifies on this device/)).toBeNull();
+		expect(screen.getByText('Closed-app alerts need Sync on this device.')).toBeTruthy();
+	});
+
+	it('updates remaining time when the hour changes', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(2026, 7, 12, 14, 30, 0, 0));
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		await fireEvent.click(
+			within(screen.getByRole('listbox', { name: 'Hour' })).getByRole('option', { name: '16' })
+		);
+
+		expect(screen.getByText('in 2 hours')).toBeTruthy();
+	});
+
+	it('counts down while the picker stays open', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(2026, 7, 12, 14, 29, 0, 0));
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		expect(screen.getByText('in 1 hour 1 minute')).toBeTruthy();
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(screen.getByText('in 1 hour')).toBeTruthy();
 	});
 });
