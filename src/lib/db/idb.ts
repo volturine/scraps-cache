@@ -462,12 +462,12 @@ export async function deleteSyncState(key: string): Promise<void> {
 }
 
 /** Durable set of plaintext-local record keys awaiting encrypted upload. */
-export async function markSyncOutbox(keys: Iterable<string>): Promise<void> {
+export async function markSyncOutbox(keys: Iterable<string>, markedAt = Date.now()): Promise<void> {
 	const unique = [...new Set(keys)].filter(Boolean);
 	if (unique.length === 0) return;
 	const db = await getDB();
 	const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
-	for (const key of unique) tx.store.put(Date.now(), key);
+	for (const key of unique) tx.store.put(markedAt, key);
 	await tx.done;
 }
 
@@ -489,4 +489,38 @@ export async function clearSyncOutbox(
 		if (markedAt > 0 && markedAt <= through) await tx.store.delete(key);
 	}
 	await tx.done;
+}
+
+/** Commit the durable cursor/baseline and acknowledge their outbox generation together. */
+export async function commitSyncControl(
+	state: Iterable<readonly [key: string, value: unknown]>,
+	acknowledgements: Iterable<{ keys: Iterable<string>; through: number }>
+): Promise<void> {
+	const entries = [...state];
+	const acknowledged = [...acknowledgements].map(({ keys, through }) => ({
+		keys: [...new Set(keys)].filter(Boolean),
+		through
+	}));
+	const db = await getDB();
+	const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+	try {
+		const syncState = tx.objectStore(SYNC_STATE_STORE);
+		const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+		for (const [key, value] of entries) await syncState.put(value, key);
+		for (const { keys, through } of acknowledged) {
+			for (const key of keys) {
+				const markedAt = Number(await outbox.get(key));
+				if (markedAt > 0 && markedAt <= through) await outbox.delete(key);
+			}
+		}
+		await tx.done;
+	} catch (error) {
+		try {
+			tx.abort();
+		} catch {
+			// The transaction may already have aborted after a failed request.
+		}
+		await tx.done.catch(() => undefined);
+		throw error;
+	}
 }

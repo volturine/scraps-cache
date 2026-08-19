@@ -141,6 +141,26 @@ describe('SQLite sync store', () => {
 		});
 	});
 
+	it('rolls back deletions together with an over-quota replacement batch', () => {
+		const { store } = createStore({ maxAccountBytes: 5 });
+		store.createAccount('account', 'credential');
+		store.sync('account', 0, [{ id: 'kept', slot: slot('a'), ciphertext: '123' }], 10);
+
+		expect(() =>
+			store.sync(
+				'account',
+				1,
+				[{ id: 'too-large', slot: slot('b'), ciphertext: '123456', expectedId: null }],
+				[{ id: 'kept', slot: slot('a') }],
+				10
+			)
+		).toThrow(SyncQuotaExceededError);
+		expect(store.sync('account', 0, [], 10)).toMatchObject({
+			envelopes: [expect.objectContaining({ id: 'kept' })],
+			usage: expect.objectContaining({ envelopeCount: 1, ciphertextBytes: 3 })
+		});
+	});
+
 	it('deletes only the expected opaque slot version and releases quota', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
@@ -194,6 +214,67 @@ describe('SQLite sync store', () => {
 			conflicts: [{ id: 'current', slot: slot('a'), ciphertext: 'remote', seq: 1 }]
 		});
 		expect(store.sync('account', 0, [], 10).envelopes.map(({ id }) => id)).toEqual(['current']);
+	});
+
+	it('rejects an entire mixed batch when any conditional replacement conflicts', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.sync(
+			'account',
+			0,
+			[
+				{ id: 'current-a', slot: slot('a'), ciphertext: 'a' },
+				{ id: 'current-b', slot: slot('b'), ciphertext: 'b' }
+			],
+			10
+		);
+
+		const rejected = store.sync(
+			'account',
+			2,
+			[
+				{ id: 'stale-a', slot: slot('a'), ciphertext: 'stale', expectedId: 'older-a' },
+				{ id: 'fresh-c', slot: slot('c'), ciphertext: 'fresh', expectedId: null }
+			],
+			[{ id: 'current-b', slot: slot('b') }],
+			10
+		);
+
+		expect(rejected).toMatchObject({ writesAccepted: false, usage: { envelopeCount: 2 } });
+		expect(store.sync('account', 0, [], 10).envelopes.map(({ id }) => id)).toEqual([
+			'current-a',
+			'current-b'
+		]);
+	});
+
+	it('treats an identical envelope id retry as an idempotent acknowledgement', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		const upload = { id: 'same-id', slot: slot('a'), ciphertext: 'opaque', expectedId: null };
+		const first = store.sync('account', 0, [upload], 10);
+		const retry = store.sync('account', first.cursor, [upload], 10);
+
+		expect(retry).toMatchObject({ cursor: 1, writesAccepted: true });
+		expect(retry.usage).toMatchObject({ envelopeCount: 1, ciphertextBytes: 6 });
+	});
+
+	it('advances across sequence gaps left by current-state deletion', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.sync('account', 0, [{ id: 'old', slot: slot('a'), ciphertext: 'old' }], 10);
+		store.sync(
+			'account',
+			1,
+			[{ id: 'new', slot: slot('a'), ciphertext: 'new', expectedId: 'old' }],
+			10
+		);
+		store.sync('account', 2, [], [{ id: 'new', slot: slot('a') }], 10);
+
+		expect(store.sync('account', 1, [], 10)).toMatchObject({
+			cursor: 2,
+			envelopes: [],
+			hasMore: false
+		});
 	});
 
 	it('does not overwrite the thirteenth remote slot before the client reads it', () => {

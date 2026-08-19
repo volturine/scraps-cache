@@ -1,28 +1,94 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Note } from '$lib/types';
-import { createSyncIdentity, encryptSyncPayload } from '$lib/syncPairing';
+import type { Note, NoteImage } from '$lib/types';
+import {
+	createSyncIdentity,
+	decryptSyncPayload,
+	encryptSyncPayload,
+	type SyncIdentity
+} from '$lib/syncPairing';
+import { syncControlKeys } from '$lib/syncEngine';
 
-const controlWrites: string[] = [];
+const controlState = new Map<string, unknown>();
+const outbox = new Map<string, number>();
 const durabilityEvents: string[] = [];
 
 vi.mock('$lib/db/idb', () => ({
-	clearSyncOutbox: vi.fn(async () => undefined),
-	deleteSyncState: vi.fn(async () => undefined),
-	getSyncOutboxKeys: vi.fn(async () => []),
-	getSyncState: vi.fn(async () => undefined),
-	markSyncOutbox: vi.fn(async () => undefined),
-	setSyncState: vi.fn(async (key: string) => {
-		controlWrites.push(key);
-		durabilityEvents.push(`control:${key}`);
+	commitSyncControl: vi.fn(
+		async (
+			state: Iterable<readonly [string, unknown]>,
+			acknowledgements: Iterable<{ keys: Iterable<string>; through: number }>
+		) => {
+			for (const [key, value] of state) {
+				controlState.set(key, value);
+				durabilityEvents.push(`control:${key}`);
+			}
+			for (const { keys, through } of acknowledgements) {
+				for (const key of keys) {
+					if ((outbox.get(key) ?? Number.POSITIVE_INFINITY) <= through) outbox.delete(key);
+				}
+			}
+		}
+	),
+	deleteSyncState: vi.fn(async (key: string) => {
+		controlState.delete(key);
+	}),
+	getSyncOutboxKeys: vi.fn(async () => [...outbox.keys()]),
+	getSyncState: vi.fn(async (key: string) => controlState.get(key)),
+	markSyncOutbox: vi.fn(async (keys: Iterable<string>, markedAt = Date.now()) => {
+		for (const key of keys) outbox.set(key, markedAt);
 	})
 }));
 
-import { SyncStore } from './sync.svelte';
+import { SyncStore, type SyncSnapshot } from './sync.svelte';
 
-function note(): Note {
+type RequestPayload = {
+	cursor: number;
+	envelopes: Array<{ id: string; slot: string; expectedId: string | null; ciphertext: string }>;
+	deleteSlots: Array<{ id: string; slot: string }>;
+};
+
+type RelayData = {
+	cursor: number;
+	envelopes: Array<{ seq: number; id: string; slot: string; ciphertext: string }>;
+	conflicts: Array<{ seq: number; id: string; slot: string; ciphertext: string }>;
+	hasMore: boolean;
+	reset: boolean;
+	writesAccepted: boolean;
+};
+
+type RequestResult = { success: true; data: RelayData } | { success: false; error: string };
+
+const emptyData = (overrides: Partial<RelayData> = {}): RelayData => ({
+	cursor: 0,
+	envelopes: [],
+	conflicts: [],
+	hasMore: false,
+	reset: false,
+	writesAccepted: true,
+	...overrides
+});
+
+function note(
+	id = 'note-1',
+	overrides: Partial<Note> = {},
+	images: NoteImage[] = overrides.images ?? []
+): Note {
+	const fieldTimes = {
+		title: 1,
+		body: 1,
+		color: 1,
+		pinned: 1,
+		archived: 1,
+		trashed: 1,
+		reminder: 1,
+		labels: 1,
+		images: 1,
+		linkPreviews: 1,
+		...overrides.fieldTimes
+	};
 	return {
-		id: 'remote-note',
-		title: 'remote',
+		id,
+		title: id,
 		body: '',
 		color: 'default',
 		pinned: false,
@@ -33,79 +99,404 @@ function note(): Note {
 		updatedAt: 1,
 		reminder: null,
 		labels: [],
-		images: []
+		...overrides,
+		images,
+		fieldTimes
 	};
 }
 
-function remoteData(syncKey: string): Record<string, unknown> {
+function attachment(id: string, dataUrl = 'data:image/png;base64,QQ=='): NoteImage {
 	return {
-		cursor: 1,
-		envelopes: [
-			{
-				seq: 1,
-				id: 'remote-envelope',
-				slot: 'a'.repeat(64),
-				ciphertext: encryptSyncPayload(syncKey, { kind: 'note', value: note() })
-			}
-		],
-		conflicts: [],
-		hasMore: false,
-		reset: false,
-		writesAccepted: true
+		id,
+		mime: 'image/png',
+		dataUrl,
+		createdAt: 1,
+		contentHash: `hash-${id}`
 	};
 }
 
-describe('client sync durability', () => {
+function envelope(
+	account: SyncIdentity,
+	id: string,
+	seq: number,
+	payload: unknown,
+	slot = 'a'.repeat(64)
+): RelayData['envelopes'][number] {
+	return {
+		seq,
+		id,
+		slot,
+		ciphertext: encryptSyncPayload(account.syncKey, payload)
+	};
+}
+
+function createHarness(
+	responder: (request: RequestPayload, index: number) => RequestResult | Promise<RequestResult>
+): { store: SyncStore; account: SyncIdentity; requests: RequestPayload[] } {
+	const account = createSyncIdentity();
+	const store = new SyncStore();
+	store.account = account;
+	const requests: RequestPayload[] = [];
+	vi.spyOn(
+		store as unknown as {
+			sendSyncRequest(
+				path: string,
+				payload: string
+			): Promise<{ success: boolean; data?: RelayData; error?: string }>;
+		},
+		'sendSyncRequest'
+	).mockImplementation(async (_path, payload) => {
+		const request = JSON.parse(payload) as RequestPayload;
+		requests.push(request);
+		return responder(request, requests.length - 1);
+	});
+	return { store, account, requests };
+}
+
+async function passthrough(snapshot: SyncSnapshot): Promise<SyncSnapshot> {
+	return snapshot;
+}
+
+describe('client sync state machine', () => {
 	beforeEach(() => {
 		localStorage.clear();
-		controlWrites.length = 0;
+		controlState.clear();
+		outbox.clear();
 		durabilityEvents.length = 0;
 		vi.restoreAllMocks();
-		vi.unstubAllGlobals();
 	});
 
-	it('applies a downloaded page before committing its cursor', async () => {
-		const account = createSyncIdentity();
-		const store = new SyncStore();
-		store.account = account;
-		vi.spyOn(
-			store as unknown as {
-				sendSyncRequest(): Promise<{ success: boolean; data: Record<string, unknown> }>;
-			},
-			'sendSyncRequest'
-		).mockResolvedValue({
+	it('durably applies a downloaded page before committing its cursor', async () => {
+		const { store, account } = createHarness(() => ({
 			success: true,
-			data: remoteData(account.syncKey)
-		});
+			data: emptyData({
+				cursor: 1,
+				envelopes: [envelope(account, 'remote-envelope', 1, { kind: 'note', value: note() })]
+			})
+		}));
+
 		const result = await store.sync([], [], {}, {}, [], {}, false, true, async (snapshot) => {
 			durabilityEvents.push(`applied:${snapshot.notes[0]?.id}`);
 			return snapshot;
 		});
 
 		expect(result.success, result.error).toBe(true);
-		expect(durabilityEvents[0]).toBe('applied:remote-note');
+		expect(durabilityEvents[0]).toBe('applied:note-1');
 		expect(durabilityEvents.findIndex((event) => event.includes('cursor'))).toBeGreaterThan(0);
 	});
 
-	it('does not advance control state when durable application fails', async () => {
-		const account = createSyncIdentity();
-		const store = new SyncStore();
-		store.account = account;
-		vi.spyOn(
-			store as unknown as {
-				sendSyncRequest(): Promise<{ success: boolean; data: Record<string, unknown> }>;
-			},
-			'sendSyncRequest'
-		).mockResolvedValue({
+	it('leaves all control state untouched when durable application fails', async () => {
+		const { store, account } = createHarness(() => ({
 			success: true,
-			data: remoteData(account.syncKey)
-		});
+			data: emptyData({
+				cursor: 1,
+				envelopes: [envelope(account, 'remote-envelope', 1, { kind: 'note', value: note() })]
+			})
+		}));
 
 		const result = await store.sync([], [], {}, {}, [], {}, false, true, async () => {
 			throw new Error('IndexedDB write failed');
 		});
 
 		expect(result).toMatchObject({ success: false });
-		expect(controlWrites).toEqual([]);
+		expect(controlState.size).toBe(0);
+	});
+
+	it('drains every page before applying or committing, including cross-page attachments', async () => {
+		const applied: SyncSnapshot[] = [];
+		let cursorAtSecondRequest: unknown = 'not-requested';
+		const { store, account, requests } = createHarness((_request, index) => {
+			if (index === 0) {
+				return {
+					success: true,
+					data: emptyData({
+						cursor: 1,
+						hasMore: true,
+						envelopes: [
+							envelope(account, 'note-envelope', 1, {
+								kind: 'note',
+								value: {
+									...note(),
+									images: [
+										{
+											id: 'image-1',
+											mime: 'image/png',
+											createdAt: 1,
+											hash: 'image-hash'
+										}
+									]
+								}
+							})
+						]
+					})
+				};
+			}
+			cursorAtSecondRequest = controlState.get(syncControlKeys(account.accountId).cursor);
+			return {
+				success: true,
+				data: emptyData({
+					cursor: 2,
+					envelopes: [
+						envelope(account, 'attachment-envelope', 2, {
+							kind: 'attachment',
+							value: {
+								id: 'image-1',
+								mime: 'image/png',
+								createdAt: 1,
+								hash: 'image-hash',
+								dataUrl: 'data:image/png;base64,QQ=='
+							}
+						})
+					]
+				})
+			};
+		});
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, true, async (snapshot) => {
+			applied.push(snapshot);
+			return snapshot;
+		});
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests).toHaveLength(2);
+		expect(requests.every((request) => request.envelopes.length === 0)).toBe(true);
+		expect(cursorAtSecondRequest).toBeUndefined();
+		expect(applied).toHaveLength(1);
+		expect(applied[0].notes[0]?.images?.[0]?.dataUrl).toBe('data:image/png;base64,QQ==');
+		expect(controlState.get(syncControlKeys(account.accountId).cursor)).toBe(2);
+	});
+
+	it('merges downloaded state before building the first conditional upload', async () => {
+		const local = note('note-1', {
+			title: 'local winner',
+			updatedAt: 20,
+			fieldTimes: { title: 20, body: 1 }
+		});
+		outbox.set('note:note-1', 1);
+		const { store, account, requests } = createHarness((_request, index) => {
+			if (index === 0) {
+				return {
+					success: true,
+					data: emptyData({
+						cursor: 1,
+						envelopes: [
+							envelope(account, 'remote-id', 1, {
+								kind: 'note',
+								value: note('note-1', {
+									title: 'remote older',
+									updatedAt: 10,
+									fieldTimes: { title: 10, body: 1 }
+								})
+							})
+						]
+					})
+				};
+			}
+			return { success: true, data: emptyData({ cursor: 2 }) };
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests[0].envelopes).toEqual([]);
+		expect(requests[1].envelopes).toHaveLength(1);
+		expect(requests[1].envelopes[0].expectedId).toBe('remote-id');
+		expect(decryptSyncPayload(account.syncKey, requests[1].envelopes[0].ciphertext)).toMatchObject({
+			kind: 'note',
+			value: { title: 'local winner' }
+		});
+	});
+
+	it('applies a conditional-write conflict and retries against the returned version', async () => {
+		const local = note('note-1', {
+			title: 'local winner',
+			updatedAt: 20,
+			fieldTimes: { title: 20, body: 1 }
+		});
+		const { store, account, requests } = createHarness((_request, index) => {
+			if (index === 0) return { success: true, data: emptyData({ cursor: 1 }) };
+			if (index === 1) {
+				return {
+					success: true,
+					data: emptyData({
+						cursor: 2,
+						writesAccepted: false,
+						conflicts: [
+							envelope(account, 'current-id', 2, {
+								kind: 'note',
+								value: note('note-1', {
+									title: 'server older',
+									updatedAt: 15,
+									fieldTimes: { title: 15, body: 1 }
+								})
+							})
+						]
+					})
+				};
+			}
+			return { success: true, data: emptyData({ cursor: 3 }) };
+		});
+		const keys = syncControlKeys(account.accountId);
+		controlState.set(keys.cursor, 1);
+		controlState.set(keys.baseline, { 'note:note-1': 'old-fingerprint' });
+		controlState.set(keys.recordIds, { 'note:note-1': 'old-id' });
+		outbox.set('note:note-1', 1);
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests).toHaveLength(3);
+		expect(requests[1].envelopes[0].expectedId).toBe('old-id');
+		expect(requests[2].envelopes[0].expectedId).toBe('current-id');
+		expect(requests[2].envelopes[0].id).not.toBe(requests[1].envelopes[0].id);
+		expect(outbox.size).toBe(0);
+	});
+
+	it('recovers from an accepted upload whose response was lost without uploading it twice', async () => {
+		const local = note();
+		let accepted: RelayData['envelopes'][number] | null = null;
+		let calls = 0;
+		const { store, account, requests } = createHarness((request) => {
+			calls += 1;
+			if (calls === 1) return { success: true, data: emptyData() };
+			if (calls === 2) {
+				accepted = {
+					seq: 1,
+					id: request.envelopes[0].id,
+					slot: request.envelopes[0].slot,
+					ciphertext: request.envelopes[0].ciphertext
+				};
+				return { success: false, error: 'Sync timed out' };
+			}
+			if (calls === 3) {
+				return { success: true, data: emptyData({ cursor: 1, envelopes: [accepted!] }) };
+			}
+			return { success: true, data: emptyData({ cursor: 1 }) };
+		});
+		outbox.set('note:note-1', 1);
+
+		const failed = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		expect(failed).toMatchObject({ success: false, error: 'Sync timed out' });
+		expect(outbox.has('note:note-1')).toBe(true);
+
+		const retried = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		expect(retried.success, retried.error).toBe(true);
+		expect(requests.filter((request) => request.envelopes.length > 0)).toHaveLength(1);
+		expect(outbox.has('note:note-1')).toBe(false);
+		expect(controlState.get(syncControlKeys(account.accountId).recordIds)).toEqual({
+			'note:note-1': accepted!.id
+		});
+	});
+
+	it('resets stale control state and rebuilds it on the requested bootstrap pass', async () => {
+		const image = attachment('image-1');
+		const local = note('note-1', { updatedAt: 5 }, [image]);
+		const { store, account, requests } = createHarness((request, index) => {
+			if (index === 0) {
+				return {
+					success: true,
+					data: emptyData({ cursor: 0, reset: true, writesAccepted: false })
+				};
+			}
+			if (index === 1 || index === 2 || index === 3) {
+				return { success: true, data: emptyData() };
+			}
+			return {
+				success: true,
+				data: emptyData({ cursor: request.envelopes.length })
+			};
+		});
+		const keys = syncControlKeys(account.accountId);
+		controlState.set(keys.cursor, 99);
+		controlState.set(keys.baseline, { 'note:note-1': 'stale' });
+		controlState.set(keys.recordIds, { 'note:note-1': 'stale-id' });
+
+		const reset = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(reset.success, reset.error).toBe(true);
+		expect(store.consumeCurrentStateBootstrapRequest()).toBe(true);
+		expect(requests[0].envelopes).toEqual([]);
+		expect(requests[2].envelopes).toEqual([]);
+
+		const rebuilt = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		expect(rebuilt.success, rebuilt.error).toBe(true);
+		expect(requests[4].envelopes).toHaveLength(2);
+		expect(requests[4].envelopes.every((item) => item.expectedId === null)).toBe(true);
+	});
+
+	it('splits more than 500 ordinary records into bounded rounds', async () => {
+		const notes = Array.from({ length: 501 }, (_, index) => note(`note-${index}`));
+		const { store, requests } = createHarness((_request, index) => ({
+			success: true,
+			data: emptyData({ cursor: index === 0 ? 0 : index === 1 ? 500 : 501 })
+		}));
+
+		const result = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests.map((request) => request.envelopes.length)).toEqual([0, 500, 1]);
+	});
+
+	it('limits attachment bytes to two records per upload round', async () => {
+		const local = note('note-1', {}, [
+			attachment('image-1'),
+			attachment('image-2'),
+			attachment('image-3')
+		]);
+		const { store, account, requests } = createHarness((request, index) => ({
+			success: true,
+			data: emptyData({ cursor: index === 0 ? 0 : index + request.envelopes.length })
+		}));
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const kinds = requests
+			.slice(1)
+			.map((request) =>
+				request.envelopes.map(
+					(item) => (decryptSyncPayload(account.syncKey, item.ciphertext) as { kind: string }).kind
+				)
+			);
+
+		expect(result.success, result.error).toBe(true);
+		expect(kinds).toEqual([['note', 'attachment', 'attachment'], ['attachment']]);
+	});
+
+	it('waits for catch-up before sending an orphaned attachment deletion', async () => {
+		const { store, account, requests } = createHarness((_request, index) => ({
+			success: true,
+			data: emptyData({ cursor: index === 0 ? 3 : 3 })
+		}));
+		const keys = syncControlKeys(account.accountId);
+		controlState.set(keys.cursor, 3);
+		controlState.set(keys.baseline, { 'attachment:orphan': 'fingerprint' });
+		controlState.set(keys.recordIds, { 'attachment:orphan': 'orphan-id' });
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests[0].deleteSlots).toEqual([]);
+		expect(requests[1].deleteSlots).toEqual([expect.objectContaining({ id: 'orphan-id' })]);
+		expect(controlState.get(keys.recordIds)).toEqual({});
+	});
+
+	it('skips unreadable ciphertext without applying it and records a warning', async () => {
+		const { store, account } = createHarness(() => ({
+			success: true,
+			data: emptyData({
+				cursor: 1,
+				envelopes: [{ seq: 1, id: 'poison', slot: 'f'.repeat(64), ciphertext: 'not-decryptable' }]
+			})
+		}));
+		const applied: SyncSnapshot[] = [];
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, true, async (snapshot) => {
+			applied.push(snapshot);
+			return snapshot;
+		});
+
+		expect(result.success, result.error).toBe(true);
+		expect(applied[0].notes).toEqual([]);
+		expect(store.lastError).toBe('Skipped 1 unreadable sync record');
+		expect(controlState.get(syncControlKeys(account.accountId).cursor)).toBe(1);
 	});
 });

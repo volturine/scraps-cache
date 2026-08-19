@@ -38,12 +38,11 @@ import {
 	randomOpaqueId
 } from '$lib/syncPairing';
 import {
-	clearSyncOutbox,
+	commitSyncControl,
 	deleteSyncState,
 	getSyncOutboxKeys,
 	getSyncState,
-	markSyncOutbox,
-	setSyncState
+	markSyncOutbox
 } from '$lib/db/idb';
 
 const LS_SYNC_KEY = 'gkc-sync-account';
@@ -446,6 +445,7 @@ export class SyncStore {
 			let hasMore = true;
 			let downloadsDrained = false;
 			const acknowledgedOutbox = new Set<string>();
+			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
 			while (hasMore) {
 				const startedWithDownloadsDrained = downloadsDrained;
@@ -558,6 +558,7 @@ export class SyncStore {
 					// Ask the notes store to reload full attachments before its retry.
 					this.bootstrapRequested = true;
 					baseline = {};
+					recordIds = {};
 					cursor = 0;
 					continue;
 				}
@@ -715,18 +716,41 @@ export class SyncStore {
 				baseline = reconciled.baseline;
 				for (const key of reconciled.ackKeys) acknowledgedOutbox.add(key);
 				if (reconciled.dirtyKeys.length) {
-					await markSyncOutbox(reconciled.dirtyKeys);
-					for (const key of reconciled.dirtyKeys) outboxKeys.add(key);
+					const markedAt = Date.now();
+					await markSyncOutbox(reconciled.dirtyKeys, markedAt);
+					for (const key of reconciled.dirtyKeys) {
+						outboxKeys.add(key);
+						internallyMarkedOutbox.set(key, markedAt);
+					}
 				}
 
 				if (downloadsDrained) {
-					await Promise.all([
-						setSyncState(keys.cursor, cursor),
-						setSyncState(keys.baseline, baseline),
-						setSyncState(keys.recordIds, recordIds),
-						clearSyncOutbox(acknowledgedOutbox, outboxSnapshotAt),
-						setSyncState(keys.migration, true)
-					]);
+					const internalAcknowledgements = new Map<number, string[]>();
+					for (const key of acknowledgedOutbox) {
+						const markedAt = internallyMarkedOutbox.get(key);
+						if (markedAt == null) continue;
+						const keysAtGeneration = internalAcknowledgements.get(markedAt) ?? [];
+						keysAtGeneration.push(key);
+						internalAcknowledgements.set(markedAt, keysAtGeneration);
+					}
+					await commitSyncControl(
+						[
+							[keys.cursor, cursor],
+							[keys.baseline, baseline],
+							[keys.recordIds, recordIds],
+							[keys.migration, true]
+						],
+						[
+							{ keys: acknowledgedOutbox, through: outboxSnapshotAt },
+							...[...internalAcknowledgements].map(([markedAt, keysAtGeneration]) => ({
+								keys: keysAtGeneration,
+								through: markedAt
+							}))
+						]
+					);
+					for (const keysAtGeneration of internalAcknowledgements.values()) {
+						for (const key of keysAtGeneration) internallyMarkedOutbox.delete(key);
+					}
 				}
 
 				const remainingUploads =
