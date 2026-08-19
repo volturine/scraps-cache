@@ -150,18 +150,19 @@
 	</button>
 
 	<div
-		class="flex h-10 flex-1 items-center gap-2 rounded-full border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3"
+		class="flex h-10 min-h-10 max-h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3"
 	>
 		<Search class="h-4 w-4 shrink-0 text-[var(--scraps-cache-text-muted)]" aria-hidden="true" />
 		<input
 			bind:value={uiStore.search}
 			type="text"
 			placeholder="Search"
-			class="flex-1 bg-transparent text-sm text-[var(--scraps-cache-text)] focus:outline-none placeholder:text-[var(--scraps-cache-text-muted)]"
+			class="h-full min-w-0 flex-1 appearance-none bg-transparent text-sm text-[var(--scraps-cache-text)] focus:outline-none placeholder:text-[var(--scraps-cache-text-muted)]"
 		/>
 		{#if uiStore.search}
 			<button
-				class="icon-btn h-8 w-8 p-1.5 text-sm text-[var(--scraps-cache-text-muted)]"
+				type="button"
+				class="icon-btn h-6 w-6 min-h-0 shrink-0 appearance-none p-0 text-[var(--scraps-cache-text-muted)]"
 				onclick={() => (uiStore.search = '')}
 				aria-label="Clear search"
 			>
