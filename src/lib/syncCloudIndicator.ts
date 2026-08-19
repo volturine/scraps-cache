@@ -1,8 +1,8 @@
-/** DOM-only cloud indicator: spins for the whole sync, with a short minimum
- * so instant syncs read as a deliberate pulse instead of a flicker. */
+/** DOM-only cloud indicator: spins for max(sync time, one rotation).
+ * Instant syncs hold the class until one CSS turn finishes (1s in app.css). */
 
 const ROOT_CLASS = 'scraps-cache-sync-active';
-const MIN_SPIN_MS = 900;
+export const SYNC_ICON_ROTATION_MS = 1000;
 
 let inFlight = 0;
 let spinStartedAt = 0;
@@ -21,7 +21,7 @@ function setSpin(on: boolean): void {
 
 function scheduleSpinOff(): void {
 	if (hideTimer) clearTimeout(hideTimer);
-	const delay = Math.max(0, MIN_SPIN_MS - (Date.now() - spinStartedAt));
+	const delay = Math.max(0, SYNC_ICON_ROTATION_MS - (Date.now() - spinStartedAt));
 	hideTimer = setTimeout(() => {
 		hideTimer = null;
 		if (inFlight <= 0) setSpin(false);

@@ -7,7 +7,7 @@
 	import { page } from '$app/state';
 	import { Tag } from '@lucide/svelte';
 
-	const { openNote: openEditor, startNewNote } = useEditorActions();
+	const { openNote: openEditor } = useEditorActions();
 
 	const labelId = $derived(page.params.label);
 	const label = $derived(notesStore.labels.find((l) => l.id === labelId));
@@ -32,8 +32,6 @@
 			<EmptyState
 				icon={Tag}
 				description="Create a note to start collecting ideas under this label."
-				actionLabel="Create note"
-				onAction={startNewNote}
 			/>
 		{:else}
 			<div class={shell}>

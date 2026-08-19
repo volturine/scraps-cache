@@ -800,12 +800,12 @@ export class NotesStore {
 		}, 5000);
 	}
 
-	flushSync(): Promise<boolean> {
+	flushSync(indicate = false): Promise<boolean> {
 		if (this.syncPushTimer) {
 			clearTimeout(this.syncPushTimer);
 			this.syncPushTimer = null;
 		}
-		return this.syncWithCloud().then(async (synced) => {
+		return this.queueSync(indicate).then(async (synced) => {
 			const leftover = synced ? await getSyncOutboxKeys().catch(() => []) : [];
 			if (synced && leftover.length === 0) {
 				this.dirty = false;
@@ -823,7 +823,7 @@ export class NotesStore {
 		await syncStore.waitForOutboxWrites();
 		const pending = await getSyncOutboxKeys().catch(() => []);
 		if (pending.length === 0) return false;
-		return this.flushSync();
+		return this.flushSync(true);
 	}
 
 	// Replace this device's local data with the already-linked account without uploading any
@@ -889,6 +889,13 @@ export class NotesStore {
 	private queueSync(indicate: boolean): Promise<boolean> {
 		if (this.syncFlight) {
 			this.syncFollowupRequested = true;
+			// A silent flight already in progress still owes the cloud icon a pulse.
+			if (indicate) {
+				syncStore.onSyncStart?.();
+				return this.syncFlight.finally(() => {
+					syncStore.onSyncEnd?.();
+				});
+			}
 			return this.syncFlight;
 		}
 		this.syncFlight = (async () => {

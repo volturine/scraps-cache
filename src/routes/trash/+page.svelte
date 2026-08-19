@@ -1,14 +1,13 @@
 <script lang="ts">
 	import NotesFeed from '$lib/components/NotesFeed.svelte';
+	import SectionHeader from '$lib/components/SectionHeader.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import { notesShellClass } from '$lib/notesShell';
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { Trash2 } from '@lucide/svelte';
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
-	const shell = $derived(notesShellClass());
 
 	let confirmEmpty = $state(false);
 
@@ -25,41 +24,30 @@
 			description="Deleted notes stay here for 7 days before they are deleted forever."
 		/>
 	{:else}
-		<div class={shell}>
-			<div class="mb-3 flex items-center gap-3 px-2">
-				<h2
-					class="text-xs font-semibold uppercase tracking-wide text-[var(--scraps-cache-text-muted)]"
+		<SectionHeader label="Trash" count={trashed.length}>
+			{#if confirmEmpty}
+				<span class="text-xs text-[var(--scraps-cache-text-muted)]">Delete all?</span>
+				<button
+					type="button"
+					onclick={emptyTrash}
+					class="rounded-full bg-red-600/10 px-3 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-600 hover:text-white dark:text-red-400"
+					>Yes</button
 				>
-					Trash
-				</h2>
-				<span class="text-xs text-[var(--scraps-cache-text-muted)] opacity-60"
-					>{trashed.length}</span
+				<button
+					type="button"
+					onclick={() => (confirmEmpty = false)}
+					class="rounded-full px-3 py-1 text-xs text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					>No</button
 				>
-				<div class="flex-1"></div>
-				{#if confirmEmpty}
-					<span class="text-xs text-[var(--scraps-cache-text-muted)]">Delete all?</span>
-					<button
-						type="button"
-						onclick={emptyTrash}
-						class="rounded-full bg-red-600/10 px-3 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-600 hover:text-white dark:text-red-400"
-						>Yes</button
-					>
-					<button
-						type="button"
-						onclick={() => (confirmEmpty = false)}
-						class="rounded-full px-3 py-1 text-xs text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-						>No</button
-					>
-				{:else}
-					<button
-						type="button"
-						onclick={() => (confirmEmpty = true)}
-						class="rounded-full px-3 py-1 text-xs text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-						>Empty</button
-					>
-				{/if}
-			</div>
-		</div>
+			{:else}
+				<button
+					type="button"
+					onclick={() => (confirmEmpty = true)}
+					class="rounded-full px-3 py-1 text-xs text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					>Empty</button
+				>
+			{/if}
+		</SectionHeader>
 
 		<NotesFeed notes={trashed} onOpen={openEditor} />
 	{/if}
