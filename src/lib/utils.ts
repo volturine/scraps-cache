@@ -26,15 +26,47 @@ function countLabel(n: number, unit: string): string {
 	return `${n} ${unit}${n === 1 ? '' : 's'}`;
 }
 
-/** Remaining time until a reminder fires, e.g. "in 2 hours 15 minutes". */
+function addMonthsClamped(date: Date, count: number): Date {
+	const next = new Date(date);
+	const day = next.getDate();
+	next.setMonth(next.getMonth() + count);
+	if (next.getDate() !== day) next.setDate(0);
+	return next;
+}
+
+/** Remaining time until a reminder fires, e.g. "in 2 months 5 days". */
 export function formatReminderCountdown(ts: number, nowMs = Date.now()): string {
 	if (ts < nowMs) return 'Overdue';
 	const totalSeconds = Math.floor((ts - nowMs) / 1000);
 	if (totalSeconds < 1) return 'Due now';
-	const days = Math.floor(totalSeconds / 86_400);
-	const hours = Math.floor((totalSeconds % 86_400) / 3_600);
-	const minutes = Math.floor((totalSeconds % 3_600) / 60);
-	const seconds = totalSeconds % 60;
+
+	const start = new Date(nowMs);
+	const end = new Date(nowMs + totalSeconds * 1000);
+	let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+	let monthMark = addMonthsClamped(start, months);
+	if (monthMark.getTime() > end.getTime()) {
+		months -= 1;
+		monthMark = addMonthsClamped(start, months);
+	}
+	const years = Math.floor(months / 12);
+	months = months % 12;
+
+	const leftover = end.getTime() - monthMark.getTime();
+	const days = Math.floor(leftover / 86_400_000);
+	const hours = Math.floor((leftover % 86_400_000) / 3_600_000);
+	const minutes = Math.floor((leftover % 3_600_000) / 60_000);
+	const seconds = Math.floor((leftover % 60_000) / 1000);
+
+	if (years > 0) {
+		return months > 0
+			? `in ${countLabel(years, 'year')} ${countLabel(months, 'month')}`
+			: `in ${countLabel(years, 'year')}`;
+	}
+	if (months > 0) {
+		return days > 0
+			? `in ${countLabel(months, 'month')} ${countLabel(days, 'day')}`
+			: `in ${countLabel(months, 'month')}`;
+	}
 	if (days > 0) {
 		return hours > 0
 			? `in ${countLabel(days, 'day')} ${countLabel(hours, 'hour')}`

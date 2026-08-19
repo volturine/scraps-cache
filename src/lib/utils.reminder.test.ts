@@ -56,4 +56,22 @@ describe('formatReminderCountdown', () => {
 			'in 3 days 4 hours'
 		);
 	});
+
+	it('uses months and leftover days', () => {
+		expect(formatReminderCountdown(new Date(2026, 8, 13, 6, 48, 0, 0).getTime(), now)).toBe(
+			'in 1 month'
+		);
+		expect(formatReminderCountdown(new Date(2026, 9, 18, 10, 48, 0, 0).getTime(), now)).toBe(
+			'in 2 months 5 days'
+		);
+	});
+
+	it('uses years and leftover months', () => {
+		expect(formatReminderCountdown(new Date(2027, 7, 13, 6, 48, 0, 0).getTime(), now)).toBe(
+			'in 1 year'
+		);
+		expect(formatReminderCountdown(new Date(2028, 10, 13, 6, 48, 0, 0).getTime(), now)).toBe(
+			'in 2 years 3 months'
+		);
+	});
 });
