@@ -161,21 +161,44 @@ function snapshotNote(note: Note): Note {
 	return plainNote(note);
 }
 
+function bytesFromStored(value: unknown): Uint8Array | null {
+	if (value instanceof Uint8Array) return value;
+	if (value instanceof ArrayBuffer) return new Uint8Array(value);
+	if (ArrayBuffer.isView(value)) {
+		return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+	}
+	if (Array.isArray(value) && value.every((item) => typeof item === 'number')) {
+		return Uint8Array.from(value);
+	}
+	return null;
+}
+
+async function blobFromStored(stored: unknown): Promise<Blob | null> {
+	if (stored instanceof Blob) return stored;
+	if (!stored || typeof stored !== 'object') return null;
+	const record = stored as { mime?: unknown; bytes?: unknown; buffer?: unknown };
+	const bytes = bytesFromStored(record.bytes) ?? bytesFromStored(record.buffer);
+	if (!bytes) return null;
+	return new Blob([bytes], {
+		type: typeof record.mime === 'string' ? record.mime : 'application/octet-stream'
+	});
+}
+
 async function imageFromStoredValue(
 	db: IDBPDatabase,
 	noteId: string,
 	meta: NoteImage
 ): Promise<NoteImage | null> {
 	if (meta.dataUrl?.length > 20) return plainImage(meta);
-	const stored = await db.get(IMAGES_STORE, imageKey(noteId, meta.id));
-	if (!(stored instanceof Blob)) {
+	const blob = await blobFromStored(await db.get(IMAGES_STORE, imageKey(noteId, meta.id)));
+	if (!blob) {
 		// Keep thumb-only metadata so cards still render while full bytes are missing.
 		return plainImage({ ...meta, dataUrl: '' });
 	}
 	return plainImage({
 		...meta,
-		mime: meta.mime || stored.type,
-		dataUrl: await blobToDataUrl(stored)
+		mime: meta.mime || blob.type,
+		dataUrl: await blobToDataUrl(blob)
 	});
 }
 
@@ -199,10 +222,20 @@ async function prepareImageBlobs(note: Note): Promise<Array<{ key: string; blob:
 	return entries;
 }
 
-/** Note metadata and all image blobs commit in one transaction or not at all. */
+/**
+ * Photo bytes land first so a crash before the note-row commit still leaves
+ * blobs that boot recovery can reattach from mirrored image ids.
+ */
 async function putNoteSnapshot(note: Note, syncOutboxKeys: string[] = []): Promise<void> {
 	const db = await getDB();
 	const blobs = await prepareImageBlobs(note);
+	for (const { key, blob } of blobs) {
+		await db.put(
+			IMAGES_STORE,
+			{ mime: blob.type, bytes: new Uint8Array(await blob.arrayBuffer()) },
+			key
+		);
+	}
 	const existingKeys = (await db.getAllKeys(IMAGES_STORE)).filter((key) =>
 		String(key).startsWith(`${note.id}::`)
 	);
@@ -218,7 +251,6 @@ async function putNoteSnapshot(note: Note, syncOutboxKeys: string[] = []): Promi
 		for (const key of existingKeys) {
 			if (!desiredKeys.has(String(key))) await tx.objectStore(IMAGES_STORE).delete(key);
 		}
-		for (const { key, blob } of blobs) await tx.objectStore(IMAGES_STORE).put(blob, key);
 		await tx.objectStore(NOTES_STORE).put(lean);
 		if (syncOutboxKeys.length) {
 			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);

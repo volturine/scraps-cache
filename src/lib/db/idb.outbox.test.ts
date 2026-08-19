@@ -6,6 +6,7 @@ import {
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
 	getSyncState,
+	hydrateNoteAttachments,
 	markSyncOutbox,
 	putNote,
 	setSyncState
@@ -99,5 +100,34 @@ describe('durable sync outbox', () => {
 			'saved'
 		);
 		expect(await getSyncOutboxKeys()).toEqual([]);
+	});
+
+	it('keeps photo blobs after a later metadata-only save', async () => {
+		const withPhoto = {
+			...note('photo'),
+			id: 'photo-note',
+			images: [
+				{
+					id: 'pic',
+					mime: 'image/png',
+					dataUrl: 'data:image/png;base64,QQ==',
+					createdAt: 1,
+					contentHash: 'hash-pic'
+				}
+			]
+		};
+		await putNote(withPhoto, ['note:photo-note', 'attachment:pic']);
+		await putNote(
+			{
+				...withPhoto,
+				title: 'metadata only',
+				images: [{ ...withPhoto.images[0], dataUrl: '' }]
+			},
+			['note:photo-note']
+		);
+		const hydrated = await hydrateNoteAttachments(
+			(await getAllNotesMetadata()).find((item) => item.id === 'photo-note')!
+		);
+		expect(hydrated.images[0]?.dataUrl.startsWith('data:image/png;base64,')).toBe(true);
 	});
 });
