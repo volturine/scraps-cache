@@ -272,7 +272,7 @@
 						href="https://github.com/volturine/scraps-cache/issues/new/choose"
 						target="_blank"
 						rel="noreferrer"
-						class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="mt-1 flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Report an issue
