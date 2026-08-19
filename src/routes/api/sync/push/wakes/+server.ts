@@ -84,7 +84,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 	const addressLimit = checkAddressLimit(getClientAddress);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
-	let body: Credentials & { wakes?: unknown };
+	let body: Credentials & { wakes?: unknown; revision?: unknown };
 	try {
 		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 	} catch {
@@ -94,8 +94,16 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 	if (!account) return json({ error: 'Invalid sync account credentials' }, { status: 404 });
 	const wakes = parseReminderWakes(body.wakes, Date.now());
 	if (!wakes) return json({ error: 'Invalid reminder wakes' }, { status: 400 });
+	if (!Number.isSafeInteger(body.revision) || Number(body.revision) < 0) {
+		return json({ error: 'A sync revision is required' }, { status: 400 });
+	}
 	try {
-		getSyncStore().replaceReminderWakes(account.accountId, wakes);
+		const accepted = getSyncStore().replaceReminderWakes(
+			account.accountId,
+			wakes,
+			Number(body.revision)
+		);
+		if (!accepted) return json({ error: 'Stale reminder snapshot' }, { status: 409 });
 		wakeScheduler.nudge();
 		return json({ ok: true, wakes: wakes.length });
 	} catch (error) {

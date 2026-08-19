@@ -5,6 +5,7 @@ import { recordReminderWake } from '$lib/server/metrics';
 const IDLE_MS = 30_000;
 const MIN_DELAY_MS = 250;
 const FAILED_RETRY_MS = 30_000;
+const SEND_CONCURRENCY = 8;
 
 export type WakeSender = (device: DueWake) => Promise<WakeSendResult>;
 
@@ -56,22 +57,32 @@ export class WakeScheduler {
 		try {
 			const now = this.now();
 			const due = this.store().claimDueWakes(now);
-			for (const device of due) {
-				const result = await this.send(device);
-				if (result === 'failed') {
-					this.store().releaseWakeClaim(device);
-					recordReminderWake('failed');
-					failed = true;
-					continue;
+			for (let offset = 0; offset < due.length; offset += SEND_CONCURRENCY) {
+				const batch = due.slice(offset, offset + SEND_CONCURRENCY);
+				const results = await Promise.all(
+					batch.map((device) =>
+						Promise.resolve()
+							.then(() => this.send(device))
+							.catch((): WakeSendResult => 'failed')
+					)
+				);
+				for (const [index, device] of batch.entries()) {
+					const result = results[index];
+					if (result === 'failed') {
+						this.store().releaseWakeClaim(device);
+						recordReminderWake('failed');
+						failed = true;
+						continue;
+					}
+					if (result === 'gone') {
+						this.store().deletePushDevice(device.accountId, device.deviceId);
+						recordReminderWake('gone');
+						continue;
+					}
+					this.store().markWakeDelivered(device, now);
+					recordReminderWake('sent');
+					sent += 1;
 				}
-				if (result === 'gone') {
-					this.store().deletePushDevice(device.accountId, device.deviceId);
-					recordReminderWake('gone');
-					continue;
-				}
-				this.store().markWakeDelivered(device, now);
-				recordReminderWake('sent');
-				sent += 1;
 			}
 			this.store().pruneStaleWakes(now);
 		} finally {

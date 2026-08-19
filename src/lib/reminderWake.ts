@@ -130,6 +130,8 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 	const account = syncStore.account;
 	if (!account) return null;
 	const wakes = relayReminderWakes(notes, Date.now());
+	const revision = await syncStore.committedRevision();
+	if (revision === null) return null;
 	try {
 		const response = await fetch('/api/sync/push/wakes', {
 			method: 'PUT',
@@ -137,6 +139,7 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 			body: JSON.stringify({
 				accountId: account.accountId,
 				authSecret: account.authSecret,
+				revision,
 				wakes
 			})
 		});

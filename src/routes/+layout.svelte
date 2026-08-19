@@ -24,10 +24,16 @@
 	let editingId = $state<string | null>(null);
 	let editorDismissTick = $state(0);
 	let editorFocusOnOpen = $state(false);
+	let openRequest = 0;
 
 	function openEditor(id: string) {
-		editorFocusOnOpen = false;
-		editingId = id;
+		const request = ++openRequest;
+		void (async () => {
+			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
+			if (request !== openRequest || !notesStore.notes.some((note) => note.id === id)) return;
+			editorFocusOnOpen = false;
+			editingId = id;
+		})();
 	}
 
 	function openNoteFromQuery() {
@@ -44,9 +50,9 @@
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
 		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(async () => {
+			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
 			openNoteFromQuery();
 			reminderStore.sync(notesStore.notes);
-			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
 		});
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;

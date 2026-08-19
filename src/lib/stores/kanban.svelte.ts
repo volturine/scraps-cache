@@ -177,6 +177,13 @@ export class KanbanStore {
 			this.activeBoardId = this.boards[0].id;
 	}
 
+	async persistSyncState(): Promise<void> {
+		await Promise.all([
+			saveBoardsToDevice(this.boards),
+			writeBoardTombstones(this.boardTombstones)
+		]);
+	}
+
 	/** Used for the explicit “discard local data” link flow. */
 	replaceWithCloud(
 		remoteBoards: KanbanBoard[],
