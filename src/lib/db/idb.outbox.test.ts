@@ -1,4 +1,3 @@
-import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import type { Note } from '$lib/types';
 import {
@@ -31,6 +30,15 @@ function note(title: string): Note {
 }
 
 describe('durable sync outbox', () => {
+	it('stores a note that the next case must not see', async () => {
+		await putNote(note('isolation-note'));
+		expect((await getAllNotesMetadata()).map(({ title }) => title)).toEqual(['isolation-note']);
+	});
+
+	it('starts the next case with an empty database', async () => {
+		expect(await getAllNotesMetadata()).toEqual([]);
+	});
+
 	it('deduplicates keys and clears only acknowledged generations', async () => {
 		await markSyncOutbox(['note:one', 'note:one', 'label:two']);
 		expect((await getSyncOutboxKeys()).sort()).toEqual(['label:two', 'note:one']);

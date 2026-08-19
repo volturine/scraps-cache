@@ -36,6 +36,8 @@ function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
 	return run;
 }
 
+export const DEVICE_DB_NAME = DB_NAME;
+
 function getDB(): Promise<IDBPDatabase> {
 	if (typeof indexedDB === 'undefined') {
 		return Promise.reject(new Error('IndexedDB is not available'));
@@ -65,6 +67,20 @@ function getDB(): Promise<IDBPDatabase> {
 		});
 	}
 	return dbPromise;
+}
+
+/** Drop the cached connection so tests can delete the database between cases. */
+export function closeDeviceDatabase(): void {
+	const pending = dbPromise;
+	dbPromise = null;
+	deviceWriteChain = Promise.resolve();
+	noteChains.clear();
+	writeGeneration = 0;
+	if (pending)
+		void pending.then(
+			(db) => db.close(),
+			() => undefined
+		);
 }
 
 /** Plain clone of an attachment — never hand Svelte proxies to IndexedDB. */
@@ -446,8 +462,10 @@ export async function getSyncState<T>(key: string): Promise<T | undefined> {
 }
 
 export async function setSyncState<T>(key: string, value: T): Promise<void> {
-	const db = await getDB();
-	await db.put(SYNC_STATE_STORE, value, key);
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		await db.put(SYNC_STATE_STORE, value, key);
+	});
 }
 
 const FIRED_REMINDERS_KEY = 'gkc-fired-reminders';
@@ -464,30 +482,36 @@ export async function setFiredReminderKeys(keys: Iterable<string>): Promise<void
 
 /** Merge one delivered wake atomically so pages and the service worker cannot lose each other's ids. */
 export async function markFiredReminderKey(key: string): Promise<void> {
-	const db = await getDB();
-	const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
-	const stored = await tx.store.get(FIRED_REMINDERS_KEY);
-	const keys = new Set(
-		Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []
-	);
-	keys.add(key);
-	await tx.store.put([...keys], FIRED_REMINDERS_KEY);
-	await tx.done;
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
+		const stored = await tx.store.get(FIRED_REMINDERS_KEY);
+		const keys = new Set(
+			Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []
+		);
+		keys.add(key);
+		await tx.store.put([...keys], FIRED_REMINDERS_KEY);
+		await tx.done;
+	});
 }
 
 export async function deleteSyncState(key: string): Promise<void> {
-	const db = await getDB();
-	await db.delete(SYNC_STATE_STORE, key);
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		await db.delete(SYNC_STATE_STORE, key);
+	});
 }
 
 /** Durable set of plaintext-local record keys awaiting encrypted upload. */
 export async function markSyncOutbox(keys: Iterable<string>, markedAt = Date.now()): Promise<void> {
 	const unique = [...new Set(keys)].filter(Boolean);
 	if (unique.length === 0) return;
-	const db = await getDB();
-	const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
-	for (const key of unique) tx.store.put(markedAt, key);
-	await tx.done;
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
+		for (const key of unique) tx.store.put(markedAt, key);
+		await tx.done;
+	});
 }
 
 export async function getSyncOutboxKeys(): Promise<string[]> {
@@ -501,13 +525,15 @@ export async function clearSyncOutbox(
 ): Promise<void> {
 	const unique = [...new Set(keys)].filter(Boolean);
 	if (unique.length === 0) return;
-	const db = await getDB();
-	const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
-	for (const key of unique) {
-		const markedAt = Number(await tx.store.get(key));
-		if (markedAt > 0 && markedAt <= through) await tx.store.delete(key);
-	}
-	await tx.done;
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
+		for (const key of unique) {
+			const markedAt = Number(await tx.store.get(key));
+			if (markedAt > 0 && markedAt <= through) await tx.store.delete(key);
+		}
+		await tx.done;
+	});
 }
 
 /** Commit the durable cursor/baseline and acknowledge their outbox generation together. */
@@ -520,26 +546,28 @@ export async function commitSyncControl(
 		keys: [...new Set(keys)].filter(Boolean),
 		through
 	}));
-	const db = await getDB();
-	const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
-	try {
-		const syncState = tx.objectStore(SYNC_STATE_STORE);
-		const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
-		for (const [key, value] of entries) await syncState.put(value, key);
-		for (const { keys, through } of acknowledged) {
-			for (const key of keys) {
-				const markedAt = Number(await outbox.get(key));
-				if (markedAt > 0 && markedAt <= through) await outbox.delete(key);
-			}
-		}
-		await tx.done;
-	} catch (error) {
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
 		try {
-			tx.abort();
-		} catch {
-			// The transaction may already have aborted after a failed request.
+			const syncState = tx.objectStore(SYNC_STATE_STORE);
+			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+			for (const [key, value] of entries) await syncState.put(value, key);
+			for (const { keys, through } of acknowledged) {
+				for (const key of keys) {
+					const markedAt = Number(await outbox.get(key));
+					if (markedAt > 0 && markedAt <= through) await outbox.delete(key);
+				}
+			}
+			await tx.done;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				// The transaction may already have aborted after a failed request.
+			}
+			await tx.done.catch(() => undefined);
+			throw error;
 		}
-		await tx.done.catch(() => undefined);
-		throw error;
-	}
+	});
 }

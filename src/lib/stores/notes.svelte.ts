@@ -325,9 +325,10 @@ export class NotesStore {
 			(n) => n.trashed && daysSinceTrashed(n.trashedAt) >= TRASH_PURGE_DAYS
 		);
 		if (toPurge.length === 0) return;
-		this.markNotesDeleted(toPurge.map((note) => note.id));
+		const ids = toPurge.map((note) => note.id);
 		this.notes = this.notes.filter((n) => !toPurge.find((p) => p.id === n.id));
-		Promise.all(toPurge.map((p) => deleteNote(p.id))).catch((err) =>
+		this.mirrorToLS();
+		void this.persistDeletedNotes(ids).catch((err) =>
 			this.recordPersistenceError('Could not purge expired trash', err)
 		);
 	}
@@ -464,10 +465,9 @@ export class NotesStore {
 
 	emptyTrash(): void {
 		const ids = this.trashedNotes.map((n) => n.id);
-		this.markNotesDeleted(ids);
 		this.notes = this.notes.filter((n) => !n.trashed);
 		this.mirrorToLS();
-		Promise.all(ids.map((id) => deleteNote(id))).catch((err) =>
+		void this.persistDeletedNotes(ids).catch((err) =>
 			this.recordPersistenceError('Could not empty trash', err)
 		);
 	}
@@ -711,15 +711,15 @@ export class NotesStore {
 
 	// Persistence helpers --------------------------------------------------
 
-	private markNotesDeleted(ids: string[]): void {
+	private async persistDeletedNotes(ids: string[]): Promise<void> {
 		if (ids.length === 0) return;
 		const deletedAt = Date.now();
 		for (const id of ids) this.deletedNoteIds[id] = deletedAt;
-		void writeTombstones(this.deletedNoteIds).then(() =>
-			syncStore.queueOutbox(ids.map((id) => `note-tombstone:${id}`))
-		);
 		this.dirty = true;
 		this.scheduleSyncPush();
+		await writeTombstones(this.deletedNoteIds);
+		await syncStore.queueOutbox(ids.map((id) => `note-tombstone:${id}`));
+		await Promise.all(ids.map((id) => deleteNote(id)));
 	}
 
 	private markLabelsDeleted(ids: string[], deletedAt = Date.now()): void {

@@ -1,4 +1,3 @@
-import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { loadBoardsFromDevice, saveBoardsToDevice } from './syncTombstones';
 

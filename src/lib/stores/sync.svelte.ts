@@ -446,6 +446,7 @@ export class SyncStore {
 			const acknowledgedOutbox = new Set<string>();
 			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
+			let stalledWrites = 0;
 			while (hasMore) {
 				const startedWithDownloadsDrained = downloadsDrained;
 				const tombstoneMaps = {
@@ -547,6 +548,14 @@ export class SyncStore {
 					}
 				}
 				const writesAccepted = response.data.writesAccepted === true;
+				if (!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) {
+					stalledWrites += 1;
+					if (stalledWrites >= 3) {
+						throw new Error('Could not commit encrypted writes after repeated conflicts');
+					}
+				} else if (writesAccepted) {
+					stalledWrites = 0;
+				}
 				if (writesAccepted) {
 					for (const key of deletableKeys) delete recordIds[key];
 					for (const [key, id] of sentRecordIds) recordIds[key] = id;

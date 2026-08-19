@@ -516,4 +516,32 @@ describe('client sync state machine', () => {
 		expect(store.lastError).toBe('Skipped 1 unreadable sync record');
 		expect(controlState.get(syncControlKeys(account.accountId).cursor)).toBe(1);
 	});
+
+	it('stops after repeated undecryptable write conflicts instead of looping forever', async () => {
+		const local = note();
+		const { store, requests } = createHarness((_request, index) => {
+			if (index === 0) return { success: true, data: emptyData({ cursor: 1 }) };
+			return {
+				success: true,
+				data: emptyData({
+					cursor: 1,
+					writesAccepted: false,
+					conflicts: [
+						{ seq: 1, id: 'current-id', slot: 'f'.repeat(64), ciphertext: 'not-decryptable' }
+					]
+				})
+			};
+		});
+		const keys = syncControlKeys(store.account!.accountId);
+		controlState.set(keys.cursor, 1);
+		controlState.set(keys.baseline, { 'note:note-1': 'old-fingerprint' });
+		controlState.set(keys.recordIds, { 'note:note-1': 'old-id' });
+		outbox.set('note:note-1', 1);
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/repeated conflicts/);
+		expect(requests.length).toBeLessThan(10);
+	});
 });

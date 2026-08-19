@@ -34,6 +34,12 @@ let noteCache: Tombstones | null = null;
 let labelCache: Tombstones | null = null;
 let boardCache: Tombstones | null = null;
 
+export function resetTombstoneCaches(): void {
+	noteCache = null;
+	labelCache = null;
+	boardCache = null;
+}
+
 export function readTombstones(): Tombstones {
 	return { ...(noteCache ?? readLegacy(NOTE_LS)) };
 }

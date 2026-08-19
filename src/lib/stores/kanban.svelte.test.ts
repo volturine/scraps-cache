@@ -1,4 +1,3 @@
-import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { loadBoardsFromDevice } from '$lib/syncTombstones';
 import { KanbanStore } from './kanban.svelte';

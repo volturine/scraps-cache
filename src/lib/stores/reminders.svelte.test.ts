@@ -48,12 +48,13 @@ describe('ReminderStore', () => {
 	});
 
 	it('fires a later reminder after the scheduled time', async () => {
-		vi.useFakeTimers();
 		const now = Date.now();
 		const store = new ReminderStore();
 		store.sync([note({ reminder: now + 5_000 })]);
 		await store.whenReady();
 		expect(store.alerts).toEqual([]);
+		vi.useFakeTimers({ now });
+		store.sync([note({ reminder: now + 5_000 })]);
 		await vi.advanceTimersByTimeAsync(5_000);
 		expect(store.alerts[0]?.noteId).toBe('n1');
 	});
