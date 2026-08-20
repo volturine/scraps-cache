@@ -25,6 +25,15 @@ function note(updatedAt: number, images: NoteImage[]): Note {
 }
 
 describe('mergeTwoNotes', () => {
+	it('fills a missing thumb from the other copy on a field-time tie', () => {
+		const stored = note(10, [{ ...image('one', ''), thumbUrl: 'data:image/jpeg;base64,thumb' }]);
+		const mirrored = note(10, [image('one', '')]);
+
+		expect(mergeTwoNotes(mirrored, stored).images[0]?.thumbUrl).toBe(
+			'data:image/jpeg;base64,thumb'
+		);
+	});
+
 	it('hydrates bytes for the winning image list without adding removed ids', () => {
 		const stored = note(10, [image('one', 'data:one'), image('removed', 'data:removed')]);
 		const newer = note(11, [image('one', '')]);

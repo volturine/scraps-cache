@@ -58,9 +58,14 @@ function pickField<T>(
 function hydrateImageList(preferred: NoteImage[] = [], fallback: NoteImage[] = []): NoteImage[] {
 	const fallbackById = new Map(fallback.map((image) => [image.id, image]));
 	const filled = preferred.map((image) => {
-		if (image.dataUrl?.length) return image;
 		const stored = fallbackById.get(image.id);
-		return stored?.dataUrl?.length ? { ...image, dataUrl: stored.dataUrl } : image;
+		const dataUrl = image.dataUrl?.length ? image.dataUrl : (stored?.dataUrl ?? image.dataUrl ?? '');
+		const thumbUrl = image.thumbUrl?.length ? image.thumbUrl : stored?.thumbUrl;
+		return {
+			...image,
+			dataUrl,
+			...(thumbUrl ? { thumbUrl } : {})
+		};
 	});
 	if (preferred.length === 0 || filled.some((image) => image.dataUrl?.length)) return filled;
 	const preferredIds = new Set(preferred.map((image) => image.id));
