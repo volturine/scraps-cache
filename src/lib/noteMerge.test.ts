@@ -29,7 +29,7 @@ describe('mergeTwoNotes', () => {
 		const stored = note(10, [{ ...image('one', ''), thumbUrl: 'data:image/jpeg;base64,thumb' }]);
 		const mirrored = note(10, [image('one', '')]);
 
-		expect(mergeTwoNotes(mirrored, stored).images[0]?.thumbUrl).toBe(
+		expect(mergeTwoNotes(mirrored, stored).images?.[0]?.thumbUrl).toBe(
 			'data:image/jpeg;base64,thumb'
 		);
 	});
