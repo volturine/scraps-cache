@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeTwoNotes, touchNoteFields } from './noteMerge';
+import { mergeTwoNotes, retargetLocalNotes, touchNoteFields } from './noteMerge';
 import type { Note, NoteImage } from './types';
 
 function image(id: string, dataUrl: string): NoteImage {
@@ -90,5 +90,46 @@ describe('mergeTwoNotes', () => {
 		expect(editedLater.fieldTimes?.title).toBe(10_001);
 		expect(editedLater.updatedAt).toBe(10_001);
 		expect(mergeTwoNotes(pulled, editedLater).title).toBe('newer intentional edit');
+	});
+});
+
+describe('retargetLocalNotes', () => {
+	it('gives the local copy a new id when the account already has that note', () => {
+		const local = { ...note(10, [image('photo', 'data:local')]), id: 'shared', title: 'mine' };
+		const remote = { ...note(8, [image('photo', 'data:remote')]), id: 'shared', title: 'theirs' };
+		let next = 0;
+		const remapped = retargetLocalNotes([local], [remote], {}, () => `new-${++next}`);
+
+		expect(remapped).toEqual([
+			{
+				...local,
+				id: 'new-2',
+				images: [{ ...image('photo', 'data:local'), id: 'new-1' }]
+			}
+		]);
+		expect(remapped[0]?.id).not.toBe('shared');
+		expect(remapped[0]?.images?.[0]?.id).not.toBe('photo');
+	});
+
+	it('keeps a local note that a remote tombstone would otherwise drop', () => {
+		const local = { ...note(10, []), id: 'deleted-on-server', title: 'still on this phone' };
+		let next = 0;
+		const remapped = retargetLocalNotes(
+			[local],
+			[],
+			{ 'deleted-on-server': 5 },
+			() => `kept-${++next}`
+		);
+
+		expect(remapped[0]?.id).toBe('kept-1');
+		expect(remapped[0]?.title).toBe('still on this phone');
+	});
+
+	it('leaves local-only notes and photos alone', () => {
+		const local = { ...note(10, [image('only-here', 'data:x')]), id: 'local-1', title: 'mine' };
+		const remote = { ...note(8, [image('cloud-photo', 'data:y')]), id: 'cloud-1', title: 'theirs' };
+		const remapped = retargetLocalNotes([local], [remote], {}, () => 'should-not-run');
+
+		expect(remapped).toEqual([local]);
 	});
 });

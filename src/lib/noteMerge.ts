@@ -186,6 +186,56 @@ export function mergeNoteLists(primary: Note[], secondary: Note[]): Note[] {
 	return Array.from(byId.values());
 }
 
+function nextUnusedId(taken: Set<string>, newId: () => string): string {
+	let id = newId();
+	while (taken.has(id)) id = newId();
+	taken.add(id);
+	return id;
+}
+
+/**
+ * Pairing merge keeps both copies when this device and the account already
+ * use the same note or attachment id. Regular sync still merges by id.
+ */
+export function retargetLocalNotes(
+	local: Note[],
+	remoteNotes: Note[],
+	remoteTombstones: Record<string, number>,
+	newId: () => string
+): Note[] {
+	const takenNoteIds = new Set<string>([
+		...remoteNotes.map((note) => note.id),
+		...Object.keys(remoteTombstones).filter((id) => isTombstoned(id, remoteTombstones)),
+		...local.map((note) => note.id)
+	]);
+	const remoteImageIds = new Set(
+		remoteNotes.flatMap((note) => (note.images ?? []).map((image) => image.id))
+	);
+	const takenImageIds = new Set<string>([
+		...remoteImageIds,
+		...local.flatMap((note) => (note.images ?? []).map((image) => image.id))
+	]);
+
+	return local.map((note) => {
+		const collideNote =
+			remoteNotes.some((remote) => remote.id === note.id) ||
+			isTombstoned(note.id, remoteTombstones);
+		const images = (note.images ?? []).map((image) => {
+			if (!collideNote && !remoteImageIds.has(image.id)) return image;
+			return { ...image, id: nextUnusedId(takenImageIds, newId) };
+		});
+		const imagesChanged = images.some(
+			(image, index) => image.id !== (note.images ?? [])[index]?.id
+		);
+		if (!collideNote && !imagesChanged) return note;
+		return {
+			...note,
+			id: collideNote ? nextUnusedId(takenNoteIds, newId) : note.id,
+			images
+		};
+	});
+}
+
 function labelTime(label: Label): number {
 	return label.updatedAt;
 }

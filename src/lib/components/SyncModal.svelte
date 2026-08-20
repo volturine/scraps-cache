@@ -144,7 +144,7 @@
 		info = merge ? 'Merging notes…' : 'Downloading synced notes…';
 		try {
 			const success = merge
-				? await notesStore.syncWithCloudManual()
+				? await notesStore.mergeWithCloudManual()
 				: await notesStore.replaceWithCloudManual();
 			if (success) {
 				mode = 'linked';

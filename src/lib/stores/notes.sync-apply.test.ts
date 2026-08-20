@@ -451,4 +451,72 @@ describe('notes store sync apply', () => {
 		expect(notesStore.notes.map((item) => item.id)).toEqual(['cloud-1']);
 		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['cloud-1']);
 	});
+
+	it('pairing merge keeps both notes when this device and the account share an id', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		const local = remoteNote('shared');
+		local.title = 'mine';
+		local.updatedAt = 20;
+		await putNote(local);
+		notesStore.notes = [local];
+		const cloud = remoteNote('shared');
+		cloud.title = 'theirs';
+		cloud.updatedAt = 10;
+
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(
+					path: string,
+					payload: string
+				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async (_path, payload) => {
+			const request = JSON.parse(payload) as { cursor: number };
+			if (request.cursor > 0) {
+				return {
+					success: true,
+					data: {
+						cursor: request.cursor,
+						envelopes: [],
+						conflicts: [],
+						hasMore: false,
+						reset: false,
+						writesAccepted: true
+					}
+				};
+			}
+			return {
+				success: true,
+				data: {
+					cursor: 1,
+					envelopes: [
+						{
+							seq: 1,
+							id: 'cloud-id',
+							slot: 'b'.repeat(64),
+							ciphertext: encryptSyncPayload(account.syncKey, {
+								kind: 'note',
+								value: cloud
+							})
+						}
+					],
+					conflicts: [],
+					hasMore: false,
+					reset: false,
+					writesAccepted: true
+				}
+			};
+		});
+
+		expect(await notesStore.mergeWithCloudManual()).toBe(true);
+		const titles = notesStore.notes.map((item) => item.title).sort();
+		expect(titles).toEqual(['mine', 'theirs']);
+		const ids = notesStore.notes.map((item) => item.id);
+		expect(ids).toContain('shared');
+		expect(ids.some((id) => id !== 'shared')).toBe(true);
+		expect(notesStore.notes.find((item) => item.id === 'shared')?.title).toBe('theirs');
+		expect(notesStore.notes.find((item) => item.id !== 'shared')?.title).toBe('mine');
+	});
 });

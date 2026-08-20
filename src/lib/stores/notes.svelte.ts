@@ -19,6 +19,7 @@ import {
 import {
 	mergeLabelLists,
 	mergeNoteLists,
+	retargetLocalNotes,
 	touchNoteFields,
 	withoutTombstoned
 } from '$lib/noteMerge';
@@ -983,6 +984,77 @@ export class NotesStore {
 			labelTombstones: { ...this.deletedLabelIds },
 			boardTombstones: kanbanStore.boardTombstonesForSync()
 		};
+	}
+
+	/** Pairing merge: keep every local note and every account note. Same ids get a new local id. */
+	async mergeWithCloudManual(): Promise<boolean> {
+		if (!syncStore.isLoggedIn || !syncStore.account) return false;
+		const original = this.notes.map(cloneNote);
+		try {
+			await this.hydrateAllAttachments();
+			const leftover = await getSyncOutboxKeys().catch(() => []);
+			if (leftover.length) await clearSyncOutbox(leftover);
+			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
+			const pulledSnapshots: SyncSnapshot[] = [];
+			const pulled = await syncStore.sync([], [], {}, {}, [], {}, true, true, async (snapshot) => {
+				pulledSnapshots.push({
+					notes: snapshot.notes.map(cloneNote),
+					labels: snapshot.labels.map((label) => ({ ...label })),
+					boards: snapshot.boards.map((board) => ({
+						...board,
+						columns: board.columns.map((column) => ({ ...column })),
+						backlogFilter: {
+							...board.backlogFilter,
+							labelIds: [...board.backlogFilter.labelIds]
+						}
+					})),
+					tombstones: { ...snapshot.tombstones },
+					labelTombstones: { ...snapshot.labelTombstones },
+					boardTombstones: { ...snapshot.boardTombstones }
+				});
+				return snapshot;
+			});
+			const server = pulledSnapshots.at(-1);
+			if (!pulled.success || !server) {
+				this.recordPersistenceError(
+					pulled.error || 'Could not download synced notes',
+					pulled.error
+				);
+				return false;
+			}
+			const remapped = retargetLocalNotes(
+				this.notes.map(cloneNote),
+				server.notes,
+				server.tombstones,
+				uid
+			);
+			for (let index = 0; index < original.length; index++) {
+				const before = original[index];
+				const after = remapped[index];
+				const imagesChanged = (after.images ?? []).some(
+					(image, imageIndex) => image.id !== (before.images ?? [])[imageIndex]?.id
+				);
+				if (before.id !== after.id || imagesChanged) {
+					await putNote(after, noteSyncKeys(after));
+				}
+			}
+			this.notes = remapped;
+			try {
+				await this.applyPulledSnapshot(server);
+			} catch (err) {
+				this.notes = original;
+				throw err;
+			}
+			const kept = new Set(this.notes.map((note) => note.id));
+			for (const note of original) {
+				if (!kept.has(note.id)) await deleteNote(note.id);
+			}
+			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
+			return this.syncWithCloudManual();
+		} catch (err) {
+			this.recordPersistenceError('Could not merge local notes with synced notes', err);
+			return false;
+		}
 	}
 
 	// Replace this device's local data with the already-linked account without uploading any
