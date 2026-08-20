@@ -508,6 +508,84 @@ describe('client sync state machine', () => {
 		expect(await idb.getSyncState(syncControlKeys(account.accountId).cursor)).toBe(1);
 	});
 
+	it('overwrites an undecryptable slot after adopting the conflict id', async () => {
+		const local = note();
+		const { store, account, requests } = createHarness((request, index) => {
+			if (index === 0) return { success: true, data: emptyData({ cursor: 1 }) };
+			if (request.envelopes[0]?.expectedId === 'current-id') {
+				return { success: true, data: emptyData({ cursor: 2, writesAccepted: true }) };
+			}
+			return {
+				success: true,
+				data: emptyData({
+					cursor: 1,
+					writesAccepted: false,
+					conflicts: [
+						{
+							seq: 1,
+							id: 'current-id',
+							slot: request.envelopes[0]?.slot ?? 'f'.repeat(64),
+							ciphertext: 'not-decryptable'
+						}
+					]
+				})
+			};
+		});
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': 'old-fingerprint' },
+			recordIds: { 'note:note-1': 'old-id' },
+			outbox: ['note:note-1']
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests.map((request) => request.envelopes[0]?.expectedId)).toEqual([
+			undefined,
+			'old-id',
+			'current-id'
+		]);
+		expect(await idb.getSyncState(syncControlKeys(account.accountId).recordIds)).toEqual({
+			'note:note-1': requests[2].envelopes[0].id
+		});
+	});
+
+	it('does not abort when writes are deferred for unread envelopes', async () => {
+		const local = note();
+		const { store, account, requests } = createHarness((_request, index) => {
+			if (index === 0) return { success: true, data: emptyData({ cursor: 1 }) };
+			if (index < 4) {
+				return {
+					success: true,
+					data: emptyData({
+						cursor: index,
+						writesAccepted: false,
+						envelopes: [
+							envelope(account, `remote-${index}`, index, {
+								kind: 'note',
+								value: note(`remote-${index}`, { updatedAt: index, fieldTimes: { title: index } })
+							})
+						]
+					})
+				};
+			}
+			return { success: true, data: emptyData({ cursor: 4, writesAccepted: true }) };
+		});
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': 'old-fingerprint' },
+			recordIds: { 'note:note-1': 'old-id' },
+			outbox: ['note:note-1']
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests.length).toBeGreaterThanOrEqual(5);
+		expect(result.error).toBeUndefined();
+	});
+
 	it('stops after repeated undecryptable write conflicts instead of looping forever', async () => {
 		const local = note();
 		const { store, account, requests } = createHarness((_request, index) => {

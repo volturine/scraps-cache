@@ -1079,7 +1079,7 @@ export class NotesStore {
 			}
 			if (syncStore.consumeCurrentStateBootstrapRequest()) {
 				await this.hydrateAllAttachments();
-				return this.doSync(indicate);
+				return this.doSyncLocked(indicate);
 			}
 			this.lastPersistError = null;
 			this.onAfterSync?.();

@@ -488,6 +488,7 @@ export class SyncStore {
 				const sentRecordKeys = new Set(outgoing.map((record) => record.key));
 				const sentIds = new Set<string>();
 				const sentRecordIds = new Map<string, string>();
+				const sentSlots = new Map<string, string>();
 				const outbound = await Promise.all(
 					outgoing.map(async (record: SyncRecord) => {
 						const id = randomOpaqueId();
@@ -496,6 +497,7 @@ export class SyncStore {
 						// Keyed, non-reversible slot token: relay can replace old ciphertext but cannot
 						// infer whether this is a note, attachment, board, or its plaintext identity.
 						const slot = await sha256(`${this.account!.syncKey}\u0000${record.key}`);
+						sentSlots.set(slot, record.key);
 						return {
 							id,
 							slot,
@@ -571,15 +573,8 @@ export class SyncStore {
 					}
 				}
 				const writesAccepted = response.data.writesAccepted === true;
-				if (!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) {
-					stalledWrites += 1;
-					if (stalledWrites >= 3) {
-						throw new Error('Could not commit encrypted writes after repeated conflicts');
-					}
-				} else if (writesAccepted) {
-					stalledWrites = 0;
-				}
 				if (writesAccepted) {
+					stalledWrites = 0;
 					for (const key of deletableKeys) delete recordIds[key];
 					for (const [key, id] of sentRecordIds) recordIds[key] = id;
 					for (const key of deletableKeys) acknowledgedOutbox.add(key);
@@ -596,6 +591,8 @@ export class SyncStore {
 
 				const pendingNotes: Note[] = [];
 				const remoteFingerprints: Record<string, string> = {};
+				let decodedAny = false;
+				let adoptedConflictId = false;
 				const applyPayload = (record: SyncRecordPayload) => {
 					switch (record.kind) {
 						case 'attachment':
@@ -627,8 +624,9 @@ export class SyncStore {
 							break;
 					}
 				};
+				const downloaded = Array.isArray(response.data.envelopes) ? response.data.envelopes : [];
 				const envelopes = [
-					...(Array.isArray(response.data.envelopes) ? response.data.envelopes : []),
+					...downloaded,
 					...(Array.isArray(response.data.conflicts) ? response.data.conflicts : [])
 				];
 				for (const envelope of envelopes) {
@@ -639,6 +637,10 @@ export class SyncStore {
 					const id =
 						typeof (envelope as { id?: unknown }).id === 'string'
 							? (envelope as { id: string }).id
+							: '';
+					const slot =
+						typeof (envelope as { slot?: unknown }).slot === 'string'
+							? (envelope as { slot: string }).slot
 							: '';
 					if (id && sentIds.has(id)) continue;
 					if (typeof (envelope as { ciphertext?: unknown }).ciphertext !== 'string') {
@@ -659,8 +661,14 @@ export class SyncStore {
 					}
 					if (!decodedRecords) {
 						poisonCount += 1;
+						const key = slot ? sentSlots.get(slot) : undefined;
+						if (key && id) {
+							recordIds[key] = id;
+							adoptedConflictId = true;
+						}
 						continue;
 					}
+					decodedAny = true;
 					const ordered = [
 						...decodedRecords.filter((record) => record.kind === 'attachment'),
 						...decodedRecords.filter((record) => record.kind !== 'attachment')
@@ -671,6 +679,16 @@ export class SyncStore {
 						recordIds[key] = id;
 						remoteFingerprints[key] = await sha256(record);
 						currentKeys.add(key);
+					}
+				}
+				if (!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) {
+					if (decodedAny || adoptedConflictId || downloaded.length > 0) {
+						stalledWrites = 0;
+					} else {
+						stalledWrites += 1;
+						if (stalledWrites >= 3) {
+							throw new Error('Could not commit encrypted writes after repeated conflicts');
+						}
 					}
 				}
 				if (pendingNotes.length) {

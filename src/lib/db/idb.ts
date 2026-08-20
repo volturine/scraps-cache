@@ -179,7 +179,7 @@ async function blobFromStored(stored: unknown): Promise<Blob | null> {
 	const record = stored as { mime?: unknown; bytes?: unknown; buffer?: unknown };
 	const bytes = bytesFromStored(record.bytes) ?? bytesFromStored(record.buffer);
 	if (!bytes) return null;
-	return new Blob([bytes], {
+	return new Blob([bytes.slice()], {
 		type: typeof record.mime === 'string' ? record.mime : 'application/octet-stream'
 	});
 }

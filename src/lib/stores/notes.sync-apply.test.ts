@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity, encryptSyncPayload } from '$lib/syncPairing';
 import { syncControlKeys } from '$lib/syncEngine';
-import { getAllNotesMetadata, getSyncOutboxKeys, getSyncState, putNote } from '$lib/db/idb';
+import {
+	getAllNotesMetadata,
+	getSyncOutboxKeys,
+	getSyncState,
+	putNote,
+	setSyncState
+} from '$lib/db/idb';
 import { loadBoardsFromDevice } from '$lib/syncTombstones';
 import { writeNotesMirror } from '$lib/noteStorage';
 import { notesStore } from './notes.svelte';
@@ -114,7 +120,7 @@ describe('notes store sync apply', () => {
 			{ id: 'note-1', title: 'pulled from relay' }
 		]);
 		expect(await getSyncState(keys.cursor)).toBe(1);
-		const boards = await loadBoardsFromDevice(null);
+		const boards = await loadBoardsFromDevice<unknown>(null);
 		expect(Array.isArray(boards) && boards.length > 0).toBe(true);
 	});
 
@@ -136,5 +142,69 @@ describe('notes store sync apply', () => {
 
 		expect((await getAllNotesMetadata()).map(({ id }) => id).sort()).toEqual(['kept', 'lost']);
 		expect(await getSyncOutboxKeys()).toContain('note:lost');
+	});
+
+	it('does not re-enter the web lock during a relay-reset bootstrap', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		let depth = 0;
+		let maxDepth = 0;
+		const locks = {
+			request: async (_name: string, callback: () => Promise<boolean>) => {
+				depth += 1;
+				maxDepth = Math.max(maxDepth, depth);
+				try {
+					return await callback();
+				} finally {
+					depth -= 1;
+				}
+			}
+		};
+		Object.defineProperty(navigator, 'locks', { configurable: true, value: locks });
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(
+					path: string,
+					payload: string
+				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async (_path, payload) => {
+			const request = JSON.parse(payload) as { cursor: number };
+			if (request.cursor > 0) {
+				return {
+					success: true,
+					data: {
+						cursor: 0,
+						envelopes: [],
+						conflicts: [],
+						hasMore: false,
+						reset: true,
+						writesAccepted: false
+					}
+				};
+			}
+			return {
+				success: true,
+				data: {
+					cursor: 0,
+					envelopes: [],
+					conflicts: [],
+					hasMore: false,
+					reset: false,
+					writesAccepted: true
+				}
+			};
+		});
+		const keys = syncControlKeys(account.accountId);
+		await setSyncState(keys.cursor, 99);
+		await setSyncState(keys.baseline, { 'note:note-1': 'stale' });
+
+		try {
+			expect(await notesStore.syncWithCloudManual()).toBe(true);
+			expect(maxDepth).toBe(1);
+		} finally {
+			Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
+		}
 	});
 });

@@ -26,6 +26,6 @@ describe('kanban persist during sync', () => {
 		store.boards = [{ ...base, name: 'from-ls', updatedAt: 2 }];
 		await store.hydrateFromDevice();
 		expect(store.boards[0]?.name).toBe('from-ls');
-		expect((await loadBoardsFromDevice([]))[0]?.name).toBe('from-ls');
+		expect((await loadBoardsFromDevice(store.boardsForSync()))[0]?.name).toBe('from-ls');
 	});
 });

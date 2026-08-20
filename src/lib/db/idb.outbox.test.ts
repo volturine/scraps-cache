@@ -128,6 +128,6 @@ describe('durable sync outbox', () => {
 		const hydrated = await hydrateNoteAttachments(
 			(await getAllNotesMetadata()).find((item) => item.id === 'photo-note')!
 		);
-		expect(hydrated.images[0]?.dataUrl.startsWith('data:image/png;base64,')).toBe(true);
+		expect(hydrated.images?.[0]?.dataUrl?.startsWith('data:image/png;base64,')).toBe(true);
 	});
 });
