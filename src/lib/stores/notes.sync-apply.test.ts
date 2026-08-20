@@ -375,4 +375,80 @@ describe('notes store sync apply', () => {
 		const hydrated = await hydrateNoteAttachments(stored!);
 		expect(hydrated.images?.[0]?.dataUrl).toBe(image.dataUrl);
 	});
+
+	it('replace-with-cloud pulls the account from the start instead of wiping at a caught-up cursor', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		const local = remoteNote('local-only');
+		local.title = 'should be replaced';
+		await putNote(local);
+		notesStore.notes = [local];
+		const keys = syncControlKeys(account.accountId);
+		await setSyncState(keys.cursor, 9);
+		await setSyncState(keys.baseline, { 'note:local-only': 'fp' });
+		const cloud = remoteNote('cloud-1');
+		cloud.title = 'from account';
+
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(
+					path: string,
+					payload: string
+				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async (_path, payload) => {
+			const request = JSON.parse(payload) as { cursor: number };
+			if (request.cursor > 0) {
+				return {
+					success: true,
+					data: {
+						cursor: request.cursor,
+						envelopes: [],
+						conflicts: [],
+						hasMore: false,
+						reset: false,
+						writesAccepted: true,
+						usage: {
+							ciphertextBytes: 20,
+							envelopeCount: 1,
+							maxBytes: 1000,
+							maxEnvelopes: 50
+						}
+					}
+				};
+			}
+			return {
+				success: true,
+				data: {
+					cursor: 1,
+					envelopes: [
+						{
+							seq: 1,
+							id: 'cloud-id',
+							slot: 'a'.repeat(64),
+							ciphertext: encryptSyncPayload(account.syncKey, {
+								kind: 'note',
+								value: cloud
+							})
+						}
+					],
+					conflicts: [],
+					hasMore: false,
+					reset: false,
+					writesAccepted: true,
+					usage: {
+						ciphertextBytes: 20,
+						envelopeCount: 1,
+						maxBytes: 1000,
+						maxEnvelopes: 50
+					}
+				}
+			};
+		});
+
+		expect(await notesStore.replaceWithCloudManual()).toBe(true);
+		expect(notesStore.notes.map((item) => item.id)).toEqual(['cloud-1']);
+		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['cloud-1']);
+	});
 });

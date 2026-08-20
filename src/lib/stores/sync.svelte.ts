@@ -429,6 +429,8 @@ export class SyncStore {
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
 			const outboxSnapshotAt = Date.now();
 			let outboxKeys = new Set(await getSyncOutboxKeys().catch(() => []));
+			let cursor = Number((await getSyncState<number>(keys.cursor).catch(() => undefined)) || 0);
+			if (firstFullUpload && cursor > 0) cursor = 0;
 
 			let mergedNotes = notes,
 				mergedLabels = labels,
@@ -443,7 +445,6 @@ export class SyncStore {
 				}
 			}
 
-			let cursor = Number((await getSyncState<number>(keys.cursor).catch(() => undefined)) || 0);
 			let hasMore = true;
 			let downloadsDrained = false;
 			const acknowledgedOutbox = new Set<string>();

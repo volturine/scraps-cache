@@ -13,7 +13,8 @@ import {
 	clearAllNotes,
 	clearAllLabels,
 	replaceAllDeviceData,
-	getSyncOutboxKeys
+	getSyncOutboxKeys,
+	clearSyncOutbox
 } from '$lib/db/idb';
 import {
 	mergeLabelLists,
@@ -953,6 +954,9 @@ export class NotesStore {
 		const labels = withoutTombstoned(snapshot.labels, snapshot.labelTombstones).sort((a, b) =>
 			a.name.localeCompare(b.name)
 		);
+		if (notes.length === 0 && (syncStore.usage?.envelopeCount ?? 0) > 0) {
+			throw new Error('Could not download synced notes');
+		}
 		if (navigator.storage?.estimate) {
 			const estimate = await navigator.storage.estimate();
 			if (!replacementFitsStorage(notes, estimate)) {
@@ -984,8 +988,11 @@ export class NotesStore {
 	// Replace this device's local data with the already-linked account without uploading any
 	// local records or tombstones first. The cloud response is obtained before local storage is cleared.
 	async replaceWithCloudManual(): Promise<boolean> {
-		if (!syncStore.isLoggedIn) return false;
+		if (!syncStore.isLoggedIn || !syncStore.account) return false;
 		try {
+			const leftover = await getSyncOutboxKeys().catch(() => []);
+			if (leftover.length) await clearSyncOutbox(leftover);
+			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
 			const result = await syncStore.sync([], [], {}, {}, [], {}, true, true, (snapshot) =>
 				this.applyCloudReplacement(snapshot)
 			);

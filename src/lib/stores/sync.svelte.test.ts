@@ -23,6 +23,12 @@ type RelayData = {
 	hasMore: boolean;
 	reset: boolean;
 	writesAccepted: boolean;
+	usage?: {
+		ciphertextBytes: number;
+		envelopeCount: number;
+		maxBytes: number;
+		maxEnvelopes: number;
+	};
 };
 
 type RequestResult = { success: true; data: RelayData } | { success: false; error: string };
@@ -390,6 +396,36 @@ describe('client sync state machine', () => {
 		expect(await idb.getSyncState(syncControlKeys(account.accountId).recordIds)).toEqual({
 			'note:note-1': accepted!.id
 		});
+	});
+
+	it('rewinds a leftover cursor when there is no baseline so a full pull can run', async () => {
+		const pulled = note('note-1', { title: 'from account' });
+		const { store, account, requests } = createHarness((request) => {
+			if (request.cursor > 0) {
+				return {
+					success: true,
+					data: emptyData({
+						cursor: request.cursor,
+						usage: { ciphertextBytes: 10, envelopeCount: 1, maxBytes: 1000, maxEnvelopes: 50 }
+					})
+				};
+			}
+			return {
+				success: true,
+				data: emptyData({
+					cursor: 1,
+					envelopes: [envelope(account, 'cloud-id', 1, { kind: 'note', value: pulled })],
+					usage: { ciphertextBytes: 10, envelopeCount: 1, maxBytes: 1000, maxEnvelopes: 50 }
+				})
+			};
+		});
+		await seedControl(account.accountId, { cursor: 9 });
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, true, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests[0]?.cursor).toBe(0);
+		expect(result.notes?.map((item) => item.id)).toEqual(['note-1']);
 	});
 
 	it('resets stale control state and rebuilds it on the requested bootstrap pass', async () => {
