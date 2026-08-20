@@ -150,9 +150,11 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 }
 
 export async function unregisterReminderDevice(account: SyncAccount | null): Promise<void> {
-	const registration = await waitForRegistration().catch(() => null);
-	const subscription = await registration?.pushManager.getSubscription().catch(() => null);
-	await subscription?.unsubscribe().catch(() => false);
+	if (reminderPushSupported()) {
+		const registration = await navigator.serviceWorker.getRegistration().catch(() => undefined);
+		const subscription = await registration?.pushManager.getSubscription().catch(() => null);
+		await subscription?.unsubscribe().catch(() => false);
+	}
 	if (!account) return;
 	try {
 		await fetch('/api/sync/push/wakes', {

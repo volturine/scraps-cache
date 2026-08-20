@@ -186,13 +186,13 @@
 		if (!success) error = friendlyError(syncStore.lastError, 'Sync failed');
 	}
 
-	async function unlinkDevice() {
+	function unlinkDevice() {
 		const account = syncStore.account;
-		await unregisterReminderDevice(account);
 		syncStore.logout();
 		mode = 'menu';
 		error = '';
 		info = '';
+		void unregisterReminderDevice(account);
 	}
 
 	async function copyCode() {
@@ -346,7 +346,7 @@
 				{/if}
 				<button
 					type="button"
-					onclick={() => void unlinkDevice()}
+					onclick={unlinkDevice}
 					class="scraps-cache-button scraps-cache-button-destructive w-full text-sm"
 					>Unlink this device</button
 				>
