@@ -31,7 +31,9 @@ export function noteForLocalStorage(note: Note): MirroredNote {
 						url: preview.url,
 						hostname: preview.hostname,
 						title: preview.title,
-						...(preview.description ? { description: preview.description } : {})
+						...(preview.description ? { description: preview.description } : {}),
+						...(preview.image ? { image: preview.image } : {}),
+						...(preview.icon ? { icon: preview.icon } : {})
 					}))
 				}
 			: {})

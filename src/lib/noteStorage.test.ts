@@ -5,6 +5,7 @@ import {
 	readNotesMirror,
 	writeNotesMirror
 } from './noteStorage';
+import { mergeNoteLists } from './noteMerge';
 import type { Note } from './types';
 
 describe('fast-boot note mirror', () => {
@@ -102,5 +103,41 @@ describe('fast-boot note mirror', () => {
 		expect(stored[0]?.images?.[0]?.dataUrl).toBeUndefined();
 		expect(readNotesMirror()[0]?.id).toBe('n1');
 		expect(readNotesMirror()[0]?.images?.[0]?.id).toBe('pic');
+	});
+
+	it('keeps link-preview image and icon URLs in the notes mirror', () => {
+		const note: Note = {
+			id: 'n1',
+			title: 'Link',
+			body: 'https://example.com',
+			color: 'default',
+			pinned: false,
+			archived: false,
+			trashed: false,
+			trashedAt: null,
+			createdAt: 1,
+			updatedAt: 2,
+			reminder: null,
+			labels: [],
+			images: [],
+			fieldTimes: { linkPreviews: 2, title: 2 },
+			linkPreviews: [
+				{
+					url: 'https://example.com',
+					hostname: 'example.com',
+					title: 'Example',
+					image: 'https://cdn.example/og.png',
+					icon: 'https://cdn.example/icon.png'
+				}
+			]
+		};
+		writeNotesMirror([note]);
+		expect(readNotesMirror()[0]?.linkPreviews?.[0]).toMatchObject({
+			image: 'https://cdn.example/og.png',
+			icon: 'https://cdn.example/icon.png'
+		});
+		const merged = mergeNoteLists(readNotesMirror(), [note])[0];
+		expect(merged?.linkPreviews?.[0]?.image).toBe('https://cdn.example/og.png');
+		expect(merged?.linkPreviews?.[0]?.icon).toBe('https://cdn.example/icon.png');
 	});
 });
