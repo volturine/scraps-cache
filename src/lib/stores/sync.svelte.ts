@@ -335,7 +335,8 @@ export class SyncStore {
 			xhr.timeout = 300_000;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 
-			if (indicate) {
+			const showTransfer = indicate && uploadBytes >= 32 * 1024;
+			if (showTransfer) {
 				this.progress = { phase: 'upload', loadedBytes: 0, totalBytes: uploadBytes };
 				xhr.upload.onprogress = (event) => {
 					this.progress = {
@@ -344,14 +345,14 @@ export class SyncStore {
 						totalBytes: event.lengthComputable ? event.total : uploadBytes
 					};
 				};
-				xhr.upload.onloadend = () => {
-					this.progress = { phase: 'download', loadedBytes: 0, totalBytes: null };
-				};
+			}
+			if (indicate) {
 				xhr.onprogress = (event) => {
+					if (!event.lengthComputable || event.total < 32 * 1024) return;
 					this.progress = {
 						phase: 'download',
 						loadedBytes: event.loaded,
-						totalBytes: event.lengthComputable ? event.total : null
+						totalBytes: event.total
 					};
 				};
 			}
