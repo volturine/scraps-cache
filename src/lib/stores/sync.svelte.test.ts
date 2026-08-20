@@ -467,6 +467,45 @@ describe('client sync state machine', () => {
 		expect(kinds).toEqual([['note'], ['attachment', 'attachment'], ['attachment']]);
 	});
 
+	it('does not delete the old photo until the replacement upload is accepted', async () => {
+		const local = note('note-1', {}, [attachment('new')]);
+		const { store, account, requests } = createHarness((_request, index) => ({
+			success: true,
+			data: emptyData({ cursor: index === 0 ? 1 : index + 1, writesAccepted: true })
+		}));
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: {
+				'note:note-1': 'old-note-fp',
+				'attachment:old': 'old-pic-fp'
+			},
+			recordIds: {
+				'note:note-1': 'note-id',
+				'attachment:old': 'old-att-id'
+			},
+			outbox: ['note:note-1', 'attachment:new']
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		let replacementAccepted = false;
+		for (const request of requests) {
+			const deletedOld = request.deleteSlots.some((slot) => slot.id === 'old-att-id');
+			if (deletedOld) expect(replacementAccepted).toBe(true);
+			const uploadedNew = request.envelopes.some((item) => {
+				const payload = decryptSyncPayload(account.syncKey, item.ciphertext) as {
+					kind?: string;
+					value?: { id?: string };
+				};
+				return payload.kind === 'attachment' && payload.value?.id === 'new';
+			});
+			if (uploadedNew) replacementAccepted = true;
+		}
+		expect(replacementAccepted).toBe(true);
+		expect(requests.some((request) => request.deleteSlots.length > 0)).toBe(true);
+	});
+
 	it('waits for catch-up before sending an orphaned attachment deletion', async () => {
 		const { store, account, requests } = createHarness((_request, index) => ({
 			success: true,
