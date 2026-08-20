@@ -59,7 +59,9 @@ function hydrateImageList(preferred: NoteImage[] = [], fallback: NoteImage[] = [
 	const fallbackById = new Map(fallback.map((image) => [image.id, image]));
 	const filled = preferred.map((image) => {
 		const stored = fallbackById.get(image.id);
-		const dataUrl = image.dataUrl?.length ? image.dataUrl : (stored?.dataUrl ?? image.dataUrl ?? '');
+		const dataUrl = image.dataUrl?.length
+			? image.dataUrl
+			: (stored?.dataUrl ?? image.dataUrl ?? '');
 		const thumbUrl = image.thumbUrl?.length ? image.thumbUrl : stored?.thumbUrl;
 		return {
 			...image,
