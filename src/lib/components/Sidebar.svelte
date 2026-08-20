@@ -44,8 +44,6 @@
 		{ view: 'trash', label: 'Trash', icon: Trash2 }
 	];
 
-	const reminderCount = $derived(notesStore.notesWithReminders.length);
-	const trashCount = $derived(notesStore.trashedNotes.length);
 	const labelCounts = $derived(
 		new Map(notesStore.labels.map((label) => [label.id, notesStore.notesForLabel(label.id).length]))
 	);
@@ -201,11 +199,6 @@
 				<NavIcon class="h-[18px] w-[18px]" strokeWidth={1.75} />
 			</span>
 			<span class="min-w-0 flex-1 truncate text-left">{item.label}</span>
-			{#if item.view === 'reminders' && reminderCount > 0}
-				<span class="shrink-0 text-xs tabular-nums opacity-70">{reminderCount}</span>
-			{:else if item.view === 'trash' && trashCount > 0}
-				<span class="shrink-0 text-xs tabular-nums opacity-70">{trashCount}</span>
-			{/if}
 		</button>
 	{/each}
 
