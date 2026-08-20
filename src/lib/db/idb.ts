@@ -246,10 +246,14 @@ async function putNoteSnapshot(note: Note, syncOutboxKeys: string[] = []): Promi
 		: [NOTES_STORE, IMAGES_STORE];
 	const tx = db.transaction(stores, 'readwrite');
 	try {
-		// A metadata-only note is normal during asynchronous hydration. Keep its
-		// existing blobs; only an attachment removed from the current list is deleted.
-		for (const key of existingKeys) {
-			if (!desiredKeys.has(String(key))) await tx.objectStore(IMAGES_STORE).delete(key);
+		// Metadata-only writes (hydration, a pulled note whose photo has not
+		// arrived) must not drop blobs. Clear them when this write has bytes or
+		// the note no longer lists any images.
+		const incomingHasBytes = (note.images ?? []).some((image) => image.dataUrl);
+		if (incomingHasBytes || desiredKeys.size === 0) {
+			for (const key of existingKeys) {
+				if (!desiredKeys.has(String(key))) await tx.objectStore(IMAGES_STORE).delete(key);
+			}
 		}
 		await tx.objectStore(NOTES_STORE).put(lean);
 		if (syncOutboxKeys.length) {

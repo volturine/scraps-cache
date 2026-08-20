@@ -68,6 +68,12 @@ export function planDeletableKeys(input: {
 		}
 		if (key.startsWith('attachment:')) {
 			if (!input.catchUpComplete) continue;
+			// A replacement note can land before its new photo. Keep the old slot
+			// until every photo this device still lists is on the relay.
+			const waitingForUpload = [...current].some(
+				(item) => item.startsWith('attachment:') && !input.recordIds[item]
+			);
+			if (waitingForUpload) continue;
 			deletable.push(key);
 		}
 	}

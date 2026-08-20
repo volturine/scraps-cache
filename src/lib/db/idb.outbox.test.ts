@@ -130,4 +130,39 @@ describe('durable sync outbox', () => {
 		);
 		expect(hydrated.images?.[0]?.dataUrl?.startsWith('data:image/png;base64,')).toBe(true);
 	});
+
+	it('keeps existing photo blobs when a replacement note has no bytes yet', async () => {
+		const withPhoto = {
+			...note('photo'),
+			id: 'photo-note',
+			images: [
+				{
+					id: 'old',
+					mime: 'image/png',
+					dataUrl: 'data:image/png;base64,QQ==',
+					createdAt: 1,
+					contentHash: 'hash-old'
+				}
+			]
+		};
+		await putNote(withPhoto);
+		await putNote({
+			...withPhoto,
+			images: [
+				{
+					id: 'new',
+					mime: 'image/png',
+					dataUrl: '',
+					createdAt: 2,
+					contentHash: 'hash-new'
+				}
+			]
+		});
+		const metadata = (await getAllNotesMetadata()).find((item) => item.id === 'photo-note')!;
+		const hydrated = await hydrateNoteAttachments({
+			...metadata,
+			images: withPhoto.images.map((image) => ({ ...image, dataUrl: '' }))
+		});
+		expect(hydrated.images?.[0]?.dataUrl?.startsWith('data:image/png;base64,')).toBe(true);
+	});
 });

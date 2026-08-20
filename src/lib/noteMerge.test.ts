@@ -32,6 +32,23 @@ describe('mergeTwoNotes', () => {
 		expect(mergeTwoNotes(newer, stored).images).toEqual([image('one', 'data:one')]);
 	});
 
+	it('keeps existing photos when a newer list has no bytes yet', () => {
+		const stored = note(10, [image('old', 'data:old')]);
+		const pulled = note(11, [image('new', '')]);
+
+		expect(mergeTwoNotes(pulled, stored).images).toEqual([
+			image('new', ''),
+			image('old', 'data:old')
+		]);
+	});
+
+	it('drops photos when the newer list is empty', () => {
+		const stored = note(10, [image('old', 'data:old')]);
+		const cleared = note(11, []);
+
+		expect(mergeTwoNotes(cleared, stored).images).toEqual([]);
+	});
+
 	it('keeps a newer body when the other device only changed pin', () => {
 		const edited = {
 			...note(10, []),

@@ -57,11 +57,15 @@ function pickField<T>(
 
 function hydrateImageList(preferred: NoteImage[] = [], fallback: NoteImage[] = []): NoteImage[] {
 	const fallbackById = new Map(fallback.map((image) => [image.id, image]));
-	return preferred.map((image) => {
+	const filled = preferred.map((image) => {
 		if (image.dataUrl?.length) return image;
 		const stored = fallbackById.get(image.id);
 		return stored?.dataUrl?.length ? { ...image, dataUrl: stored.dataUrl } : image;
 	});
+	if (preferred.length === 0 || filled.some((image) => image.dataUrl?.length)) return filled;
+	const preferredIds = new Set(preferred.map((image) => image.id));
+	const extras = fallback.filter((image) => !preferredIds.has(image.id) && image.dataUrl?.length);
+	return extras.length ? [...filled, ...extras] : filled;
 }
 
 export function mergeTwoNotes(primary: Note, secondary: Note): Note {
