@@ -4,11 +4,11 @@ import type { Label, Note, NoteImage } from './types';
 export const NOTES_MIRROR_KEY = 'gkc-notes-mirror';
 export const LABELS_MIRROR_KEY = 'gkc-labels-mirror';
 
-type MirroredImage = Omit<NoteImage, 'dataUrl'>;
+type MirroredImage = Omit<NoteImage, 'dataUrl' | 'thumbUrl'>;
 type MirroredNote = Omit<Note, 'images'> & { images?: MirroredImage[] };
 
 function imageRef(image: NoteImage): MirroredImage {
-	const { dataUrl: _bytes, ...meta } = image;
+	const { dataUrl: _bytes, thumbUrl: _thumb, ...meta } = image;
 	return {
 		...meta,
 		id: image.id,
@@ -17,7 +17,7 @@ function imageRef(image: NoteImage): MirroredImage {
 	};
 }
 
-/** Note shape safe for localStorage: attachment bytes never enter the mirror. Image refs stay. */
+/** Notes crash mirror: text and image ids only. Photo bytes stay in IndexedDB. */
 export function noteForLocalStorage(note: Note): MirroredNote {
 	const { images, linkPreviews, ...rest } = note;
 	return {
@@ -31,9 +31,7 @@ export function noteForLocalStorage(note: Note): MirroredNote {
 						url: preview.url,
 						hostname: preview.hostname,
 						title: preview.title,
-						...(preview.description ? { description: preview.description } : {}),
-						...(preview.image ? { image: preview.image } : {}),
-						...(preview.icon ? { icon: preview.icon } : {})
+						...(preview.description ? { description: preview.description } : {})
 					}))
 				}
 			: {})
@@ -71,23 +69,6 @@ function writeJson<T>(key: string, value: T[]): boolean {
 	}
 }
 
-function slimMirroredNote(note: MirroredNote): MirroredNote {
-	const { images, linkPreviews, ...rest } = note;
-	return {
-		...rest,
-		...(images?.length
-			? {
-					images: images.map(({ thumbUrl: _thumb, ...image }) => image)
-				}
-			: {}),
-		...(linkPreviews?.length
-			? {
-					linkPreviews: linkPreviews.map(({ image: _image, icon: _icon, ...preview }) => preview)
-				}
-			: {})
-	};
-}
-
 export function readNotesMirror(): Note[] {
 	return readJson<MirroredNote>(NOTES_MIRROR_KEY).map((note) => {
 		const { hasImages: _legacy, images, ...rest } = note as MirroredNote & { hasImages?: boolean };
@@ -102,9 +83,7 @@ export function readNotesMirror(): Note[] {
 }
 
 export function writeNotesMirror(notes: Note[]): void {
-	const payload = notes.map(noteForLocalStorage);
-	if (writeJson(NOTES_MIRROR_KEY, payload)) return;
-	writeJson(NOTES_MIRROR_KEY, payload.map(slimMirroredNote));
+	writeJson(NOTES_MIRROR_KEY, notes.map(noteForLocalStorage));
 }
 
 export function readLabelsMirror(): Label[] {

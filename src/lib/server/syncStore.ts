@@ -565,8 +565,8 @@ export class SyncStore {
 						 WHERE account_id = ? ORDER BY wake_id ASC, fire_at ASC`
 					)
 					.all(accountId) as ReminderWakeInput[];
-				const expected = [...limitedWakes].sort(
-					(left, right) => left.id.localeCompare(right.id) || left.fireAt - right.fireAt
+				const expected = [...limitedWakes].sort((left, right) =>
+					left.id < right.id ? -1 : left.id > right.id ? 1 : left.fireAt - right.fireAt
 				);
 				return JSON.stringify(current) === JSON.stringify(expected);
 			}

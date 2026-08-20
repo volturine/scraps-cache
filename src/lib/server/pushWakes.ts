@@ -37,6 +37,7 @@ function isPrivateIp(hostname: string): boolean {
 			normalized === '::1' ||
 			normalized.startsWith('fc') ||
 			normalized.startsWith('fd') ||
+			normalized.startsWith('64:ff9b:') ||
 			/^fe[89ab]/.test(normalized) ||
 			normalized.startsWith('::ffff:')
 		);

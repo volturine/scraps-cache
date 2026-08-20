@@ -376,6 +376,17 @@ describe('SQLite sync store', () => {
 		expect(store.listWakeTimes('account')).toEqual([2_000]);
 	});
 
+	it('treats an identical mixed-case wake snapshot as a no-op at the same revision', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		const wakes = [
+			{ id: `B${'x'.repeat(42)}`, fireAt: 1_000 },
+			{ id: `a${'x'.repeat(42)}`, fireAt: 2_000 }
+		];
+		expect(store.replaceReminderWakes('account', wakes, 5)).toBe(true);
+		expect(store.replaceReminderWakes('account', [...wakes].reverse(), 5)).toBe(true);
+	});
+
 	it('rejects stale reminder snapshots and retains delivery receipts across omission', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');

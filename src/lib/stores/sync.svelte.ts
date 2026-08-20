@@ -553,6 +553,7 @@ export class SyncStore {
 						const markedAt = Date.now();
 						await markSyncOutbox([blockedKey], markedAt);
 						outboxKeys.add(blockedKey);
+						quotaSingleUpload = false;
 					}
 					hasMore = true;
 					continue;

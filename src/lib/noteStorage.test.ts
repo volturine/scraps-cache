@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { noteForLocalStorage, readNotesMirror, writeNotesMirror } from './noteStorage';
+import {
+	NOTES_MIRROR_KEY,
+	noteForLocalStorage,
+	readNotesMirror,
+	writeNotesMirror
+} from './noteStorage';
 import type { Note } from './types';
 
 describe('fast-boot note mirror', () => {
@@ -38,11 +43,11 @@ describe('fast-boot note mirror', () => {
 			expect.objectContaining({
 				id: 'pic',
 				mime: 'image/jpeg',
-				contentHash: 'hash',
-				thumbUrl: 'data:image/jpeg;base64,thumb'
+				contentHash: 'hash'
 			})
 		]);
-		expect(JSON.stringify(mirrored).includes('data:image/jpeg;base64,abc')).toBe(false);
+		expect(mirrored.images?.[0]).not.toHaveProperty('thumbUrl');
+		expect(JSON.stringify(mirrored).includes('data:image/jpeg;base64')).toBe(false);
 	});
 
 	it('mirrors every note, not a recent subset', () => {
@@ -64,7 +69,7 @@ describe('fast-boot note mirror', () => {
 		expect(readNotesMirror().map((item) => item.id)).toEqual(notes.map((item) => item.id));
 	});
 
-	it('retries without thumbs when localStorage quota is exceeded', () => {
+	it('never writes thumbs or photo bytes into the notes mirror', () => {
 		const note: Note = {
 			id: 'n1',
 			title: 'Photo',
@@ -89,12 +94,13 @@ describe('fast-boot note mirror', () => {
 				}
 			]
 		};
-		const setItem = vi.spyOn(Storage.prototype, 'setItem');
-		setItem.mockImplementationOnce(() => {
-			throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
-		});
 		writeNotesMirror([note]);
-		expect(readNotesMirror()[0]?.images?.[0]?.thumbUrl).toBeUndefined();
+		const stored = JSON.parse(localStorage.getItem(NOTES_MIRROR_KEY) || '[]') as Array<{
+			images?: Array<{ thumbUrl?: string; dataUrl?: string }>;
+		}>;
+		expect(stored[0]?.images?.[0]?.thumbUrl).toBeUndefined();
+		expect(stored[0]?.images?.[0]?.dataUrl).toBeUndefined();
 		expect(readNotesMirror()[0]?.id).toBe('n1');
+		expect(readNotesMirror()[0]?.images?.[0]?.id).toBe('pic');
 	});
 });

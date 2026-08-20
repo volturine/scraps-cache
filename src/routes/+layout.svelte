@@ -24,16 +24,11 @@
 	let editingId = $state<string | null>(null);
 	let editorDismissTick = $state(0);
 	let editorFocusOnOpen = $state(false);
-	let openRequest = 0;
 
 	function openEditor(id: string) {
-		const request = ++openRequest;
-		void (async () => {
-			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
-			if (request !== openRequest || !notesStore.notes.some((note) => note.id === id)) return;
-			editorFocusOnOpen = false;
-			editingId = id;
-		})();
+		editorFocusOnOpen = false;
+		editingId = id;
+		if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
 	}
 
 	function openNoteFromQuery() {

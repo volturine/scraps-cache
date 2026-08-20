@@ -690,4 +690,37 @@ describe('client sync state machine', () => {
 		expect(store.lastError).toMatch(/quota/);
 		expect(await idb.getSyncOutboxKeys()).toEqual(['attachment:huge']);
 	});
+
+	it('returns to batched uploads after an oversized record is isolated', async () => {
+		const local = note('note-1', {}, [attachment('huge'), attachment('ok-a'), attachment('ok-b')]);
+		const { store, account, requests } = createHarness((request) => {
+			const kinds = request.envelopes.map((item) => {
+				const payload = decryptSyncPayload(account.syncKey, item.ciphertext) as {
+					kind: string;
+					value?: { id?: string };
+				};
+				return payload.kind === 'attachment' ? payload.value?.id : payload.kind;
+			});
+			if (kinds.includes('huge')) {
+				return { success: false, error: 'Sync account storage quota exceeded' };
+			}
+			return { success: true, data: emptyData({ cursor: 1, writesAccepted: true }) };
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		expect(result.success, result.error).toBe(true);
+
+		const hugeSingle = requests.findIndex((request) => {
+			if (request.envelopes.length !== 1) return false;
+			const payload = decryptSyncPayload(account.syncKey, request.envelopes[0].ciphertext) as {
+				kind?: string;
+				value?: { id?: string };
+			};
+			return payload.kind === 'attachment' && payload.value?.id === 'huge';
+		});
+		expect(hugeSingle).toBeGreaterThan(0);
+		expect(requests.slice(hugeSingle + 1).some((request) => request.envelopes.length > 1)).toBe(
+			true
+		);
+	});
 });
