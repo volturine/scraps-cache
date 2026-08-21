@@ -10,6 +10,7 @@ wakeScheduler.start();
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
+	['strict-transport-security', 'max-age=31536000'],
 	['x-content-type-options', 'nosniff'],
 	['x-frame-options', 'DENY'],
 	['permissions-policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()']

@@ -14,8 +14,5 @@ export const GET: RequestHandler = () => {
 		!backup.enabled ||
 		(!backupStuck && (backup.lastError === null || backup.lastSuccessAt >= backup.lastAttemptAt));
 	const ready = database && backupHealthy;
-	return json(
-		{ ready, database, backup: { enabled: backup.enabled, healthy: backupHealthy } },
-		{ status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } }
-	);
+	return json({ ready }, { status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } });
 };
