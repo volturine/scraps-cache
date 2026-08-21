@@ -156,8 +156,9 @@ export async function unregisterReminderDevice(account: SyncAccount | null): Pro
 		await subscription?.unsubscribe().catch(() => false);
 	}
 	if (!account) return;
+	let response: Response;
 	try {
-		await fetch('/api/sync/push/wakes', {
+		response = await fetch('/api/sync/push/wakes', {
 			method: 'DELETE',
 			headers: { 'Content-Type': 'application/json' },
 			keepalive: true,
@@ -167,7 +168,12 @@ export async function unregisterReminderDevice(account: SyncAccount | null): Pro
 				deviceId: reminderDeviceId()
 			})
 		});
-	} catch {
-		/* The local unsubscribe is authoritative for this browser. */
+	} catch (err) {
+		throw new Error('Could not reach the relay to remove this device from reminder push', {
+			cause: err
+		});
+	}
+	if (!response.ok) {
+		throw new Error(`The relay rejected this device's reminder push removal (${response.status})`);
 	}
 }

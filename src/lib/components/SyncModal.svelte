@@ -192,7 +192,12 @@
 		mode = 'menu';
 		error = '';
 		info = '';
-		void unregisterReminderDevice(account);
+		// Sign-out is local and immediate; a failed server-side unsubscribe must
+		// stay visible so the user knows this browser lingers in wake delivery.
+		unregisterReminderDevice(account).catch(() => {
+			error =
+				'Signed out, but the relay could not remove this device from reminder push. It will age out of delivery on its own.';
+		});
 	}
 
 	async function copyCode() {
@@ -410,6 +415,7 @@
 					class="w-full rounded-lg border border-[var(--scraps-cache-border)] px-3 py-3 text-sm touch-manipulation"
 					>Connect to an existing sync</button
 				>
+				{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}
 			</div>
 		{:else if mode === 'register'}
 			<div class="space-y-3">
