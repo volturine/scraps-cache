@@ -37,6 +37,43 @@ describe('token bucket rate limiter', () => {
 		expect(limiter.check('e', policy).allowed).toBe(true);
 		expect(limiter.check('f', policy).allowed).toBe(false);
 	});
+
+	it('prunes every stale bucket once the sweep interval has passed', () => {
+		let now = 0;
+		const limiter = new TokenBucketLimiter(4, () => now);
+		const policy = { capacity: 1, refillWindowMs: 1_000 };
+		for (const key of ['a', 'b', 'c', 'd']) expect(limiter.check(key, policy).allowed).toBe(true);
+
+		now = 10 * 60_000 + 60_000;
+		expect(limiter.check('e', policy).allowed).toBe(true);
+		expect(limiter.check('f', policy).allowed).toBe(true);
+		expect(limiter.check('g', policy).allowed).toBe(true);
+	});
+
+	it('caps refill at capacity after a long idle', () => {
+		let now = 0;
+		const limiter = new TokenBucketLimiter(10, () => now);
+		const policy = { capacity: 2, refillWindowMs: 1_000 };
+		expect(limiter.check('client', policy).allowed).toBe(true);
+		expect(limiter.check('client', policy).allowed).toBe(true);
+
+		now = 10 * 60_000;
+		expect(limiter.check('client', policy).allowed).toBe(true);
+		expect(limiter.check('client', policy).allowed).toBe(true);
+		expect(limiter.check('client', policy)).toEqual({ allowed: false, retryAfterSeconds: 1 });
+	});
+
+	it('reports multi-second retry windows proportional to missing tokens', () => {
+		let now = 0;
+		const limiter = new TokenBucketLimiter(10, () => now);
+		const policy = { capacity: 2, refillWindowMs: 60_000 };
+		expect(limiter.check('client', policy).allowed).toBe(true);
+		expect(limiter.check('client', policy).allowed).toBe(true);
+
+		now = 15_000;
+		const denied = limiter.check('client', policy);
+		expect(denied).toEqual({ allowed: false, retryAfterSeconds: 15 });
+	});
 });
 
 describe('admin api limiter', () => {

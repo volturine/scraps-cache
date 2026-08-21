@@ -37,4 +37,18 @@ describe('anonymous pairing rendezvous', () => {
 		});
 		expect(s.poll('new', 6)).toMatchObject({ state: 'connected', grant });
 	});
+	it('rejects grants that have no matched peer yet', () => {
+		const s = new PairingSessions(() => 'fresh');
+		const existing = s.start('tag', 'existing', key, 1);
+		const fresh = s.start('other', 'new', key, 2);
+		expect(s.submitGrant(existing.id, grant, 3)).toEqual({ success: false, reason: 'unmatched' });
+		expect(s.submitGrant(fresh.id, grant, 4)).toEqual({ success: false, reason: 'unmatched' });
+	});
+	it('refuses to start sessions once the rendezvous table is full', () => {
+		const ids = ['first', 'second'];
+		const s = new PairingSessions(() => ids.shift()!, 2);
+		s.start('tag-a', 'existing', key, 1);
+		s.start('tag-b', 'new', key, 2);
+		expect(() => s.start('tag-c', 'existing', key, 3)).toThrow('Pairing rendezvous is busy');
+	});
 });

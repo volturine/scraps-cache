@@ -3,7 +3,12 @@ import Database from 'better-sqlite3';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SyncQuotaExceededError, SyncStore, DELETED_SLOT_GRACE_MS } from './syncStore';
+import {
+	SyncQuotaExceededError,
+	SyncStore,
+	DELETED_SLOT_GRACE_MS,
+	WAKE_CLAIM_LEASE_MS
+} from './syncStore';
 
 const stores: SyncStore[] = [];
 const directories: string[] = [];
@@ -406,6 +411,61 @@ describe('SQLite sync store', () => {
 		expect(store.nextWakeAt(1_000)).toBe(5_000);
 	});
 
+	it('re-claims an undelivered wake after the claim lease expires', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice({
+			deviceId: 'device-aaaaaaaaaaaa',
+			endpoint: 'https://push.example/sub-a',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16),
+			accountId: 'account'
+		});
+		store.replaceReminderWakes('account', [wake('a', 1_000)]);
+		const [claimed] = store.claimDueWakes(1_000);
+		expect(store.claimDueWakes(1_000 + WAKE_CLAIM_LEASE_MS - 1)).toEqual([]);
+		const reclaimed = store.claimDueWakes(1_000 + WAKE_CLAIM_LEASE_MS);
+		expect(reclaimed).toHaveLength(1);
+		expect(reclaimed[0]).toMatchObject({ accountId: 'account', wakeId: wake('a', 1_000).id });
+		store.markWakeDelivered(reclaimed[0], 1_000 + WAKE_CLAIM_LEASE_MS);
+		expect(store.claimDueWakes(1_000 + WAKE_CLAIM_LEASE_MS)).toEqual([]);
+	});
+
+	it('moves an endpoint or device registration when another account claims it', () => {
+		const { store } = createStore();
+		store.createAccount('old-owner', 'credential-old');
+		store.createAccount('new-owner', 'credential-new');
+		const keys = { p256dh: 'p'.repeat(20), auth: 'a'.repeat(16) };
+		store.savePushDevice({
+			accountId: 'old-owner',
+			deviceId: 'device-old00000000',
+			endpoint: 'https://push.example/endpoint-a',
+			...keys
+		});
+		store.savePushDevice({
+			accountId: 'new-owner',
+			deviceId: 'device-new00000000',
+			endpoint: 'https://push.example/endpoint-b',
+			...keys
+		});
+		// A re-registered endpoint under a different account steals it from the old row.
+		store.savePushDevice({
+			accountId: 'new-owner',
+			deviceId: 'device-replaced000',
+			endpoint: 'https://push.example/endpoint-a',
+			...keys
+		});
+		// A re-registered device id under a different account moves the whole row.
+		store.savePushDevice({
+			accountId: 'old-owner',
+			deviceId: 'device-new00000000',
+			endpoint: 'https://push.example/endpoint-c',
+			...keys
+		});
+		expect(store.countPushDevices('old-owner')).toBe(1);
+		expect(store.countPushDevices('new-owner')).toBe(1);
+	});
+
 	it('fans each account wake out once to every registered device', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
@@ -686,6 +746,39 @@ describe('SQLite sync store', () => {
 			{ seq: 7, id: 'new', slot: slot('a'), ciphertext: 'new' }
 		]);
 		expect(readFileSync(legacyFile, 'utf8')).toBe(legacy);
+	});
+
+	it('skips garbage legacy entries instead of failing startup', () => {
+		const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-sync-'));
+		directories.push(directory);
+		writeFileSync(
+			join(directory, 'users.json'),
+			JSON.stringify({
+				junk: null,
+				'also-junk': 'a string',
+				'no-hash': { envelopes: [{ seq: 1, id: 'x', slot: slot('x'), ciphertext: 'x' }] },
+				account: {
+					credentialHash: 'credential',
+					nextSeq: 3,
+					updatedAt: 123,
+					envelopes: [
+						'garbage',
+						null,
+						{ seq: 0, id: 'zero', slot: slot('z'), ciphertext: 'zz' },
+						{ seq: 3, id: 'bad-cipher', slot: slot('b'), ciphertext: 'not+base64url' },
+						{ seq: 2, id: 'good', slot: slot('a'), ciphertext: 'aa' }
+					]
+				}
+			})
+		);
+
+		const store = new SyncStore(directory);
+		stores.push(store);
+		expect(store.getCredentialHash('account')).toBe('credential');
+		expect(store.getCredentialHash('junk')).toBeNull();
+		expect(store.sync('account', 0, [], [], 10).envelopes).toEqual([
+			{ seq: 2, id: 'good', slot: slot('a'), ciphertext: 'aa' }
+		]);
 	});
 
 	it('online-backup snapshot restores credentials and opaque envelopes', async () => {
