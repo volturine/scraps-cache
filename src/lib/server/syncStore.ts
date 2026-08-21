@@ -252,6 +252,11 @@ export class SyncStore {
 			let envelopeCount = account.envelope_count;
 			let ciphertextBytes = account.ciphertext_bytes;
 			if (cursor > account.next_seq) {
+				// Wake revisions live in cursor space; a sequence reset rewinds that
+				// space, so the guard must rewind with it or wake publishing stalls.
+				this.database
+					.prepare('UPDATE accounts SET wake_revision = 0 WHERE account_id = ?')
+					.run(accountId);
 				this.touchAccount(accountId);
 				return {
 					cursor: 0,
