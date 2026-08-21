@@ -63,6 +63,8 @@ export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
 export const WAKE_CLAIM_LEASE_MS = 60_000;
+/** Grace window keeping staged slot deletions recoverable while slower devices catch up. */
+export const DELETED_SLOT_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
 
 export type PushDeviceInput = {
 	deviceId: string;
@@ -154,6 +156,17 @@ export class SyncStore {
 			);
 			CREATE INDEX IF NOT EXISTS envelopes_account_seq
 				ON envelopes(account_id, seq);
+			CREATE TABLE IF NOT EXISTS deleted_envelopes (
+				account_id TEXT NOT NULL,
+				slot TEXT NOT NULL,
+				id TEXT NOT NULL,
+				ciphertext TEXT NOT NULL,
+				deleted_at INTEGER NOT NULL,
+				PRIMARY KEY (account_id, slot),
+				FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+			);
+			CREATE INDEX IF NOT EXISTS deleted_envelopes_deleted_at
+				ON deleted_envelopes(deleted_at);
 			CREATE TABLE IF NOT EXISTS reminder_push_devices (
 				account_id TEXT NOT NULL,
 				device_id TEXT NOT NULL,
@@ -334,12 +347,20 @@ export class SyncStore {
 				};
 			}
 
+			const stageDeletion = this.database.prepare(`
+				INSERT OR REPLACE INTO deleted_envelopes(account_id, slot, id, ciphertext, deleted_at)
+				SELECT account_id, slot, id, ciphertext, ?
+				FROM envelopes
+				WHERE account_id = ? AND slot = ? AND id = ?
+			`);
 			const remove = this.database.prepare(`
 				DELETE FROM envelopes
 				WHERE account_id = ? AND slot = ? AND id = ?
 				RETURNING length(ciphertext) AS ciphertext_bytes
 			`);
+			const deletedAt = Date.now();
 			for (const deletion of deletions) {
+				stageDeletion.run(deletedAt, accountId, deletion.slot, deletion.id);
 				const removed = remove.get(accountId, deletion.slot, deletion.id) as
 					{ ciphertext_bytes: number } | undefined;
 				if (!removed) continue;
@@ -476,6 +497,12 @@ export class SyncStore {
 	deleteInactiveAccounts(staleBefore: number): number {
 		return this.database.prepare('DELETE FROM accounts WHERE last_seen_at < ?').run(staleBefore)
 			.changes;
+	}
+
+	purgeExpiredDeletedEnvelopes(now = Date.now(), graceMs = DELETED_SLOT_GRACE_MS): number {
+		return this.database
+			.prepare('DELETE FROM deleted_envelopes WHERE deleted_at <= ?')
+			.run(now - graceMs).changes;
 	}
 
 	getMeta(key: string): string | null {

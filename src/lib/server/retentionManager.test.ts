@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RetentionManager } from './retentionManager';
-import { SyncStore } from './syncStore';
+import { DELETED_SLOT_GRACE_MS, SyncStore } from './syncStore';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,6 +17,10 @@ function createStore(): SyncStore {
 	return store;
 }
 
+function slot(character: string): string {
+	return character.repeat(64);
+}
+
 afterEach(() => {
 	vi.restoreAllMocks();
 	for (const manager of managers.splice(0)) manager.stop();
@@ -27,15 +31,61 @@ afterEach(() => {
 });
 
 describe('RetentionManager', () => {
-	it('stays disabled when inactive days are unset', async () => {
-		const manager = new RetentionManager({ inactiveDays: 0, store: createStore() });
+	it('keeps purging expired slot deletions when account retention is unset', async () => {
+		const store = createStore();
+		store.createAccount('account', 'credential', 1);
+		const uploaded = store.sync(
+			'account',
+			0,
+			[{ id: 'photo', slot: slot('a'), ciphertext: 'opaque' }],
+			10
+		);
+		store.sync('account', uploaded.cursor, [], [{ id: 'photo', slot: slot('a') }], 10);
+		const sweepAt = Date.now() + DELETED_SLOT_GRACE_MS;
+		const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+		const manager = new RetentionManager({ inactiveDays: 0, store, now: () => sweepAt });
 		managers.push(manager);
-		expect(manager.getStatus()).toMatchObject({
-			enabled: false,
-			inactiveDays: 0,
-			deletedAccountsTotal: 0
+
+		const status = await manager.runNow();
+		expect(status.enabled).toBe(false);
+		expect(status.lastDeletedAccounts).toBe(0);
+		expect(status.lastPurgedSlots).toBe(1);
+		expect(store.getCredentialHash('account')).toBe('credential');
+		expect(info).toHaveBeenCalledOnce();
+		const payload = JSON.parse(String(info.mock.calls[0]?.[0])) as Record<string, unknown>;
+		expect(payload).toMatchObject({
+			event: 'retention_sweep',
+			deletedAccounts: 0,
+			purgedSlots: 1,
+			inactiveDays: 0
 		});
-		await expect(manager.runNow()).rejects.toThrow('Account retention is not configured');
+		expect(JSON.stringify(payload)).not.toContain('opaque');
+		expect(JSON.stringify(payload)).not.toContain(slot('a'));
+	});
+
+	it('keeps recently deleted slots through a sweep while dropping stale accounts', async () => {
+		vi.spyOn(console, 'info').mockImplementation(() => undefined);
+		const store = createStore();
+		const now = 10 * 24 * 60 * 60 * 1000;
+		store.createAccount('fresh', 'credential', now);
+		store.createAccount('stale', 'credential', 1);
+		store.touchAccount('fresh', now);
+		store.touchAccount('stale', 1);
+		const uploaded = store.sync(
+			'fresh',
+			0,
+			[{ id: 'photo', slot: slot('b'), ciphertext: 'opaque' }],
+			10
+		);
+		store.sync('fresh', uploaded.cursor, [], [{ id: 'photo', slot: slot('b') }], 10);
+		const manager = new RetentionManager({ inactiveDays: 1, store, now: () => now });
+		managers.push(manager);
+
+		const status = await manager.runNow();
+		expect(status.lastDeletedAccounts).toBe(1);
+		expect(status.lastPurgedSlots).toBe(0);
+		expect(store.getCredentialHash('stale')).toBeNull();
+		expect(store.aggregateUsage()).toMatchObject({ accounts: 1 });
 	});
 
 	it('deletes only stale accounts and logs counts without identifiers', async () => {

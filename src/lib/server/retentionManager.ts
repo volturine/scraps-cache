@@ -12,12 +12,14 @@ export type RetentionStatus = {
 	lastSuccessAt: number;
 	lastDeletedAccounts: number;
 	deletedAccountsTotal: number;
+	lastPurgedSlots: number;
 	failures: number;
 	lastError: string | null;
 };
 
 export type RetentionStore = {
 	deleteInactiveAccounts(staleBefore: number): number;
+	purgeExpiredDeletedEnvelopes(now?: number): number;
 };
 
 export type RetentionManagerOptions = {
@@ -47,13 +49,14 @@ export class RetentionManager {
 			lastSuccessAt: 0,
 			lastDeletedAccounts: 0,
 			deletedAccountsTotal: 0,
+			lastPurgedSlots: 0,
 			failures: 0,
 			lastError: null
 		};
 	}
 
 	start(): void {
-		if (this.started || this.inactiveDays <= 0) return;
+		if (this.started) return;
 		this.started = true;
 		this.schedule(Math.min(60_000, RETENTION_INTERVAL_MS));
 	}
@@ -69,23 +72,25 @@ export class RetentionManager {
 	}
 
 	async runNow(): Promise<RetentionStatus> {
-		if (this.inactiveDays <= 0) throw new Error('Account retention is not configured');
 		if (this.status.running) return this.getStatus();
 		this.status.running = true;
 		this.status.lastRunAt = this.now();
 		try {
+			const purgedSlots = this.getStore().purgeExpiredDeletedEnvelopes(this.now());
+			let deletedAccounts = 0;
 			const cutoff = staleBeforeMs(this.inactiveDays, this.now());
-			if (cutoff == null) throw new Error('Account retention is not configured');
-			const deleted = this.getStore().deleteInactiveAccounts(cutoff);
+			if (cutoff != null) deletedAccounts = this.getStore().deleteInactiveAccounts(cutoff);
 			this.status.lastSuccessAt = this.now();
-			this.status.lastDeletedAccounts = deleted;
-			this.status.deletedAccountsTotal += deleted;
+			this.status.lastDeletedAccounts = deletedAccounts;
+			this.status.deletedAccountsTotal += deletedAccounts;
+			this.status.lastPurgedSlots = purgedSlots;
 			this.status.lastError = null;
 			console.info(
 				JSON.stringify({
 					level: 'info',
 					event: 'retention_sweep',
-					deletedAccounts: deleted,
+					deletedAccounts,
+					purgedSlots,
 					inactiveDays: this.inactiveDays
 				})
 			);

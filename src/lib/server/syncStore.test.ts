@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SyncQuotaExceededError, SyncStore } from './syncStore';
+import { SyncQuotaExceededError, SyncStore, DELETED_SLOT_GRACE_MS } from './syncStore';
 
 const stores: SyncStore[] = [];
 const directories: string[] = [];
@@ -196,6 +196,67 @@ describe('SQLite sync store', () => {
 			10
 		);
 		expect(removed.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0 });
+	});
+
+	it('hides deleted slots from downloads immediately but keeps their ciphertext during grace', () => {
+		const { store, directory } = createStore();
+		store.createAccount('account', 'credential');
+		const uploaded = store.sync(
+			'account',
+			0,
+			[
+				{ id: 'note', slot: slot('a'), ciphertext: 'cipher-note' },
+				{ id: 'photo', slot: slot('b'), ciphertext: 'cipher-photo' }
+			],
+			10
+		);
+
+		const removed = store.sync(
+			'account',
+			uploaded.cursor,
+			[],
+			[{ id: 'photo', slot: slot('b') }],
+			10
+		);
+		expect(removed.usage).toMatchObject({
+			envelopeCount: 1,
+			ciphertextBytes: 'cipher-note'.length
+		});
+
+		// A slower device rewinding behind the deletion never sees the slot again.
+		expect(store.sync('account', 0, [], 10).envelopes.map(({ id }) => id)).toEqual(['note']);
+
+		const raw = new Database(join(directory, 'sync.sqlite'));
+		try {
+			expect(
+				raw
+					.prepare('SELECT id, ciphertext FROM deleted_envelopes WHERE account_id = ? AND slot = ?')
+					.get('account', slot('b'))
+			).toEqual({ id: 'photo', ciphertext: 'cipher-photo' });
+		} finally {
+			raw.close();
+		}
+	});
+
+	it('purges staged slot deletions only after the grace window', () => {
+		const { store, directory } = createStore();
+		store.createAccount('account', 'credential');
+		const uploaded = store.sync(
+			'account',
+			0,
+			[{ id: 'photo', slot: slot('a'), ciphertext: 'opaque' }],
+			10
+		);
+		store.sync('account', uploaded.cursor, [], [{ id: 'photo', slot: slot('a') }], 10);
+
+		const raw = new Database(join(directory, 'sync.sqlite'));
+		const { deletedAt } = raw
+			.prepare('SELECT deleted_at AS deletedAt FROM deleted_envelopes')
+			.get() as { deletedAt: number };
+		raw.close();
+
+		expect(store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS - 1)).toBe(0);
+		expect(store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS)).toBe(1);
 	});
 
 	it('returns the current slot and rejects a stale conditional replacement', () => {
