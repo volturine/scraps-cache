@@ -687,6 +687,9 @@ export class NotesStore {
 			return { success: true };
 		} catch (err) {
 			this.recordPersistenceError('Could not import full backup', err);
+			// The replacement may have partially committed; reload memory from the
+			// device store so the UI matches what a restart would show.
+			await this.hardResync();
 			return { success: false, error: this.lastPersistError ?? 'Could not import full backup.' };
 		} finally {
 			this.backupImportProgress = null;
@@ -743,7 +746,12 @@ export class NotesStore {
 	}
 
 	private mirrorToLS() {
-		writeNotesMirror(this.notes);
+		if (!writeNotesMirror(this.notes)) {
+			this.recordPersistenceError(
+				'Could not update the local notes mirror',
+				new Error('localStorage write failed')
+			);
+		}
 		writeLabelsMirror(this.labels);
 	}
 

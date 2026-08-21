@@ -31,9 +31,7 @@ export function noteForLocalStorage(note: Note): MirroredNote {
 						url: preview.url,
 						hostname: preview.hostname,
 						title: preview.title,
-						...(preview.description ? { description: preview.description } : {}),
-						...(preview.image ? { image: preview.image } : {}),
-						...(preview.icon ? { icon: preview.icon } : {})
+						...(preview.description ? { description: preview.description } : {})
 					}))
 				}
 			: {})
@@ -87,8 +85,9 @@ export function readNotesMirror(): Note[] {
 /** Fallback mirror size when the full write exceeds the localStorage quota. */
 export const MIRROR_FALLBACK_LIMIT = 50;
 
-export function writeNotesMirror(notes: Note[]): void {
-	if (writeJson(NOTES_MIRROR_KEY, notes.map(noteForLocalStorage))) return;
+/** True when any mirror write landed; false means the mirror went stale. */
+export function writeNotesMirror(notes: Note[]): boolean {
+	if (writeJson(NOTES_MIRROR_KEY, notes.map(noteForLocalStorage))) return true;
 	// The full mirror exceeded the quota. Keep crash protection for the most
 	// recent notes — the ones most likely to have unsynced edits — instead of
 	// letting the mirror go entirely stale.
@@ -96,7 +95,7 @@ export function writeNotesMirror(notes: Note[]): void {
 		.sort((left, right) => right.updatedAt - left.updatedAt)
 		.slice(0, MIRROR_FALLBACK_LIMIT)
 		.map(noteForLocalStorage);
-	writeJson(NOTES_MIRROR_KEY, recent);
+	return writeJson(NOTES_MIRROR_KEY, recent);
 }
 
 export function readLabelsMirror(): Label[] {
