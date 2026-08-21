@@ -1,7 +1,7 @@
 // Device persistence. IndexedDB is the durable source of truth; localStorage is handled
 // separately as a blob-free fast-boot mirror by noteStorage.ts.
 
-import { openDB, type IDBPDatabase } from 'idb';
+import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
 import type { LinkPreview } from '$lib/linkPreview';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
@@ -76,6 +76,7 @@ export function closeDeviceDatabase(): void {
 	deviceWriteChain = Promise.resolve();
 	noteChains.clear();
 	writeGeneration = 0;
+	outboxGenerationCache = null;
 	if (pending)
 		void pending.then(
 			(db) => db.close(),
@@ -242,7 +243,7 @@ async function putNoteSnapshot(note: Note, syncOutboxKeys: string[] = []): Promi
 	const desiredKeys = new Set((note.images ?? []).map((image) => imageKey(note.id, image.id)));
 	const lean = detachNote(note);
 	const stores = syncOutboxKeys.length
-		? [NOTES_STORE, IMAGES_STORE, SYNC_OUTBOX_STORE]
+		? [NOTES_STORE, IMAGES_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE]
 		: [NOTES_STORE, IMAGES_STORE];
 	const tx = db.transaction(stores, 'readwrite');
 	try {
@@ -257,9 +258,9 @@ async function putNoteSnapshot(note: Note, syncOutboxKeys: string[] = []): Promi
 		}
 		await tx.objectStore(NOTES_STORE).put(lean);
 		if (syncOutboxKeys.length) {
+			const generation = await nextOutboxGeneration(tx);
 			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
-			const markedAt = Date.now();
-			for (const key of syncOutboxKeys) await outbox.put(markedAt, key);
+			for (const key of syncOutboxKeys) await outbox.put(generation, key);
 		}
 		await tx.done;
 	} catch (error) {
@@ -538,15 +539,64 @@ export async function deleteSyncState(key: string): Promise<void> {
 	});
 }
 
-/** Durable set of plaintext-local record keys awaiting encrypted upload. */
-export async function markSyncOutbox(keys: Iterable<string>, markedAt = Date.now()): Promise<void> {
+/**
+ * Outbox generations are a persisted monotonic counter seeded from the wall
+ * clock. Timestamps alone break under backward clock jumps: a marker stamped
+ * after a sync snapshot could sort below it and get acknowledged without its
+ * content ever uploading.
+ */
+const OUTBOX_GENERATION_KEY = 'gkc-outbox-generation';
+let outboxGenerationCache: number | null = null;
+
+async function loadOutboxGeneration(db: IDBPDatabase): Promise<number> {
+	if (outboxGenerationCache == null) {
+		outboxGenerationCache = Number((await db.get(SYNC_STATE_STORE, OUTBOX_GENERATION_KEY)) ?? 0);
+	}
+	return outboxGenerationCache;
+}
+
+/** Allocate the next generation inside the caller's transaction. */
+async function nextOutboxGeneration(
+	tx: IDBPTransaction<unknown, string[], 'readwrite'>
+): Promise<number> {
+	if (outboxGenerationCache == null) {
+		outboxGenerationCache = Number(
+			(await tx.objectStore(SYNC_STATE_STORE).get(OUTBOX_GENERATION_KEY)) ?? 0
+		);
+	}
+	const generation = Math.max(Date.now(), outboxGenerationCache + 1);
+	outboxGenerationCache = generation;
+	await tx.objectStore(SYNC_STATE_STORE).put(generation, OUTBOX_GENERATION_KEY);
+	return generation;
+}
+
+/** Highest generation allocated so far; sync runs acknowledge up to this snapshot. */
+export function getOutboxGeneration(): Promise<number> {
+	return enqueueDeviceWrite(async () => loadOutboxGeneration(await getDB()));
+}
+
+/** Durable set of plaintext-local record keys awaiting encrypted upload. Returns its generation. */
+export async function markSyncOutbox(keys: Iterable<string>): Promise<number> {
 	const unique = [...new Set(keys)].filter(Boolean);
-	if (unique.length === 0) return;
-	await enqueueDeviceWrite(async () => {
+	if (unique.length === 0) return 0;
+	return enqueueDeviceWrite(async () => {
 		const db = await getDB();
-		const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
-		for (const key of unique) tx.store.put(markedAt, key);
-		await tx.done;
+		const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+		try {
+			const generation = await nextOutboxGeneration(tx);
+			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+			for (const key of unique) await outbox.put(generation, key);
+			await tx.done;
+			return generation;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				// The transaction may already have aborted after a failed request.
+			}
+			await tx.done.catch(() => undefined);
+			throw error;
+		}
 	});
 }
 

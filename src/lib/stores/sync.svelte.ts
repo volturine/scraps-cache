@@ -40,6 +40,7 @@ import {
 import {
 	commitSyncControl,
 	deleteSyncState,
+	getOutboxGeneration,
 	getSyncOutboxKeys,
 	getSyncState,
 	markSyncOutbox
@@ -427,7 +428,7 @@ export class SyncStore {
 			let recordIds =
 				(await getSyncState<Record<string, string>>(keys.recordIds).catch(() => undefined)) ?? {};
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
-			const outboxSnapshotAt = Date.now();
+			const outboxSnapshotAt = await getOutboxGeneration();
 			let outboxKeys = new Set(await getSyncOutboxKeys().catch(() => []));
 			let cursor = Number((await getSyncState<number>(keys.cursor).catch(() => undefined)) || 0);
 			if (firstFullUpload && cursor > 0) cursor = 0;
@@ -552,8 +553,7 @@ export class SyncStore {
 					else {
 						const blockedKey = outgoing[0].key;
 						quotaBlockedKeys.add(blockedKey);
-						const markedAt = Date.now();
-						await markSyncOutbox([blockedKey], markedAt);
+						await markSyncOutbox([blockedKey]);
 						outboxKeys.add(blockedKey);
 						quotaSingleUpload = false;
 					}
@@ -768,11 +768,10 @@ export class SyncStore {
 				baseline = reconciled.baseline;
 				for (const key of reconciled.ackKeys) acknowledgedOutbox.add(key);
 				if (reconciled.dirtyKeys.length) {
-					const markedAt = Date.now();
-					await markSyncOutbox(reconciled.dirtyKeys, markedAt);
+					const generation = await markSyncOutbox(reconciled.dirtyKeys);
 					for (const key of reconciled.dirtyKeys) {
 						outboxKeys.add(key);
-						internallyMarkedOutbox.set(key, markedAt);
+						internallyMarkedOutbox.set(key, generation);
 					}
 				}
 
