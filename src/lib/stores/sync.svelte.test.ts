@@ -145,7 +145,7 @@ async function seedControl(
 	if (state.cursor != null) await idb.setSyncState(keys.cursor, state.cursor);
 	if (state.baseline) await idb.setSyncState(keys.baseline, state.baseline);
 	if (state.recordIds) await idb.setSyncState(keys.recordIds, state.recordIds);
-	if (state.outbox?.length) await idb.markSyncOutbox(state.outbox, 1);
+	if (state.outbox?.length) await idb.markSyncOutbox(state.outbox);
 }
 
 describe('client sync state machine', () => {
@@ -302,7 +302,7 @@ describe('client sync state machine', () => {
 			}
 			return { success: true, data: emptyData({ cursor: 2 }) };
 		});
-		await idb.markSyncOutbox(['note:note-1'], 1);
+		await idb.markSyncOutbox([`note:note-1`]);
 
 		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 
@@ -383,7 +383,7 @@ describe('client sync state machine', () => {
 			}
 			return { success: true, data: emptyData({ cursor: 1 }) };
 		});
-		await idb.markSyncOutbox(['note:note-1'], 1);
+		await idb.markSyncOutbox([`note:note-1`]);
 
 		const failed = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 		expect(failed).toMatchObject({ success: false, error: 'Sync timed out' });

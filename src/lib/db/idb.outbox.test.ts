@@ -6,6 +6,7 @@ import {
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
 	getSyncState,
+	getOutboxGeneration,
 	hydrateNoteAttachments,
 	markSyncOutbox,
 	putNote,
@@ -52,21 +53,33 @@ describe('durable sync outbox', () => {
 	});
 
 	it('clears an internally marked generation without clearing a later edit', async () => {
-		await markSyncOutbox(['note:one'], 100);
-		await clearSyncOutbox(['note:one'], 99);
+		const first = await markSyncOutbox(['note:one']);
+		await clearSyncOutbox(['note:one'], first - 1);
 		expect(await getSyncOutboxKeys()).toEqual(['note:one']);
 
-		await markSyncOutbox(['note:one'], 200);
-		await clearSyncOutbox(['note:one'], 100);
+		const second = await markSyncOutbox(['note:one']);
+		await clearSyncOutbox(['note:one'], first);
 		expect(await getSyncOutboxKeys()).toEqual(['note:one']);
 
-		await clearSyncOutbox(['note:one'], 200);
+		await clearSyncOutbox(['note:one'], second);
 		expect(await getSyncOutboxKeys()).toEqual([]);
+	});
+
+	it('allocates strictly increasing generations even when the clock jumps backward', async () => {
+		const realNow = Date.now;
+		vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+		const first = await markSyncOutbox(['note:a']);
+		Date.now = () => 500;
+		const second = await markSyncOutbox(['note:b']);
+		Date.now = realNow;
+
+		expect(second).toBeGreaterThan(first);
+		expect(await getOutboxGeneration()).toBe(second);
 	});
 
 	it('rolls back cursor and outbox changes together when a control write fails', async () => {
 		await setSyncState('test-cursor', 4);
-		await markSyncOutbox(['note:atomic'], 100);
+		const marked = await markSyncOutbox([`note:atomic`]);
 
 		await expect(
 			commitSyncControl(
@@ -74,7 +87,7 @@ describe('durable sync outbox', () => {
 					['test-cursor', 5],
 					['uncloneable-value', () => undefined]
 				],
-				[{ keys: ['note:atomic'], through: 100 }]
+				[{ keys: ['note:atomic'], through: marked }]
 			)
 		).rejects.toThrow();
 
