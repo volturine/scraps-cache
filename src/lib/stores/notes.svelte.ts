@@ -583,7 +583,7 @@ export class NotesStore {
 	// Backup ---------------------------------------------------------------
 	/**
 	 * Full app/DB backup: notes (with full-resolution attachments), labels, boards,
-	 * tombstones, UI prefs, and the optional sync account.
+	 * tombstones, and UI prefs. Never carries sync identity.
 	 */
 	async exportBackup(): Promise<ScrapsCacheBackup> {
 		const fullNotes: Note[] = [];
@@ -607,9 +607,6 @@ export class NotesStore {
 				layout: uiStore.layout,
 				view: uiStore.view
 			},
-			sync: syncStore.account
-				? { syncKey: syncStore.account.syncKey, lastSync: syncStore.lastSync }
-				: null,
 			// Kept empty for v1-v3 import compatibility; new backups never retain remote metadata.
 			linkPreviews: []
 		};
@@ -669,7 +666,6 @@ export class NotesStore {
 				kanbanStore.selectBoard(backup.activeBoardId);
 			}
 			uiStore.restoreState(backup.ui);
-			syncStore.restoreFromBackup(backup.sync);
 			this.mirrorToLS();
 			const outbox = [
 				...this.notes.flatMap((note) => [

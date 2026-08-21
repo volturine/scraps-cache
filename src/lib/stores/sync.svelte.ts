@@ -950,23 +950,6 @@ export class SyncStore {
 			};
 		}
 	}
-
-	/** Restore client sync identity from a full device backup. */
-	restoreFromBackup(sync: null | { syncKey: string; lastSync?: number }): void {
-		if (!sync?.syncKey) {
-			this.logout();
-			return;
-		}
-		try {
-			this.account = identityFromSyncKey(sync.syncKey);
-			this.lastSync = Number(sync.lastSync) || 0;
-			this.lastError = null;
-			this.saveAccount();
-			this.saveStatus();
-		} catch {
-			this.logout();
-		}
-	}
 }
 
 export const syncStore = new SyncStore();
