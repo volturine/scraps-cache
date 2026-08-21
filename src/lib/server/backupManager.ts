@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import { mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { getSyncStore } from '$lib/server/syncStore';
+import { VAPID_PRIVATE_META_KEY } from '$lib/server/webPush';
 
 export type BackupStatus = {
 	enabled: boolean;
@@ -157,6 +158,12 @@ export class BackupManager {
 			const verification = new Database(temporary, { fileMustExist: true });
 			try {
 				verification.pragma('journal_mode = DELETE');
+				// Keep the VAPID private key out of backup artifacts; a fresh key
+				// invalidates existing push subscriptions, so it must not be lost silently
+				// from the live store but also must not leak into snapshot files.
+				// VACUUM afterwards drops the freed pages that still hold its bytes.
+				verification.prepare('DELETE FROM meta WHERE key = ?').run(VAPID_PRIVATE_META_KEY);
+				verification.exec('VACUUM');
 				const result = verification.pragma('integrity_check', { simple: true });
 				if (result !== 'ok') throw new Error('SQLite integrity check failed');
 			} finally {
