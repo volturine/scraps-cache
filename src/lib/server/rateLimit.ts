@@ -55,6 +55,15 @@ export class TokenBucketLimiter {
 
 export const publicApiLimiter = new TokenBucketLimiter();
 
+const adminApiLimiter = new TokenBucketLimiter();
+
+export function checkAdminApiLimit(getClientAddress: () => string): RateLimitResult {
+	return adminApiLimiter.check(`admin:${clientAddress(getClientAddress)}`, {
+		capacity: 30,
+		refillWindowMs: 60_000
+	});
+}
+
 export function clientAddress(getClientAddress: () => string): string {
 	try {
 		return getClientAddress();
