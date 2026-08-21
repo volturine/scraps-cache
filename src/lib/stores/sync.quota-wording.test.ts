@@ -47,12 +47,10 @@ function attachment(id: string): NoteImage {
 }
 
 /**
- * Issue #81: quota isolation in the sync engine is triggered by
- * `(response.error || '').toLowerCase().includes('quota')`. This test replays
- * the exact over-quota scenario from sync.svelte.test.ts but with a server
- * error message that does not contain the word "quota". If isolation is
- * wording-coupled, the whole batch fails instead of isolating the oversized
- * attachment.
+ * Issue #81: quota isolation in the sync engine is keyed on the HTTP status
+ * (507), never on the server's error message text. This test replays the
+ * over-quota scenario from sync.svelte.test.ts with an arbitrary error
+ * message to prove wording independence.
  */
 describe('quota isolation independent of server error wording', () => {
 	beforeEach(() => {
@@ -85,8 +83,8 @@ describe('quota isolation independent of server error wording', () => {
 				return payload.kind === 'attachment' ? payload.value?.id : payload.kind;
 			});
 			if (kinds.includes('huge')) {
-				// Same failure, different wording — no "quota" substring anywhere.
-				return { success: false, error: 'Storage limit reached' };
+				// Same failure semantics, arbitrary wording — only the status matters.
+				return { success: false, status: 507, error: 'Storage limit reached' };
 			}
 			return {
 				success: true,

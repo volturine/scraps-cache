@@ -694,7 +694,7 @@ describe('client sync state machine', () => {
 		const local = note('note-1', {}, [attachment('ok'), attachment('huge')]);
 		const { store, account, requests } = createHarness((request) => {
 			if (request.envelopes.length > 1) {
-				return { success: false, error: 'Sync account storage quota exceeded' };
+				return { success: false, status: 507, error: 'Sync account storage quota exceeded' };
 			}
 			if (request.envelopes.length === 1) {
 				const payload = decryptSyncPayload(account.syncKey, request.envelopes[0].ciphertext) as {
@@ -702,7 +702,7 @@ describe('client sync state machine', () => {
 					value?: { id?: string };
 				};
 				if (payload.kind === 'attachment' && payload.value?.id === 'huge') {
-					return { success: false, error: 'Sync account storage quota exceeded' };
+					return { success: false, status: 507, error: 'Sync account storage quota exceeded' };
 				}
 				return { success: true, data: emptyData({ cursor: 1, writesAccepted: true }) };
 			}
@@ -738,7 +738,7 @@ describe('client sync state machine', () => {
 				return payload.kind === 'attachment' ? payload.value?.id : payload.kind;
 			});
 			if (kinds.includes('huge')) {
-				return { success: false, error: 'Sync account storage quota exceeded' };
+				return { success: false, status: 507, error: 'Sync account storage quota exceeded' };
 			}
 			return { success: true, data: emptyData({ cursor: 1, writesAccepted: true }) };
 		});

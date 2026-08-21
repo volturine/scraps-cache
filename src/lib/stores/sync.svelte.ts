@@ -99,6 +99,8 @@ type SyncResult = {
 	boardTombstones?: Record<string, number>;
 	data?: Record<string, unknown>;
 	error?: string;
+	/** HTTP status of a failed request; lets callers react to codes, not message text. */
+	status?: number;
 };
 
 export type SyncSnapshot = {
@@ -367,6 +369,7 @@ export class SyncStore {
 				if (xhr.status < 200 || xhr.status >= 300) {
 					resolve({
 						success: false,
+						status: xhr.status,
 						error:
 							typeof data.error === 'string' ? data.error : `Sync request failed (${xhr.status})`
 					});
@@ -543,11 +546,7 @@ export class SyncStore {
 					new Blob([payload]).size,
 					indicate
 				);
-				if (
-					!response.success &&
-					(response.error || '').toLowerCase().includes('quota') &&
-					outgoing.length > 0
-				) {
+				if (!response.success && response.status === 507 && outgoing.length > 0) {
 					if (outgoing.length > 1) quotaSingleUpload = true;
 					else {
 						const blockedKey = outgoing[0].key;
