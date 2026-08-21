@@ -39,10 +39,14 @@
 		return Math.min(h, 320);
 	}
 
-	// Always pack into the responsive column count so a single card keeps
-	// the same width as multi-note gallery (never stretches full width).
-	// $derived memoizes this while mounted; views persist across navigation,
-	// so no cross-mount cache is needed.
+	// Measured card heights replace estimates as soon as they exist, so packing
+	// tracks real layout instead of drifting heuristics (photos, wrapped lines
+	// and previews make estimates diverge wildly). Card heights do not depend on
+	// which column holds them — all columns share one width — so a remeasure
+	// settles instead of oscillating.
+	let measuredHeights = $state(new Map<string, number>());
+	let gridEl = $state<HTMLDivElement | null>(null);
+
 	const columns = $derived.by(() => {
 		const cols: Note[][] = Array.from({ length: colCount }, () => []);
 		const heights: number[] = Array(colCount).fill(0);
@@ -52,21 +56,46 @@
 				if (heights[i] < heights[minIdx]) minIdx = i;
 			}
 			cols[minIdx].push(note);
-			heights[minIdx] += estimateHeight(note) + 10;
+			heights[minIdx] += (measuredHeights.get(note.id) ?? estimateHeight(note)) + 10;
 		}
 		return cols;
 	});
+
+	$effect(() => {
+		void columns;
+		void colCount;
+		const root = gridEl;
+		if (!root || typeof ResizeObserver === 'undefined') return;
+		const measure = () => {
+			const cards = root.querySelectorAll<HTMLElement>('[data-note-height]');
+			let changed = measuredHeights.size !== cards.length;
+			const next = new Map<string, number>();
+			for (const el of cards) {
+				const id = el.dataset.noteHeight!;
+				const h = Math.round(el.getBoundingClientRect().height);
+				next.set(id, h);
+				if (measuredHeights.get(id) !== h) changed = true;
+			}
+			if (changed) measuredHeights = next;
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		root.querySelectorAll<HTMLElement>('[data-note-height]').forEach((el) => observer.observe(el));
+		return () => observer.disconnect();
+	});
 </script>
 
-<div class="masonry-balanced {className}" style="--masonry-cols: {colCount}">
+<div bind:this={gridEl} class="masonry-balanced {className}" style="--masonry-cols: {colCount}">
 	{#each columns as col, i (i)}
 		<div class="masonry-balanced-col">
 			{#each col as note (note.id)}
-				{#if children}
-					{@render children(note)}
-				{:else}
-					<NoteCard {note} {onOpen} />
-				{/if}
+				<div data-note-height={note.id}>
+					{#if children}
+						{@render children(note)}
+					{:else}
+						<NoteCard {note} {onOpen} />
+					{/if}
+				</div>
 			{/each}
 		</div>
 	{/each}

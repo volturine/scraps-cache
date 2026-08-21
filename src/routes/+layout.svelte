@@ -22,10 +22,8 @@
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
 	let editorDismissTick = $state(0);
-	let editorFocusOnOpen = $state(false);
 
 	function openEditor(id: string) {
-		editorFocusOnOpen = false;
 		editingId = id;
 		if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
 	}
@@ -103,7 +101,6 @@
 			body: '',
 			labels
 		});
-		editorFocusOnOpen = true;
 		editingId = n.id;
 	}
 
@@ -226,12 +223,7 @@
 				<div class="app-float" data-app-float>
 					<BottomNav />
 					<ReminderAlert />
-					<NoteEditor
-						noteId={editingId}
-						dismissTick={editorDismissTick}
-						focusOnOpen={editorFocusOnOpen}
-						onClose={closeEditor}
-					/>
+					<NoteEditor noteId={editingId} dismissTick={editorDismissTick} onClose={closeEditor} />
 				</div>
 			</div>
 		</div>
