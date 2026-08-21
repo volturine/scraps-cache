@@ -14,7 +14,8 @@ import {
 	clearAllLabels,
 	replaceAllDeviceData,
 	getSyncOutboxKeys,
-	clearSyncOutbox
+	clearSyncOutbox,
+	pruneOrphanImageBlobs
 } from '$lib/db/idb';
 import {
 	mergeLabelLists,
@@ -183,6 +184,9 @@ export class NotesStore {
 					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
 				}
 			}
+			pruneOrphanImageBlobs().catch((err) =>
+				this.recordPersistenceError('Could not reclaim unused photo storage', err)
+			);
 		}
 		this.purgeOldTrash();
 		this.loaded = true;
