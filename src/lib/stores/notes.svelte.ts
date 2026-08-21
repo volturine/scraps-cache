@@ -51,6 +51,9 @@ import type { NoteImage } from '$lib/types';
 import { normalizeBackup, type BackupImportProgress, type ScrapsCacheBackup } from '$lib/backup';
 import { stableStringify } from '$lib/syncHash';
 
+/** Minimum gap between opportunistic auto syncs; manual syncs are never throttled. */
+const AUTO_SYNC_MIN_INTERVAL_MS = 30_000;
+
 function durableNoteSignature(note: Note): string {
 	return stableStringify({
 		...note,
@@ -93,6 +96,7 @@ export class NotesStore {
 	deletedLabelIds = $state<Record<string, number>>(readLabelTombstones());
 	private attachmentLoads = new Map<string, Promise<void>>();
 	private attachmentPass: Promise<void> | null = null;
+	private lastAutoSyncAt = 0;
 	private visibleAttachmentQueue = new AttachmentHydrationQueue((noteId) =>
 		this.ensureNoteAttachments(noteId)
 	);
@@ -1087,9 +1091,13 @@ export class NotesStore {
 		return this.queueSync(true);
 	}
 
-	// Auto sync — silent, no UI feedback.
+	// Auto sync — silent, no UI feedback. Opportunistic pulls (boot, editor
+	// open) are throttled; pending local edits always sync via flushSync.
 	async syncWithCloud(): Promise<boolean> {
-		return this.queueSync(false);
+		if (Date.now() - this.lastAutoSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return true;
+		const synced = await this.queueSync(false);
+		if (synced) this.lastAutoSyncAt = Date.now();
+		return synced;
 	}
 
 	/** One sync at a time; edits during a flight collapse into exactly one follow-up pass. */

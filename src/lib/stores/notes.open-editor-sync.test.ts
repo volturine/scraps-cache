@@ -1,25 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
 
 /**
- * Issue #86: `openEditor` in src/routes/+layout.svelte fires
- * `void notesStore.syncWithCloud()` on every editor open. Concurrent calls
- * collapse into one flight, but there is no staleness window: two sequential
- * opens always cost two full relay round-trips.
+ * Issue #86: opportunistic auto syncs (boot, editor open) are throttled by a
+ * staleness window; manual syncs are never throttled.
  */
-describe('per-editor-open sync cost', () => {
+describe('auto sync staleness window', () => {
 	beforeEach(() => {
 		localStorage.clear();
 		vi.restoreAllMocks();
 		notesStore.notes = [];
 		notesStore.labels = [];
+		(notesStore as unknown as { lastAutoSyncAt: number }).lastAutoSyncAt = 0;
 		syncStore.account = createSyncIdentity();
 	});
 
-	it('issues a fresh relay request for every sequential editor open', async () => {
-		const requests: unknown[] = [];
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function mockRelay(requests: unknown[]): void {
 		vi.spyOn(
 			syncStore as unknown as {
 				sendSyncRequest(
@@ -42,11 +44,27 @@ describe('per-editor-open sync cost', () => {
 				}
 			};
 		});
+	}
 
-		// Two notes opened back-to-back, each waiting for its sync to finish.
-		// Measured: every open costs TWO relay round-trips (pull + ack pass),
-		// with no staleness window between opens.
+	it('collapses rapid editor opens into one sync', async () => {
+		const requests: unknown[] = [];
+		mockRelay(requests);
+
 		await notesStore.syncWithCloud();
+		await notesStore.syncWithCloud();
+		await notesStore.syncWithCloud();
+
+		expect(requests.length).toBe(2);
+	});
+
+	it('syncs again once the window has passed', async () => {
+		const now = Date.now();
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+		const requests: unknown[] = [];
+		mockRelay(requests);
+
+		await notesStore.syncWithCloud();
+		clock.mockReturnValue(now + 30_000);
 		await notesStore.syncWithCloud();
 
 		expect(requests.length).toBe(4);
