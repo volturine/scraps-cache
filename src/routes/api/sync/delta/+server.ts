@@ -16,7 +16,7 @@ const MAX_ENVELOPE_BYTES = 100_000_000;
 const MAX_REQUEST_BYTES = MAX_ENVELOPE_BYTES + 1_000_000;
 const MAX_ENVELOPES_PER_REQUEST = 2_000;
 const DEFAULT_DOWNLOAD_LIMIT = 12;
-type OpaqueEnvelope = { id: string; ciphertext: string; slot: string };
+type OpaqueEnvelope = { id: string; ciphertext: string; slot: string; expectedId: string | null };
 type OpaqueDelete = { id: string; slot: string };
 
 function isOpaqueEnvelope(value: unknown): value is OpaqueEnvelope {
@@ -26,6 +26,10 @@ function isOpaqueEnvelope(value: unknown): value is OpaqueEnvelope {
 		typeof (value as OpaqueEnvelope).id === 'string' &&
 		typeof (value as OpaqueEnvelope).ciphertext === 'string' &&
 		typeof (value as OpaqueEnvelope).slot === 'string' &&
+		((value as OpaqueEnvelope).expectedId === null ||
+			(typeof (value as OpaqueEnvelope).expectedId === 'string' &&
+				/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).expectedId!) &&
+				(value as OpaqueEnvelope).expectedId!.length <= 128)) &&
 		(value as OpaqueEnvelope).id.length <= 128 &&
 		(value as OpaqueEnvelope).ciphertext.length <= MAX_ENVELOPE_BYTES &&
 		/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).id) &&

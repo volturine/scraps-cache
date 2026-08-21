@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { webcrypto } from 'node:crypto';
@@ -77,15 +77,6 @@ function loadPushHandler(showNotification: ReturnType<typeof vi.fn>) {
 		await completion;
 	};
 }
-
-afterEach(async () => {
-	await new Promise<void>((resolve) => {
-		const deleted = indexedDB.deleteDatabase(DB_NAME);
-		deleted.onsuccess = () => resolve();
-		deleted.onerror = () => resolve();
-		deleted.onblocked = () => resolve();
-	});
-});
 
 describe('reminder service worker', () => {
 	it('shows local note content for a matching opaque wake', async () => {

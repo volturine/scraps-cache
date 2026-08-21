@@ -52,6 +52,19 @@ describe('incremental sync engine', () => {
 		expect(planned).toEqual(['attachment:pic']);
 	});
 
+	it('does not delete an old photo while a replacement is not yet on the relay', () => {
+		const planned = planDeletableKeys({
+			recordIds: { 'attachment:old': 'env-1', 'note:n1': 'env-2' },
+			notes: [note('n1', ['new'])],
+			labels: [],
+			boards: [],
+			tombstones: { notes: {}, labels: {}, boards: {} },
+			pullOnly: false,
+			catchUpComplete: true
+		});
+		expect(planned).toEqual([]);
+	});
+
 	it('never deletes slots during pull-only replace', () => {
 		const planned = planDeletableKeys({
 			recordIds: { 'attachment:pic': 'env-1', 'note:n1': 'env-2' },

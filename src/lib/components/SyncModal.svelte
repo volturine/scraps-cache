@@ -144,7 +144,7 @@
 		info = merge ? 'Merging notes…' : 'Downloading synced notes…';
 		try {
 			const success = merge
-				? await notesStore.syncWithCloudManual()
+				? await notesStore.mergeWithCloudManual()
 				: await notesStore.replaceWithCloudManual();
 			if (success) {
 				mode = 'linked';
@@ -186,13 +186,18 @@
 		if (!success) error = friendlyError(syncStore.lastError, 'Sync failed');
 	}
 
-	async function unlinkDevice() {
+	function unlinkDevice() {
 		const account = syncStore.account;
-		await unregisterReminderDevice(account);
 		syncStore.logout();
 		mode = 'menu';
 		error = '';
 		info = '';
+		// Sign-out is local and immediate; a failed server-side unsubscribe must
+		// stay visible so the user knows this browser lingers in wake delivery.
+		unregisterReminderDevice(account).catch(() => {
+			error =
+				'Signed out, but the relay could not remove this device from reminder push. It will age out of delivery on its own.';
+		});
 	}
 
 	async function copyCode() {
@@ -346,7 +351,7 @@
 				{/if}
 				<button
 					type="button"
-					onclick={() => void unlinkDevice()}
+					onclick={unlinkDevice}
 					class="scraps-cache-button scraps-cache-button-destructive w-full text-sm"
 					>Unlink this device</button
 				>
@@ -410,6 +415,7 @@
 					class="w-full rounded-lg border border-[var(--scraps-cache-border)] px-3 py-3 text-sm touch-manipulation"
 					>Connect to an existing sync</button
 				>
+				{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}
 			</div>
 		{:else if mode === 'register'}
 			<div class="space-y-3">

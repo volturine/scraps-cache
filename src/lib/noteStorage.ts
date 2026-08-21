@@ -3,13 +3,12 @@ import type { Label, Note, NoteImage } from './types';
 /** Canonical fast-boot mirrors. IndexedDB remains the durable device store. */
 export const NOTES_MIRROR_KEY = 'gkc-notes-mirror';
 export const LABELS_MIRROR_KEY = 'gkc-labels-mirror';
-export const MAX_MIRRORED_NOTES = 50;
 
-type MirroredImage = Omit<NoteImage, 'dataUrl'>;
+type MirroredImage = Omit<NoteImage, 'dataUrl' | 'thumbUrl'>;
 type MirroredNote = Omit<Note, 'images'> & { images?: MirroredImage[] };
 
 function imageRef(image: NoteImage): MirroredImage {
-	const { dataUrl: _bytes, ...meta } = image;
+	const { dataUrl: _bytes, thumbUrl: _thumb, ...meta } = image;
 	return {
 		...meta,
 		id: image.id,
@@ -18,7 +17,7 @@ function imageRef(image: NoteImage): MirroredImage {
 	};
 }
 
-/** Note shape safe for localStorage: attachment bytes never enter the mirror. Image refs stay. */
+/** Notes crash mirror: text and image ids only. Photo bytes stay in IndexedDB. */
 export function noteForLocalStorage(note: Note): MirroredNote {
 	const { images, linkPreviews, ...rest } = note;
 	return {
@@ -61,12 +60,14 @@ function readJson<T>(key: string): T[] {
 	}
 }
 
-function writeJson<T>(key: string, value: T[]): void {
-	if (typeof localStorage === 'undefined') return;
+function writeJson<T>(key: string, value: T[]): boolean {
+	if (typeof localStorage === 'undefined') return false;
 	try {
 		localStorage.setItem(key, JSON.stringify(value));
+		return true;
 	} catch (err) {
 		console.error('[storage] write mirror failed:', key, err);
+		return false;
 	}
 }
 
@@ -83,14 +84,19 @@ export function readNotesMirror(): Note[] {
 	});
 }
 
+/** Fallback mirror size when the full write exceeds the localStorage quota. */
+export const MIRROR_FALLBACK_LIMIT = 50;
+
 export function writeNotesMirror(notes: Note[]): void {
-	writeJson(
-		NOTES_MIRROR_KEY,
-		[...notes]
-			.sort((left, right) => right.updatedAt - left.updatedAt)
-			.slice(0, MAX_MIRRORED_NOTES)
-			.map(noteForLocalStorage)
-	);
+	if (writeJson(NOTES_MIRROR_KEY, notes.map(noteForLocalStorage))) return;
+	// The full mirror exceeded the quota. Keep crash protection for the most
+	// recent notes — the ones most likely to have unsynced edits — instead of
+	// letting the mirror go entirely stale.
+	const recent = [...notes]
+		.sort((left, right) => right.updatedAt - left.updatedAt)
+		.slice(0, MIRROR_FALLBACK_LIMIT)
+		.map(noteForLocalStorage);
+	writeJson(NOTES_MIRROR_KEY, recent);
 }
 
 export function readLabelsMirror(): Label[] {

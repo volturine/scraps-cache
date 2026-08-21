@@ -28,6 +28,7 @@
 	function openEditor(id: string) {
 		editorFocusOnOpen = false;
 		editingId = id;
+		if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
 	}
 
 	function openNoteFromQuery() {
@@ -44,9 +45,9 @@
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
 		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(async () => {
+			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
 			openNoteFromQuery();
 			reminderStore.sync(notesStore.notes);
-			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
 		});
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;

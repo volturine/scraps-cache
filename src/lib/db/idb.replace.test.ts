@@ -1,4 +1,3 @@
-import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import type { Label, Note } from '$lib/types';
 import { getAllLabels, getAllNotesMetadata, putNote, replaceAllDeviceData } from './idb';

@@ -109,4 +109,21 @@ describe('WakeScheduler', () => {
 		expect(send).toHaveBeenCalledOnce();
 		scheduler.stop();
 	});
+
+	it('releases a claim when a sender throws before returning a promise', async () => {
+		const store = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice(device('device-throw000000', 'https://push.example/throw'));
+		store.replaceReminderWakes('account', [wake('a', 100)]);
+		const scheduler = new WakeScheduler({
+			store: () => store,
+			send: () => {
+				throw new Error('sender setup failed');
+			},
+			now: () => 200
+		});
+
+		expect(await scheduler.tick()).toBe(0);
+		expect(store.claimDueWakes(200)).toHaveLength(1);
+	});
 });

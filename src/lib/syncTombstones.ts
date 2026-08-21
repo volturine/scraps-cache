@@ -34,6 +34,12 @@ let noteCache: Tombstones | null = null;
 let labelCache: Tombstones | null = null;
 let boardCache: Tombstones | null = null;
 
+export function resetTombstoneCaches(): void {
+	noteCache = null;
+	labelCache = null;
+	boardCache = null;
+}
+
 export function readTombstones(): Tombstones {
 	return { ...(noteCache ?? readLegacy(NOTE_LS)) };
 }
@@ -96,5 +102,7 @@ export async function loadBoardsFromDevice<T>(fallback: T): Promise<T> {
 }
 
 export async function saveBoardsToDevice<T>(boards: T): Promise<void> {
-	await setSyncState(BOARDS_IDB, boards);
+	// `$state` board proxies throw DataCloneError in IndexedDB; JSON is already how
+	// localStorage snapshots them.
+	await setSyncState(BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? [])));
 }

@@ -122,25 +122,31 @@ export class KanbanStore {
 				localStorage.setItem(BOARDS_KEY, JSON.stringify(this.boards));
 				localStorage.setItem(ACTIVE_BOARD_KEY, this.activeBoardId);
 				localStorage.setItem(BOARD_TOMBSTONES_KEY, JSON.stringify(this.boardTombstones));
-				void saveBoardsToDevice(this.boards).catch(() => undefined);
-				void writeBoardTombstones(this.boardTombstones).catch(() => undefined);
+				void this.persistSyncState().catch(() => undefined);
 			});
 		});
 	}
 
 	async hydrateFromDevice(remoteTombstones: Record<string, number> = {}): Promise<void> {
+		const fromLs = this.boardsForSync();
 		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(undefined);
-		if (Array.isArray(stored) && stored.length) {
-			this.boards = stored;
-			if (!this.boards.some((board) => board.id === this.activeBoardId))
-				this.activeBoardId = this.boards[0].id;
-		}
+		const fromIdb = Array.isArray(stored) ? stored : [];
 		const tombstones = { ...this.boardTombstones, ...remoteTombstones };
 		this.boardTombstones = tombstones;
-		this.boards = mergeKanbanBoards(this.boards, [], tombstones);
+		this.boards = mergeKanbanBoards(fromLs, fromIdb, tombstones);
 		if (!this.boards.length) {
 			this.boards = [createKanbanBoard()];
+		}
+		if (!this.boards.some((board) => board.id === this.activeBoardId))
 			this.activeBoardId = this.boards[0].id;
+		const idbById = new Map(fromIdb.map((board) => [board.id, board]));
+		const recovered = this.boards.filter((board) => {
+			const current = idbById.get(board.id);
+			return !current || current.updatedAt < board.updatedAt;
+		});
+		if (recovered.length) {
+			await this.persistSyncState();
+			this.requestSync(recovered.map((board) => `board:${board.id}`));
 		}
 	}
 
@@ -175,6 +181,13 @@ export class KanbanStore {
 		this.boards = merged.length ? merged : [createKanbanBoard()];
 		if (!this.boards.some((board) => board.id === this.activeBoardId))
 			this.activeBoardId = this.boards[0].id;
+	}
+
+	async persistSyncState(): Promise<void> {
+		await Promise.all([
+			saveBoardsToDevice(this.boardsForSync()),
+			writeBoardTombstones(this.boardTombstonesForSync())
+		]);
 	}
 
 	/** Used for the explicit “discard local data” link flow. */

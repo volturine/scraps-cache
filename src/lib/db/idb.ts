@@ -1,7 +1,7 @@
 // Device persistence. IndexedDB is the durable source of truth; localStorage is handled
 // separately as a blob-free fast-boot mirror by noteStorage.ts.
 
-import { openDB, type IDBPDatabase } from 'idb';
+import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
 import type { LinkPreview } from '$lib/linkPreview';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
@@ -36,6 +36,8 @@ function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
 	return run;
 }
 
+export const DEVICE_DB_NAME = DB_NAME;
+
 function getDB(): Promise<IDBPDatabase> {
 	if (typeof indexedDB === 'undefined') {
 		return Promise.reject(new Error('IndexedDB is not available'));
@@ -65,6 +67,21 @@ function getDB(): Promise<IDBPDatabase> {
 		});
 	}
 	return dbPromise;
+}
+
+/** Drop the cached connection so tests can delete the database between cases. */
+export function closeDeviceDatabase(): void {
+	const pending = dbPromise;
+	dbPromise = null;
+	deviceWriteChain = Promise.resolve();
+	noteChains.clear();
+	writeGeneration = 0;
+	outboxGenerationCache = null;
+	if (pending)
+		void pending.then(
+			(db) => db.close(),
+			() => undefined
+		);
 }
 
 /** Plain clone of an attachment — never hand Svelte proxies to IndexedDB. */
@@ -145,21 +162,44 @@ function snapshotNote(note: Note): Note {
 	return plainNote(note);
 }
 
+function bytesFromStored(value: unknown): Uint8Array | null {
+	if (value instanceof Uint8Array) return value;
+	if (value instanceof ArrayBuffer) return new Uint8Array(value);
+	if (ArrayBuffer.isView(value)) {
+		return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+	}
+	if (Array.isArray(value) && value.every((item) => typeof item === 'number')) {
+		return Uint8Array.from(value);
+	}
+	return null;
+}
+
+async function blobFromStored(stored: unknown): Promise<Blob | null> {
+	if (stored instanceof Blob) return stored;
+	if (!stored || typeof stored !== 'object') return null;
+	const record = stored as { mime?: unknown; bytes?: unknown; buffer?: unknown };
+	const bytes = bytesFromStored(record.bytes) ?? bytesFromStored(record.buffer);
+	if (!bytes) return null;
+	return new Blob([bytes.slice()], {
+		type: typeof record.mime === 'string' ? record.mime : 'application/octet-stream'
+	});
+}
+
 async function imageFromStoredValue(
 	db: IDBPDatabase,
 	noteId: string,
 	meta: NoteImage
 ): Promise<NoteImage | null> {
 	if (meta.dataUrl?.length > 20) return plainImage(meta);
-	const stored = await db.get(IMAGES_STORE, imageKey(noteId, meta.id));
-	if (!(stored instanceof Blob)) {
+	const blob = await blobFromStored(await db.get(IMAGES_STORE, imageKey(noteId, meta.id)));
+	if (!blob) {
 		// Keep thumb-only metadata so cards still render while full bytes are missing.
 		return plainImage({ ...meta, dataUrl: '' });
 	}
 	return plainImage({
 		...meta,
-		mime: meta.mime || stored.type,
-		dataUrl: await blobToDataUrl(stored)
+		mime: meta.mime || blob.type,
+		dataUrl: await blobToDataUrl(blob)
 	});
 }
 
@@ -183,24 +223,55 @@ async function prepareImageBlobs(note: Note): Promise<Array<{ key: string; blob:
 	return entries;
 }
 
-/** Note metadata and all image blobs commit in one transaction or not at all. */
-async function putNoteSnapshot(note: Note): Promise<void> {
+/**
+ * Photo bytes land first so a crash before the note-row commit still leaves
+ * blobs that boot recovery can reattach from mirrored image ids.
+ */
+async function putNoteSnapshot(note: Note, syncOutboxKeys: string[] = []): Promise<void> {
 	const db = await getDB();
 	const blobs = await prepareImageBlobs(note);
+	for (const { key, blob } of blobs) {
+		await db.put(
+			IMAGES_STORE,
+			{ mime: blob.type, bytes: new Uint8Array(await blob.arrayBuffer()) },
+			key
+		);
+	}
 	const existingKeys = (await db.getAllKeys(IMAGES_STORE)).filter((key) =>
 		String(key).startsWith(`${note.id}::`)
 	);
 	const desiredKeys = new Set((note.images ?? []).map((image) => imageKey(note.id, image.id)));
 	const lean = detachNote(note);
-	const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
-	// A metadata-only note is normal during asynchronous hydration. Keep its
-	// existing blobs; only an attachment removed from the current list is deleted.
-	for (const key of existingKeys) {
-		if (!desiredKeys.has(String(key))) tx.objectStore(IMAGES_STORE).delete(key);
+	const stores = syncOutboxKeys.length
+		? [NOTES_STORE, IMAGES_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE]
+		: [NOTES_STORE, IMAGES_STORE];
+	const tx = db.transaction(stores, 'readwrite');
+	try {
+		// Metadata-only writes (hydration, a pulled note whose photo has not
+		// arrived) must not drop blobs. Clear them when this write has bytes or
+		// the note no longer lists any images.
+		const incomingHasBytes = (note.images ?? []).some((image) => image.dataUrl);
+		if (incomingHasBytes || desiredKeys.size === 0) {
+			for (const key of existingKeys) {
+				if (!desiredKeys.has(String(key))) await tx.objectStore(IMAGES_STORE).delete(key);
+			}
+		}
+		await tx.objectStore(NOTES_STORE).put(lean);
+		if (syncOutboxKeys.length) {
+			const generation = await nextOutboxGeneration(tx);
+			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+			for (const key of syncOutboxKeys) await outbox.put(generation, key);
+		}
+		await tx.done;
+	} catch (error) {
+		try {
+			tx.abort();
+		} catch {
+			// The transaction may already have aborted after a failed request.
+		}
+		await tx.done.catch(() => undefined);
+		throw error;
 	}
-	for (const { key, blob } of blobs) tx.objectStore(IMAGES_STORE).put(blob, key);
-	tx.objectStore(NOTES_STORE).put(lean);
-	await tx.done;
 }
 
 function enqueueNote<T>(noteId: string, operation: () => Promise<T>): Promise<T> {
@@ -222,6 +293,31 @@ export async function getAllNotesMetadata(): Promise<Note[]> {
 	return ((await db.getAll(NOTES_STORE)) as Note[]).map(plainNote);
 }
 
+/**
+ * Image blobs exist only while a note row references them. Writes land bytes
+ * before the row (crash safety) and metadata-only writes keep existing blobs,
+ * so unreferenced keys can accumulate; ownership is reclaimed at boot. Runs
+ * inside the device write queue so it cannot observe a half-committed write.
+ */
+export function pruneOrphanImageBlobs(): Promise<void> {
+	return enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const [keys, notes] = await Promise.all([
+			db.getAllKeys(IMAGES_STORE),
+			db.getAll(NOTES_STORE) as Promise<Note[]>
+		]);
+		const referenced = new Set<string>();
+		for (const note of notes) {
+			for (const image of note.images ?? []) referenced.add(imageKey(note.id, image.id));
+		}
+		const orphans = keys.filter((key) => !referenced.has(String(key)));
+		if (orphans.length === 0) return;
+		const tx = db.transaction(IMAGES_STORE, 'readwrite');
+		for (const key of orphans) void tx.objectStore(IMAGES_STORE).delete(key);
+		await tx.done;
+	});
+}
+
 /** Hydrate every attachment for one note. Callers schedule this with bounded concurrency. */
 export async function hydrateNoteAttachments(note: Note): Promise<Note> {
 	const db = await getDB();
@@ -236,14 +332,15 @@ export async function getAllNotes(): Promise<Note[]> {
 	return hydrated;
 }
 
-export function putNote(note: Note): Promise<void> {
+export function putNote(note: Note, syncOutboxKeys: Iterable<string> = []): Promise<void> {
 	const snapshot = snapshotNote(note);
+	const outboxKeys = [...new Set(syncOutboxKeys)];
 	const generation = writeGeneration;
 	return enqueueNote(snapshot.id, () =>
 		enqueueDeviceWrite(async () => {
 			// A replacement requested after this save owns the final device state.
 			if (generation !== writeGeneration) return;
-			await putNoteSnapshot(snapshot);
+			await putNoteSnapshot(snapshot, outboxKeys);
 		})
 	);
 }
@@ -427,8 +524,10 @@ export async function getSyncState<T>(key: string): Promise<T | undefined> {
 }
 
 export async function setSyncState<T>(key: string, value: T): Promise<void> {
-	const db = await getDB();
-	await db.put(SYNC_STATE_STORE, value, key);
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		await db.put(SYNC_STATE_STORE, value, key);
+	});
 }
 
 const FIRED_REMINDERS_KEY = 'gkc-fired-reminders';
@@ -445,30 +544,85 @@ export async function setFiredReminderKeys(keys: Iterable<string>): Promise<void
 
 /** Merge one delivered wake atomically so pages and the service worker cannot lose each other's ids. */
 export async function markFiredReminderKey(key: string): Promise<void> {
-	const db = await getDB();
-	const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
-	const stored = await tx.store.get(FIRED_REMINDERS_KEY);
-	const keys = new Set(
-		Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []
-	);
-	keys.add(key);
-	await tx.store.put([...keys], FIRED_REMINDERS_KEY);
-	await tx.done;
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
+		const stored = await tx.store.get(FIRED_REMINDERS_KEY);
+		const keys = new Set(
+			Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []
+		);
+		keys.add(key);
+		await tx.store.put([...keys], FIRED_REMINDERS_KEY);
+		await tx.done;
+	});
 }
 
 export async function deleteSyncState(key: string): Promise<void> {
-	const db = await getDB();
-	await db.delete(SYNC_STATE_STORE, key);
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		await db.delete(SYNC_STATE_STORE, key);
+	});
 }
 
-/** Durable set of plaintext-local record keys awaiting encrypted upload. */
-export async function markSyncOutbox(keys: Iterable<string>): Promise<void> {
+/**
+ * Outbox generations are a persisted monotonic counter seeded from the wall
+ * clock. Timestamps alone break under backward clock jumps: a marker stamped
+ * after a sync snapshot could sort below it and get acknowledged without its
+ * content ever uploading.
+ */
+const OUTBOX_GENERATION_KEY = 'gkc-outbox-generation';
+let outboxGenerationCache: number | null = null;
+
+async function loadOutboxGeneration(db: IDBPDatabase): Promise<number> {
+	if (outboxGenerationCache == null) {
+		outboxGenerationCache = Number((await db.get(SYNC_STATE_STORE, OUTBOX_GENERATION_KEY)) ?? 0);
+	}
+	return outboxGenerationCache;
+}
+
+/** Allocate the next generation inside the caller's transaction. */
+async function nextOutboxGeneration(
+	tx: IDBPTransaction<unknown, string[], 'readwrite'>
+): Promise<number> {
+	if (outboxGenerationCache == null) {
+		outboxGenerationCache = Number(
+			(await tx.objectStore(SYNC_STATE_STORE).get(OUTBOX_GENERATION_KEY)) ?? 0
+		);
+	}
+	const generation = Math.max(Date.now(), outboxGenerationCache + 1);
+	outboxGenerationCache = generation;
+	await tx.objectStore(SYNC_STATE_STORE).put(generation, OUTBOX_GENERATION_KEY);
+	return generation;
+}
+
+/** Highest generation allocated so far; sync runs acknowledge up to this snapshot. */
+export function getOutboxGeneration(): Promise<number> {
+	return enqueueDeviceWrite(async () => loadOutboxGeneration(await getDB()));
+}
+
+/** Durable set of plaintext-local record keys awaiting encrypted upload. Returns its generation. */
+export async function markSyncOutbox(keys: Iterable<string>): Promise<number> {
 	const unique = [...new Set(keys)].filter(Boolean);
-	if (unique.length === 0) return;
-	const db = await getDB();
-	const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
-	for (const key of unique) tx.store.put(Date.now(), key);
-	await tx.done;
+	if (unique.length === 0) return 0;
+	return enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+		try {
+			const generation = await nextOutboxGeneration(tx);
+			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+			for (const key of unique) await outbox.put(generation, key);
+			await tx.done;
+			return generation;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				// The transaction may already have aborted after a failed request.
+			}
+			await tx.done.catch(() => undefined);
+			throw error;
+		}
+	});
 }
 
 export async function getSyncOutboxKeys(): Promise<string[]> {
@@ -482,11 +636,49 @@ export async function clearSyncOutbox(
 ): Promise<void> {
 	const unique = [...new Set(keys)].filter(Boolean);
 	if (unique.length === 0) return;
-	const db = await getDB();
-	const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
-	for (const key of unique) {
-		const markedAt = Number(await tx.store.get(key));
-		if (markedAt > 0 && markedAt <= through) await tx.store.delete(key);
-	}
-	await tx.done;
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
+		for (const key of unique) {
+			const markedAt = Number(await tx.store.get(key));
+			if (markedAt > 0 && markedAt <= through) await tx.store.delete(key);
+		}
+		await tx.done;
+	});
+}
+
+/** Commit the durable cursor/baseline and acknowledge their outbox generation together. */
+export async function commitSyncControl(
+	state: Iterable<readonly [key: string, value: unknown]>,
+	acknowledgements: Iterable<{ keys: Iterable<string>; through: number }>
+): Promise<void> {
+	const entries = [...state];
+	const acknowledged = [...acknowledgements].map(({ keys, through }) => ({
+		keys: [...new Set(keys)].filter(Boolean),
+		through
+	}));
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+		try {
+			const syncState = tx.objectStore(SYNC_STATE_STORE);
+			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+			for (const [key, value] of entries) await syncState.put(value, key);
+			for (const { keys, through } of acknowledged) {
+				for (const key of keys) {
+					const markedAt = Number(await outbox.get(key));
+					if (markedAt > 0 && markedAt <= through) await outbox.delete(key);
+				}
+			}
+			await tx.done;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				// The transaction may already have aborted after a failed request.
+			}
+			await tx.done.catch(() => undefined);
+			throw error;
+		}
+	});
 }

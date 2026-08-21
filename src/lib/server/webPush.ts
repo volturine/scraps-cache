@@ -44,8 +44,8 @@ export function getVapidKeys(): { publicKey: string; privateKey: string } {
 }
 
 export async function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
-	const keys = getVapidKeys();
 	try {
+		const keys = getVapidKeys();
 		await webpush.sendNotification(
 			{
 				endpoint: device.endpoint,
@@ -54,6 +54,7 @@ export async function sendReminderTick(device: DueWake): Promise<WakeSendResult>
 			JSON.stringify({ type: 'reminder-wake', id: device.wakeId, fireAt: device.fireAt }),
 			{
 				TTL: 86_400,
+				timeout: 10_000,
 				urgency: 'high',
 				vapidDetails: {
 					subject: vapidSubject(),

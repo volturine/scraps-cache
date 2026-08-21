@@ -8,6 +8,11 @@ describe('blind wake request validation', () => {
 	it('accepts an https push endpoint and subscription keys', () => {
 		expect(isHttpsEndpoint('https://fcm.googleapis.com/fcm/send/abc')).toBe(true);
 		expect(isHttpsEndpoint('http://fcm.googleapis.com/fcm/send/abc')).toBe(false);
+		expect(isHttpsEndpoint('https://127.0.0.1/push/abcdef')).toBe(false);
+		expect(isHttpsEndpoint('https://169.254.169.254/push')).toBe(false);
+		expect(isHttpsEndpoint('https://[::1]/push/abcdef')).toBe(false);
+		expect(isHttpsEndpoint('https://localhost/push/abcdef')).toBe(false);
+		expect(isHttpsEndpoint('https://[64:ff9b::a00:1]/push/abcdef')).toBe(false);
 		expect(
 			isPushSubscription({
 				endpoint: 'https://updates.push.services.mozilla.com/wpush/v2/token',

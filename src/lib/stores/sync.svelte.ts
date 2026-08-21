@@ -38,12 +38,12 @@ import {
 	randomOpaqueId
 } from '$lib/syncPairing';
 import {
-	clearSyncOutbox,
+	commitSyncControl,
 	deleteSyncState,
+	getOutboxGeneration,
 	getSyncOutboxKeys,
 	getSyncState,
-	markSyncOutbox,
-	setSyncState
+	markSyncOutbox
 } from '$lib/db/idb';
 
 const LS_SYNC_KEY = 'gkc-sync-account';
@@ -100,7 +100,20 @@ type SyncResult = {
 	boardTombstones?: Record<string, number>;
 	data?: Record<string, unknown>;
 	error?: string;
+	/** HTTP status of a failed request; lets callers react to codes, not message text. */
+	status?: number;
 };
+
+export type SyncSnapshot = {
+	notes: Note[];
+	labels: Label[];
+	boards: KanbanBoard[];
+	tombstones: Record<string, number>;
+	labelTombstones: Record<string, number>;
+	boardTombstones: Record<string, number>;
+};
+
+type ApplyPulled = (snapshot: SyncSnapshot) => Promise<SyncSnapshot>;
 
 function mergeTombstoneMaps(
 	local: Record<string, number>,
@@ -115,7 +128,7 @@ function mergeTombstoneMaps(
 	return merged;
 }
 
-class SyncStore {
+export class SyncStore {
 	account = $state<SyncAccount | null>(null);
 	lastSync = $state(0);
 	lastError = $state<string | null>(null);
@@ -151,16 +164,17 @@ class SyncStore {
 	}
 
 	requestAutoSync(keys: Iterable<string> = []): void {
-		void this.queueOutbox(keys);
+		void this.queueOutbox(keys).catch((err) => {
+			console.error('[sync] could not persist outbox:', err);
+		});
 	}
 
 	async queueOutbox(keys: Iterable<string> = []): Promise<void> {
-		const write = markSyncOutbox(keys)
-			.catch((err) => {
-				console.error('[sync] could not persist outbox:', err);
-			})
-			.then(() => undefined);
-		this.pendingOutboxWrites = Promise.all([this.pendingOutboxWrites, write]).then(() => undefined);
+		const pendingKeys = [...new Set(keys)];
+		const write = this.pendingOutboxWrites.then(async () => {
+			await markSyncOutbox(pendingKeys);
+		});
+		this.pendingOutboxWrites = write.catch(() => undefined);
 		await write;
 		this.onLocalDataChange?.();
 	}
@@ -326,7 +340,8 @@ class SyncStore {
 			xhr.timeout = 300_000;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 
-			if (indicate) {
+			const showTransfer = indicate && uploadBytes >= 32 * 1024;
+			if (showTransfer) {
 				this.progress = { phase: 'upload', loadedBytes: 0, totalBytes: uploadBytes };
 				xhr.upload.onprogress = (event) => {
 					this.progress = {
@@ -335,14 +350,14 @@ class SyncStore {
 						totalBytes: event.lengthComputable ? event.total : uploadBytes
 					};
 				};
-				xhr.upload.onloadend = () => {
-					this.progress = { phase: 'download', loadedBytes: 0, totalBytes: null };
-				};
+			}
+			if (indicate) {
 				xhr.onprogress = (event) => {
+					if (!event.lengthComputable || event.total < 32 * 1024) return;
 					this.progress = {
 						phase: 'download',
 						loadedBytes: event.loaded,
-						totalBytes: event.lengthComputable ? event.total : null
+						totalBytes: event.total
 					};
 				};
 			}
@@ -357,6 +372,7 @@ class SyncStore {
 				if (xhr.status < 200 || xhr.status >= 300) {
 					resolve({
 						success: false,
+						status: xhr.status,
 						error:
 							typeof data.error === 'string' ? data.error : `Sync request failed (${xhr.status})`
 					});
@@ -389,13 +405,17 @@ class SyncStore {
 		boards: KanbanBoard[] = [],
 		boardTombstones: Record<string, number> = {},
 		indicate = false,
-		pullOnly = false
+		pullOnly = false,
+		applyPulled?: ApplyPulled
 	): Promise<SyncResult> {
 		if (!this.account) return { success: false, error: 'Not linked' };
 		if (indicate) this.onSyncStart?.();
 		try {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
+			const UPLOAD_RECORD_BUDGET = 500;
 			const DOWNLOAD_LIMIT = 12;
+			const quotaBlockedKeys = new Set<string>();
+			let quotaSingleUpload = false;
 			const keys = syncControlKeys(this.account.accountId);
 			let baseline: Record<string, string> = {};
 			try {
@@ -413,8 +433,10 @@ class SyncStore {
 			let recordIds =
 				(await getSyncState<Record<string, string>>(keys.recordIds).catch(() => undefined)) ?? {};
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
-			const outboxSnapshotAt = Date.now();
+			const outboxSnapshotAt = await getOutboxGeneration();
 			let outboxKeys = new Set(await getSyncOutboxKeys().catch(() => []));
+			let cursor = Number((await getSyncState<number>(keys.cursor).catch(() => undefined)) || 0);
+			if (firstFullUpload && cursor > 0) cursor = 0;
 
 			let mergedNotes = notes,
 				mergedLabels = labels,
@@ -429,18 +451,25 @@ class SyncStore {
 				}
 			}
 
-			let cursor = Number((await getSyncState<number>(keys.cursor).catch(() => undefined)) || 0);
 			let hasMore = true;
 			let downloadsDrained = false;
 			const acknowledgedOutbox = new Set<string>();
+			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
+			let stalledWrites = 0;
 			while (hasMore) {
+				const startedWithDownloadsDrained = downloadsDrained;
 				const tombstoneMaps = {
 					notes: mergedTombstones,
 					labels: mergedLabelTombstones,
 					boards: mergedBoardTombstones
 				};
-				const uploadKeys = pullOnly ? new Set<string>() : firstFullUpload ? undefined : outboxKeys;
+				const uploadKeys =
+					pullOnly || !downloadsDrained
+						? new Set<string>()
+						: firstFullUpload
+							? undefined
+							: outboxKeys;
 				const currentRecords = await buildSyncRecords(
 					mergedNotes,
 					mergedLabels,
@@ -450,17 +479,24 @@ class SyncStore {
 					mergedBoardTombstones,
 					uploadKeys
 				);
-				const changed = pullOnly ? [] : changedRecords(currentRecords, baseline);
-				const nonAttachments = changed.filter((record) => record.payload.kind !== 'attachment');
-				const changedAttachments = changed.filter((record) => record.payload.kind === 'attachment');
-				// Photo bytes move in small fractions so initial/device syncs stay interactive.
-				const outgoing = [
-					...nonAttachments,
-					...changedAttachments.slice(0, ATTACHMENT_UPLOAD_BUDGET)
-				];
+				const changed =
+					pullOnly || !downloadsDrained ? [] : changedRecords(currentRecords, baseline);
+				const nonAttachments = changed.filter(
+					(record) => record.payload.kind !== 'attachment' && !quotaBlockedKeys.has(record.key)
+				);
+				const changedAttachments = changed.filter(
+					(record) => record.payload.kind === 'attachment' && !quotaBlockedKeys.has(record.key)
+				);
+				// Notes/labels/boards go before photos so one over-quota image cannot strand text.
+				const recordBudget = quotaSingleUpload ? 1 : UPLOAD_RECORD_BUDGET;
+				const attachBudget = quotaSingleUpload ? 1 : ATTACHMENT_UPLOAD_BUDGET;
+				const outgoing = nonAttachments.length
+					? nonAttachments.slice(0, recordBudget)
+					: changedAttachments.slice(0, attachBudget);
 				const sentRecordKeys = new Set(outgoing.map((record) => record.key));
 				const sentIds = new Set<string>();
 				const sentRecordIds = new Map<string, string>();
+				const sentSlots = new Map<string, string>();
 				const outbound = await Promise.all(
 					outgoing.map(async (record: SyncRecord) => {
 						const id = randomOpaqueId();
@@ -469,9 +505,11 @@ class SyncStore {
 						// Keyed, non-reversible slot token: relay can replace old ciphertext but cannot
 						// infer whether this is a note, attachment, board, or its plaintext identity.
 						const slot = await sha256(`${this.account!.syncKey}\u0000${record.key}`);
+						sentSlots.set(slot, record.key);
 						return {
 							id,
 							slot,
+							expectedId: recordIds[record.key] ?? null,
 							ciphertext: encryptSyncPayload(this.account!.syncKey, record.payload)
 						};
 					})
@@ -511,6 +549,18 @@ class SyncStore {
 					new Blob([payload]).size,
 					indicate
 				);
+				if (!response.success && response.status === 507 && outgoing.length > 0) {
+					if (outgoing.length > 1) quotaSingleUpload = true;
+					else {
+						const blockedKey = outgoing[0].key;
+						quotaBlockedKeys.add(blockedKey);
+						await markSyncOutbox([blockedKey]);
+						outboxKeys.add(blockedKey);
+						quotaSingleUpload = false;
+					}
+					hasMore = true;
+					continue;
+				}
 				if (!response.success || !response.data) return this.fail(response);
 				const remoteUsage = response.data.usage;
 				if (remoteUsage && typeof remoteUsage === 'object') {
@@ -526,20 +576,27 @@ class SyncStore {
 						this.usage = candidate as SyncUsage;
 					}
 				}
-				for (const key of deletableKeys) delete recordIds[key];
-				for (const [key, id] of sentRecordIds) recordIds[key] = id;
-				for (const key of deletableKeys) acknowledgedOutbox.add(key);
+				const writesAccepted = response.data.writesAccepted === true;
+				if (writesAccepted) {
+					stalledWrites = 0;
+					for (const key of deletableKeys) delete recordIds[key];
+					for (const [key, id] of sentRecordIds) recordIds[key] = id;
+					for (const key of deletableKeys) acknowledgedOutbox.add(key);
+				}
 				if (response.data.reset === true) {
 					// The relay was deliberately reset while this device retained a baseline.
 					// Ask the notes store to reload full attachments before its retry.
 					this.bootstrapRequested = true;
 					baseline = {};
+					recordIds = {};
 					cursor = 0;
 					continue;
 				}
 
 				const pendingNotes: Note[] = [];
 				const remoteFingerprints: Record<string, string> = {};
+				let decodedAny = false;
+				let adoptedConflictId = false;
 				const applyPayload = (record: SyncRecordPayload) => {
 					switch (record.kind) {
 						case 'attachment':
@@ -571,7 +628,11 @@ class SyncStore {
 							break;
 					}
 				};
-				const envelopes = Array.isArray(response.data.envelopes) ? response.data.envelopes : [];
+				const downloaded = Array.isArray(response.data.envelopes) ? response.data.envelopes : [];
+				const envelopes = [
+					...downloaded,
+					...(Array.isArray(response.data.conflicts) ? response.data.conflicts : [])
+				];
 				for (const envelope of envelopes) {
 					if (!envelope || typeof envelope !== 'object') {
 						poisonCount += 1;
@@ -580,6 +641,10 @@ class SyncStore {
 					const id =
 						typeof (envelope as { id?: unknown }).id === 'string'
 							? (envelope as { id: string }).id
+							: '';
+					const slot =
+						typeof (envelope as { slot?: unknown }).slot === 'string'
+							? (envelope as { slot: string }).slot
 							: '';
 					if (id && sentIds.has(id)) continue;
 					if (typeof (envelope as { ciphertext?: unknown }).ciphertext !== 'string') {
@@ -600,8 +665,14 @@ class SyncStore {
 					}
 					if (!decodedRecords) {
 						poisonCount += 1;
+						const key = slot ? sentSlots.get(slot) : undefined;
+						if (key && id) {
+							recordIds[key] = id;
+							adoptedConflictId = true;
+						}
 						continue;
 					}
+					decodedAny = true;
 					const ordered = [
 						...decodedRecords.filter((record) => record.kind === 'attachment'),
 						...decodedRecords.filter((record) => record.kind !== 'attachment')
@@ -612,6 +683,16 @@ class SyncStore {
 						recordIds[key] = id;
 						remoteFingerprints[key] = await sha256(record);
 						currentKeys.add(key);
+					}
+				}
+				if (!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) {
+					if (decodedAny || adoptedConflictId || downloaded.length > 0) {
+						stalledWrites = 0;
+					} else {
+						stalledWrites += 1;
+						if (stalledWrites >= 3) {
+							throw new Error('Could not commit encrypted writes after repeated conflicts');
+						}
 					}
 				}
 				if (pendingNotes.length) {
@@ -630,6 +711,31 @@ class SyncStore {
 				mergedNotes = withoutTombstoned(mergedNotes, mergedTombstones);
 				mergedLabels = withoutTombstoned(mergedLabels, mergedLabelTombstones);
 				mergedBoards = withoutTombstoned(mergedBoards, mergedBoardTombstones);
+				if (
+					downloadsDrained &&
+					(!startedWithDownloadsDrained || envelopes.length > 0) &&
+					applyPulled
+				) {
+					const applied = await applyPulled({
+						notes: mergedNotes,
+						labels: mergedLabels,
+						boards: mergedBoards,
+						tombstones: mergedTombstones,
+						labelTombstones: mergedLabelTombstones,
+						boardTombstones: mergedBoardTombstones
+					});
+					mergedNotes = applied.notes;
+					mergedLabels = applied.labels;
+					mergedBoards = applied.boards;
+					mergedTombstones = applied.tombstones;
+					mergedLabelTombstones = applied.labelTombstones;
+					mergedBoardTombstones = applied.boardTombstones;
+					for (const note of mergedNotes) {
+						for (const image of note.images ?? []) {
+							if (image.dataUrl?.length) attachments.set(image.id, image);
+						}
+					}
+				}
 				const appliedTombstoneMaps = {
 					notes: mergedTombstones,
 					labels: mergedLabelTombstones,
@@ -644,9 +750,9 @@ class SyncStore {
 					mergedBoardTombstones,
 					new Set([...sentRecordKeys, ...Object.keys(remoteFingerprints), ...outboxKeys])
 				);
-				const uploadedFingerprints = Object.fromEntries(
-					outgoing.map((record) => [record.key, record.fingerprint])
-				);
+				const uploadedFingerprints = writesAccepted
+					? Object.fromEntries(outgoing.map((record) => [record.key, record.fingerprint]))
+					: {};
 				const reconciled = reconcileBaseline({
 					previous: baseline,
 					uploaded: uploadedFingerprints,
@@ -663,19 +769,47 @@ class SyncStore {
 				baseline = reconciled.baseline;
 				for (const key of reconciled.ackKeys) acknowledgedOutbox.add(key);
 				if (reconciled.dirtyKeys.length) {
-					await markSyncOutbox(reconciled.dirtyKeys);
-					for (const key of reconciled.dirtyKeys) outboxKeys.add(key);
+					const generation = await markSyncOutbox(reconciled.dirtyKeys);
+					for (const key of reconciled.dirtyKeys) {
+						outboxKeys.add(key);
+						internallyMarkedOutbox.set(key, generation);
+					}
 				}
 
-				await Promise.all([
-					setSyncState(keys.cursor, cursor),
-					setSyncState(keys.baseline, baseline),
-					setSyncState(keys.recordIds, recordIds),
-					clearSyncOutbox(acknowledgedOutbox, outboxSnapshotAt),
-					setSyncState(keys.migration, true)
-				]);
+				if (downloadsDrained) {
+					const internalAcknowledgements = new Map<number, string[]>();
+					for (const key of acknowledgedOutbox) {
+						const markedAt = internallyMarkedOutbox.get(key);
+						if (markedAt == null) continue;
+						const keysAtGeneration = internalAcknowledgements.get(markedAt) ?? [];
+						keysAtGeneration.push(key);
+						internalAcknowledgements.set(markedAt, keysAtGeneration);
+					}
+					await commitSyncControl(
+						[
+							[keys.cursor, cursor],
+							[keys.baseline, baseline],
+							[keys.recordIds, recordIds],
+							[keys.migration, true]
+						],
+						[
+							{ keys: acknowledgedOutbox, through: outboxSnapshotAt },
+							...[...internalAcknowledgements].map(([markedAt, keysAtGeneration]) => ({
+								keys: keysAtGeneration,
+								through: markedAt
+							}))
+						]
+					);
+					for (const keysAtGeneration of internalAcknowledgements.values()) {
+						for (const key of keysAtGeneration) internallyMarkedOutbox.delete(key);
+					}
+				}
 
-				const remainingUploads = !pullOnly && changedAttachments.length > ATTACHMENT_UPLOAD_BUDGET;
+				const remainingUploads =
+					!pullOnly &&
+					(!startedWithDownloadsDrained ||
+						(!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) ||
+						changed.filter((record) => !quotaBlockedKeys.has(record.key)).length > outgoing.length);
 				const pendingDeletes =
 					downloadsDrained &&
 					planDeletableKeys({
@@ -696,6 +830,8 @@ class SyncStore {
 
 			if (poisonCount > 0) {
 				this.lastError = `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`;
+			} else if (quotaBlockedKeys.size > 0) {
+				this.lastError = 'Some records exceed the account storage quota';
 			} else {
 				this.lastError = null;
 			}
@@ -739,6 +875,14 @@ class SyncStore {
 			syncControlKeys(this.account.accountId).baseline
 		).catch(() => undefined);
 		return !baseline || Object.keys(baseline).length === 0;
+	}
+
+	async committedRevision(): Promise<number | null> {
+		if (!this.account) return null;
+		const cursor = await getSyncState<number>(syncControlKeys(this.account.accountId).cursor).catch(
+			() => undefined
+		);
+		return Number.isSafeInteger(cursor) && Number(cursor) >= 0 ? Number(cursor) : null;
 	}
 
 	async clearAccountControlPlane(accountId: string): Promise<void> {

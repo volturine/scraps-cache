@@ -130,6 +130,8 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 	const account = syncStore.account;
 	if (!account) return null;
 	const wakes = relayReminderWakes(notes, Date.now());
+	const revision = await syncStore.committedRevision();
+	if (revision === null) return null;
 	try {
 		const response = await fetch('/api/sync/push/wakes', {
 			method: 'PUT',
@@ -137,6 +139,7 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 			body: JSON.stringify({
 				accountId: account.accountId,
 				authSecret: account.authSecret,
+				revision,
 				wakes
 			})
 		});
@@ -147,12 +150,15 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 }
 
 export async function unregisterReminderDevice(account: SyncAccount | null): Promise<void> {
-	const registration = await waitForRegistration().catch(() => null);
-	const subscription = await registration?.pushManager.getSubscription().catch(() => null);
-	await subscription?.unsubscribe().catch(() => false);
+	if (reminderPushSupported()) {
+		const registration = await navigator.serviceWorker.getRegistration().catch(() => undefined);
+		const subscription = await registration?.pushManager.getSubscription().catch(() => null);
+		await subscription?.unsubscribe().catch(() => false);
+	}
 	if (!account) return;
+	let response: Response;
 	try {
-		await fetch('/api/sync/push/wakes', {
+		response = await fetch('/api/sync/push/wakes', {
 			method: 'DELETE',
 			headers: { 'Content-Type': 'application/json' },
 			keepalive: true,
@@ -162,7 +168,12 @@ export async function unregisterReminderDevice(account: SyncAccount | null): Pro
 				deviceId: reminderDeviceId()
 			})
 		});
-	} catch {
-		/* The local unsubscribe is authoritative for this browser. */
+	} catch (err) {
+		throw new Error('Could not reach the relay to remove this device from reminder push', {
+			cause: err
+		});
+	}
+	if (!response.ok) {
+		throw new Error(`The relay rejected this device's reminder push removal (${response.status})`);
 	}
 }

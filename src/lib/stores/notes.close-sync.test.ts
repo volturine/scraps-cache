@@ -1,4 +1,3 @@
-import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearSyncOutbox, getSyncOutboxKeys, markSyncOutbox } from '$lib/db/idb';
 import { syncStore } from './sync.svelte';
