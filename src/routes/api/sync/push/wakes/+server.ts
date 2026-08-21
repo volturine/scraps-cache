@@ -9,6 +9,7 @@ import { wakeScheduler } from '$lib/server/wakeScheduler';
 import {
 	ACCOUNT_ID_RE,
 	DEVICE_ID_RE,
+	isPublicEndpoint,
 	isPushSubscription,
 	parseReminderWakes
 } from '$lib/server/pushWakes';
@@ -59,6 +60,9 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 	const account = authenticate(body);
 	if (!account) return json({ error: 'Invalid sync account credentials' }, { status: 404 });
+	if (!(await isPublicEndpoint(body.subscription.endpoint))) {
+		return json({ error: 'The push endpoint must be a public https origin' }, { status: 400 });
+	}
 	const deviceLimit = publicApiLimiter.check(`push-device:${body.deviceId}`, {
 		capacity: 20,
 		refillWindowMs: 60_000
