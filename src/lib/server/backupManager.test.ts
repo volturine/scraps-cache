@@ -1,9 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	copyFileSync,
+	existsSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BackupManager } from './backupManager';
 import { SyncStore } from './syncStore';
+import Database from 'better-sqlite3';
 import { env } from '$env/dynamic/private';
 
 const stores: SyncStore[] = [];
@@ -76,6 +85,34 @@ describe('BackupManager', () => {
 		expect(restored.sync('account', 0, [], 10).envelopes).toEqual([
 			{ seq: 1, id: 'env-1', slot: slot('a'), ciphertext: 'opaque-payload' }
 		]);
+	});
+
+	it('keeps the VAPID private key out of backup snapshots', async () => {
+		const store = createStore();
+		store.setMeta('vapid-public-v1', 'public-key-value');
+		store.setMeta('vapid-private-v1', 'private-key-secret');
+		const backupDirectory = tempDirectory('scraps-cache-backups-');
+		const manager = new BackupManager({ directory: backupDirectory, source: store });
+		managers.push(manager);
+
+		const status = await manager.runNow();
+
+		const snapshot = new Database(status.lastFile!, { readonly: true });
+		try {
+			const meta = snapshot
+				.prepare('SELECT value FROM meta WHERE key = ?')
+				.get('vapid-public-v1') as { value: string } | undefined;
+			expect(meta?.value).toBe('public-key-value');
+			const privateRow = snapshot
+				.prepare('SELECT value FROM meta WHERE key = ?')
+				.get('vapid-private-v1') as { value: string } | undefined;
+			expect(privateRow).toBeUndefined();
+			const raw = readFileSync(status.lastFile!, 'latin1');
+			expect(raw).not.toContain('private-key-secret');
+			expect(store.getMeta('vapid-private-v1')).toBe('private-key-secret');
+		} finally {
+			snapshot.close();
+		}
 	});
 
 	it('prunes older snapshots beyond the retention count', async () => {

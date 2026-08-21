@@ -6,11 +6,12 @@ import type { DueWake } from '$lib/server/syncStore';
 const webpush = ('default' in webPushPkg ? webPushPkg.default : webPushPkg) as typeof webPushPkg;
 
 const META_PUBLIC = 'vapid-public-v1';
-const META_PRIVATE = 'vapid-private-v1';
+export const VAPID_PRIVATE_META_KEY = 'vapid-private-v1';
 
 export type WakeSendResult = 'sent' | 'gone' | 'failed';
 
 let warnedDefaultSubject = false;
+let warnedKeyRegeneration = false;
 
 function vapidSubject(): string {
 	const subject = env.SCRAPS_CACHE_VAPID_SUBJECT?.trim();
@@ -30,6 +31,20 @@ function vapidSubject(): string {
 	return 'mailto:scraps-cache@localhost';
 }
 
+function warnKeyRegeneration(registeredDevices: number): void {
+	if (warnedKeyRegeneration || registeredDevices === 0) return;
+	warnedKeyRegeneration = true;
+	console.warn(
+		JSON.stringify({
+			level: 'warn',
+			event: 'vapid_key_regenerated',
+			message:
+				'VAPID signing key was regenerated while push devices are registered; existing push subscriptions are invalidated and devices must re-register',
+			registeredDevices
+		})
+	);
+}
+
 export function getVapidKeys(): { publicKey: string; privateKey: string } {
 	const fromEnvPublic = env.SCRAPS_CACHE_VAPID_PUBLIC_KEY?.trim();
 	const fromEnvPrivate = env.SCRAPS_CACHE_VAPID_PRIVATE_KEY?.trim();
@@ -44,14 +59,15 @@ export function getVapidKeys(): { publicKey: string; privateKey: string } {
 
 	const store = getSyncStore();
 	const storedPublic = store.getMeta(META_PUBLIC);
-	const storedPrivate = store.getMeta(META_PRIVATE);
+	const storedPrivate = store.getMeta(VAPID_PRIVATE_META_KEY);
 	if (storedPublic && storedPrivate) {
 		return { publicKey: storedPublic, privateKey: storedPrivate };
 	}
 
 	const generated = webpush.generateVAPIDKeys();
 	store.setMeta(META_PUBLIC, generated.publicKey);
-	store.setMeta(META_PRIVATE, generated.privateKey);
+	store.setMeta(VAPID_PRIVATE_META_KEY, generated.privateKey);
+	warnKeyRegeneration(store.countPushDevices());
 	return generated;
 }
 

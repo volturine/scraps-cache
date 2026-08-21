@@ -154,6 +154,13 @@ Provide both VAPID key variables or neither. When omitted, Scraps Cache generate
 pair once and persists it in the sync SQLite database. Changing the pair causes
 browsers to replace their subscription the next time Scraps Cache opens.
 
+The VAPID private key is excluded from server backup snapshots. If you lose the
+live database (or the key row) without setting `SCRAPS_CACHE_VAPID_PRIVATE_KEY`,
+a new key is generated and existing push subscriptions are rejected by the Web
+Push spec — devices must re-register (the server logs a warning when this
+happens). To keep subscriptions working across restores, set both VAPID env
+variables explicitly.
+
 ### Docker Compose helpers
 
 | Variable                       |                 Default | Purpose                                                       |
