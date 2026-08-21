@@ -214,29 +214,26 @@ async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 	};
 }
 
-async function prepareImageBlobs(note: Note): Promise<Array<{ key: string; blob: Blob }>> {
-	const entries: Array<{ key: string; blob: Blob }> = [];
-	for (const image of note.images ?? []) {
-		if (!image.dataUrl) continue;
-		entries.push({ key: imageKey(note.id, image.id), blob: await dataUrlToBlob(image.dataUrl) });
-	}
-	return entries;
-}
-
 /**
  * Photo bytes land first so a crash before the note-row commit still leaves
- * blobs that boot recovery can reattach from mirrored image ids.
+ * blobs that boot recovery can reattach from mirrored image ids. Blobs are
+ * converted and written one at a time so a multi-image note never holds every
+ * converted copy in memory at once.
  */
+async function putImageBlobs(note: Note): Promise<void> {
+	const db = await getDB();
+	for (const image of note.images ?? []) {
+		if (!image.dataUrl) continue;
+		const blob = await dataUrlToBlob(image.dataUrl);
+		const bytes = new Uint8Array(await blob.arrayBuffer());
+		await db.put(IMAGES_STORE, { mime: blob.type, bytes }, imageKey(note.id, image.id));
+	}
+}
+
 async function putNoteSnapshot(note: Note, syncOutboxKeys: string[] = []): Promise<void> {
 	const db = await getDB();
-	const blobs = await prepareImageBlobs(note);
-	for (const { key, blob } of blobs) {
-		await db.put(
-			IMAGES_STORE,
-			{ mime: blob.type, bytes: new Uint8Array(await blob.arrayBuffer()) },
-			key
-		);
-	}
+	await putImageBlobs(note);
+	const previousGeneration = outboxGenerationCache;
 	const existingKeys = (await db.getAllKeys(IMAGES_STORE)).filter((key) =>
 		String(key).startsWith(`${note.id}::`)
 	);
@@ -270,6 +267,7 @@ async function putNoteSnapshot(note: Note, syncOutboxKeys: string[] = []): Promi
 			// The transaction may already have aborted after a failed request.
 		}
 		await tx.done.catch(() => undefined);
+		outboxGenerationCache = previousGeneration;
 		throw error;
 	}
 }
@@ -322,14 +320,6 @@ export function pruneOrphanImageBlobs(): Promise<void> {
 export async function hydrateNoteAttachments(note: Note): Promise<Note> {
 	const db = await getDB();
 	return hydrateNoteImages(db, note);
-}
-
-/** Legacy full-read helper for callers that explicitly need all attachment bytes now. */
-export async function getAllNotes(): Promise<Note[]> {
-	const notes = await getAllNotesMetadata();
-	const hydrated: Note[] = [];
-	for (const note of notes) hydrated.push(await hydrateNoteAttachments(note));
-	return hydrated;
 }
 
 export function putNote(note: Note, syncOutboxKeys: Iterable<string> = []): Promise<void> {
@@ -457,16 +447,24 @@ export function replaceAllDeviceData(
 		clear.objectStore(IMAGES_STORE).clear();
 		clear.objectStore(LABELS_STORE).clear();
 		await clear.done;
+		let firstError: unknown = null;
 		for (const note of notes) {
-			await putNoteSnapshot(snapshotNote(note));
-			// Release each downloaded full-resolution data URL immediately after its
-			// Blob transaction is durable; a fresh iPhone must not retain the full
-			// account while the rest of the replacement is still writing.
-			await onNoteCommitted?.(note);
+			try {
+				await putNoteSnapshot(snapshotNote(note));
+				// Release each downloaded full-resolution data URL immediately after
+				// its Blob transaction is durable; a fresh iPhone must not retain the
+				// full account while the rest of the replacement is still writing.
+				await onNoteCommitted?.(note);
+			} catch (error) {
+				// Keep writing the remaining notes so an abort on one image (quota,
+				// Safari pressure) cannot leave the device half-replaced.
+				firstError ??= error;
+			}
 		}
 		const labelWrite = db.transaction(LABELS_STORE, 'readwrite');
 		for (const label of labelSnapshots) labelWrite.store.put(label);
 		await labelWrite.done;
+		if (firstError) throw firstError;
 	});
 }
 
@@ -606,6 +604,7 @@ export async function markSyncOutbox(keys: Iterable<string>): Promise<number> {
 	if (unique.length === 0) return 0;
 	return enqueueDeviceWrite(async () => {
 		const db = await getDB();
+		const previousGeneration = outboxGenerationCache;
 		const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
 		try {
 			const generation = await nextOutboxGeneration(tx);
@@ -620,6 +619,7 @@ export async function markSyncOutbox(keys: Iterable<string>): Promise<number> {
 				// The transaction may already have aborted after a failed request.
 			}
 			await tx.done.catch(() => undefined);
+			outboxGenerationCache = previousGeneration;
 			throw error;
 		}
 	});
