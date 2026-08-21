@@ -7,6 +7,7 @@ import {
 	type SyncIdentity
 } from '$lib/syncPairing';
 import { syncControlKeys } from '$lib/syncEngine';
+import { sha256 } from '$lib/syncHash';
 import * as idb from '$lib/db/idb';
 import { SyncStore, type SyncSnapshot } from './sync.svelte';
 
@@ -581,6 +582,73 @@ describe('client sync state machine', () => {
 		expect(applied[0].notes).toEqual([]);
 		expect(store.lastError).toBe('Skipped 1 unreadable sync record');
 		expect(await idb.getSyncState(syncControlKeys(account.accountId).cursor)).toBe(1);
+	});
+
+	it('adopts an identifiable unreadable slot so the next upload replaces it', async () => {
+		const { store, account, requests } = createHarness((request, index) => {
+			if (index === 0) {
+				return {
+					success: true,
+					data: emptyData({
+						cursor: 1,
+						envelopes: [
+							{
+								seq: 1,
+								id: 'poison',
+								slot: poisonedSlot,
+								ciphertext: 'not-decryptable'
+							}
+						]
+					})
+				};
+			}
+			if (request.envelopes[0]?.expectedId === 'poison') {
+				return { success: true, data: emptyData({ cursor: 2, writesAccepted: true }) };
+			}
+			return { success: true, data: emptyData({ cursor: 1 }) };
+		});
+		const local = note('note-1', { title: 'local replacement' });
+		const poisonedSlot = await sha256(`${account.syncKey}\u0000note:note-1`);
+		await idb.markSyncOutbox(['note:note-1']);
+
+		const pull = await store.sync([local], [], {}, {}, [], {}, false, true, passthrough);
+		expect(pull.success, pull.error).toBe(true);
+		expect(store.lastError).toBe('Skipped 1 unreadable sync record');
+		expect(await idb.getSyncState(syncControlKeys(account.accountId).recordIds)).toEqual({
+			'note:note-1': 'poison'
+		});
+
+		const push = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		expect(push.success, push.error).toBe(true);
+		const upload = requests.at(-1)?.envelopes[0];
+		expect(upload?.expectedId).toBe('poison');
+		expect(decryptSyncPayload(account.syncKey, upload!.ciphertext)).toMatchObject({
+			kind: 'note',
+			value: { title: 'local replacement' }
+		});
+	});
+
+	it('does not steal the recorded id when an unrelated slot is unreadable', async () => {
+		const local = note('note-1');
+		const { store, account } = createHarness(() => ({
+			success: true,
+			data: emptyData({
+				cursor: 1,
+				envelopes: [{ seq: 1, id: 'poison', slot: 'f'.repeat(64), ciphertext: 'not-decryptable' }]
+			})
+		}));
+		await seedControl(account.accountId, {
+			cursor: 0,
+			baseline: { 'note:note-1': 'fp' },
+			recordIds: { 'note:note-1': 'tracked-id' }
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, true, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(await idb.getSyncState(syncControlKeys(account.accountId).recordIds)).toEqual({
+			'note:note-1': 'tracked-id'
+		});
 	});
 
 	it('overwrites an undecryptable slot after adopting the conflict id', async () => {

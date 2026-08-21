@@ -527,6 +527,21 @@ export class SyncStore {
 					mergedBoards,
 					tombstoneMaps
 				);
+				// Slot tokens are keyed hashes of record keys, so an unreadable envelope can
+				// still be identified locally. Adopting its id lets a later upload replace
+				// it or a delete reclaim it instead of stranding the slot on the relay;
+				// keys this device already tracks keep their existing mapping.
+				let knownSlotMap: Promise<Map<string, string>> | null = null;
+				const knownSlotKey = async (slot: string): Promise<string | undefined> => {
+					const sentKey = sentSlots.get(slot);
+					if (sentKey) return sentKey;
+					knownSlotMap ??= Promise.all(
+						[...new Set([...Object.keys(recordIds), ...currentKeys])].map(
+							async (key) => [await sha256(`${account.syncKey}\u0000${key}`), key] as const
+						)
+					).then((entries) => new Map(entries));
+					return (await knownSlotMap).get(slot);
+				};
 				const deletableKeys = planDeletableKeys({
 					recordIds,
 					notes: mergedNotes,
@@ -679,8 +694,8 @@ export class SyncStore {
 					}
 					if (!decodedRecords) {
 						poisonCount += 1;
-						const key = slot ? sentSlots.get(slot) : undefined;
-						if (key && id) {
+						const key = slot ? await knownSlotKey(slot) : undefined;
+						if (key && id && (sentSlots.has(slot) || !recordIds[key])) {
 							recordIds[key] = id;
 							adoptedConflictId = true;
 						}

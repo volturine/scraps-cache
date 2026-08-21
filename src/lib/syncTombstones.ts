@@ -7,6 +7,7 @@ const LABEL_LS = 'gkc-label-tombstones';
 const NOTE_IDB = 'gkc-idb-note-tombstones';
 const LABEL_IDB = 'gkc-idb-label-tombstones';
 const BOARD_IDB = 'gkc-idb-board-tombstones';
+const MIGRATED_IDB = 'gkc-idb-tombstones-migrated';
 const BOARDS_IDB = 'gkc-idb-kanban-boards';
 
 export type Tombstones = Record<string, number>;
@@ -74,20 +75,24 @@ export async function hydrateTombstones(): Promise<{
 	labels: Tombstones;
 	boards: Tombstones;
 }> {
-	const [idbNotes, idbLabels, idbBoards] = await Promise.all([
+	const [migrated, idbNotes, idbLabels, idbBoards] = await Promise.all([
+		getSyncState<unknown>(MIGRATED_IDB),
 		getSyncState<unknown>(NOTE_IDB),
 		getSyncState<unknown>(LABEL_IDB),
 		getSyncState<unknown>(BOARD_IDB)
 	]);
+	// An empty IDB map is legitimate (all tombstones cleared); only fall back to
+	// localStorage when this device never migrated in the first place.
 	noteCache = sanitize(idbNotes);
-	if (!Object.keys(noteCache).length) noteCache = readLegacy(NOTE_LS);
+	if (migrated !== true && !Object.keys(noteCache).length) noteCache = readLegacy(NOTE_LS);
 	labelCache = sanitize(idbLabels);
-	if (!Object.keys(labelCache).length) labelCache = readLegacy(LABEL_LS);
+	if (migrated !== true && !Object.keys(labelCache).length) labelCache = readLegacy(LABEL_LS);
 	boardCache = sanitize(idbBoards);
 	await Promise.all([
 		setSyncState(NOTE_IDB, noteCache),
 		setSyncState(LABEL_IDB, labelCache),
-		setSyncState(BOARD_IDB, boardCache)
+		setSyncState(BOARD_IDB, boardCache),
+		setSyncState(MIGRATED_IDB, true)
 	]);
 	if (typeof localStorage !== 'undefined') {
 		localStorage.removeItem(NOTE_LS);
