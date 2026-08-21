@@ -1,5 +1,12 @@
 // Field-level last-write-wins. Each edited field carries its own time; missing
 // fieldTimes fall back to updatedAt so older notes still merge as a whole record.
+//
+// Known trade-off: these times are unsynchronized wall clocks, so skew between
+// devices can let an older edit win a field. touchNoteFields bumps each field
+// monotonically (+1ms over its previous value), which keeps per-device edits
+// ordered and narrows but never removes that window. Accepted deliberately:
+// vector/Lamport clocks would need per-note metadata exchanged on every write
+// for a rare, self-healing-on-next-edit anomaly.
 import type { Label, Note, NoteField, NoteFieldTimes, NoteImage } from './types';
 import { stableStringify } from './syncHash';
 
