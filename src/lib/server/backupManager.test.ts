@@ -55,7 +55,13 @@ describe('BackupManager', () => {
 	it('writes a verified snapshot that restores into a fresh SyncStore', async () => {
 		const store = createStore();
 		store.createAccount('account', 'credential-hash');
-		store.sync('account', 0, [{ id: 'env-1', slot: slot('a'), ciphertext: 'opaque-payload' }], 10);
+		store.sync(
+			'account',
+			0,
+			[{ id: 'env-1', slot: slot('a'), ciphertext: 'opaque-payload' }],
+			[],
+			10
+		);
 
 		const backupDirectory = tempDirectory('scraps-cache-backups-');
 		const manager = new BackupManager({
@@ -82,7 +88,7 @@ describe('BackupManager', () => {
 		stores.push(restored);
 
 		expect(restored.getCredentialHash('account')).toBe('credential-hash');
-		expect(restored.sync('account', 0, [], 10).envelopes).toEqual([
+		expect(restored.sync('account', 0, [], [], 10).envelopes).toEqual([
 			{ seq: 1, id: 'env-1', slot: slot('a'), ciphertext: 'opaque-payload' }
 		]);
 	});

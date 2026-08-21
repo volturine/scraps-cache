@@ -21,6 +21,22 @@ describe('token bucket rate limiter', () => {
 		expect(limiter.check('c', policy).allowed).toBe(false);
 		expect(limiter.check('a', policy).allowed).toBe(false);
 	});
+
+	it('admits new keys by evicting expired entries between throttled prunes', () => {
+		let now = 0;
+		const limiter = new TokenBucketLimiter(2, () => now);
+		const policy = { capacity: 1, refillWindowMs: 1_000 };
+		expect(limiter.check('a', policy).allowed).toBe(true);
+		expect(limiter.check('b', policy).allowed).toBe(true);
+
+		now = 9 * 60_000 + 59_999;
+		expect(limiter.check('c', policy).allowed).toBe(false);
+
+		now = 10 * 60_000 + 1;
+		expect(limiter.check('d', policy).allowed).toBe(true);
+		expect(limiter.check('e', policy).allowed).toBe(true);
+		expect(limiter.check('f', policy).allowed).toBe(false);
+	});
 });
 
 describe('admin api limiter', () => {
