@@ -994,12 +994,22 @@ export class NotesStore {
 	/** Pairing merge: keep every local note and every account note. Same ids get a new local id. */
 	async mergeWithCloudManual(): Promise<boolean> {
 		if (!syncStore.isLoggedIn || !syncStore.account) return false;
+		const merged = await this.withSyncLock(() => this.mergeWithCloudLocked());
+		if (!merged) return false;
+		return this.syncWithCloudManual();
+	}
+
+	// Runs under the same web lock as automatic sync: the control-plane reset below must
+	// never interleave with another flight's baseline/cursor commits.
+	private async mergeWithCloudLocked(): Promise<boolean> {
+		const account = syncStore.account;
+		if (!syncStore.isLoggedIn || !account) return false;
 		const original = this.notes.map(cloneNote);
 		try {
 			await this.hydrateAllAttachments();
 			const leftover = await getSyncOutboxKeys().catch(() => []);
 			if (leftover.length) await clearSyncOutbox(leftover);
-			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
+			await syncStore.clearAccountControlPlane(account.accountId);
 			const pulledSnapshots: SyncSnapshot[] = [];
 			const pulled = await syncStore.sync([], [], {}, {}, [], {}, true, true, async (snapshot) => {
 				pulledSnapshots.push({
@@ -1054,8 +1064,8 @@ export class NotesStore {
 			for (const note of original) {
 				if (!kept.has(note.id)) await deleteNote(note.id);
 			}
-			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
-			return this.syncWithCloudManual();
+			await syncStore.clearAccountControlPlane(account.accountId);
+			return true;
 		} catch (err) {
 			this.recordPersistenceError('Could not merge local notes with synced notes', err);
 			return false;
