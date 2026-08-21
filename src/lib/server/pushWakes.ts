@@ -4,6 +4,7 @@ import {
 	type ReminderWakeInput
 } from '$lib/server/syncStore';
 import { isIP } from 'node:net';
+import { lookup } from 'node:dns/promises';
 
 const TWENTY_YEARS_MS = 20 * 365 * 24 * 60 * 60 * 1000;
 export const DEVICE_ID_RE = /^[A-Za-z0-9_-]{16,128}$/;
@@ -58,6 +59,26 @@ export function isHttpsEndpoint(value: string): boolean {
 			!hostname.endsWith('.localhost') &&
 			!isPrivateIp(hostname)
 		);
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Endpoint hostnames must resolve to public addresses at registration time.
+ * Literal-level checks alone cannot see DNS answers, so a name the registrant
+ * controls could otherwise target private infrastructure at send time.
+ */
+export async function isPublicEndpoint(
+	value: string,
+	resolve: typeof lookup = lookup
+): Promise<boolean> {
+	if (!isHttpsEndpoint(value)) return false;
+	const hostname = new URL(value).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+	if (isIP(hostname)) return !isPrivateIp(hostname);
+	try {
+		const addresses = await resolve(hostname, { all: true, verbatim: true });
+		return addresses.length > 0 && addresses.every(({ address }) => !isPrivateIp(address));
 	} catch {
 		return false;
 	}
