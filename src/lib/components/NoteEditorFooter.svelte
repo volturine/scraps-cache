@@ -19,6 +19,7 @@
 	import { isKeyboardField } from '$lib/appViewport';
 	import {
 		Archive,
+		ArchiveRestore,
 		Check,
 		Copy,
 		Palette,
@@ -449,6 +450,8 @@
 			>
 				{#if trashed}
 					<RotateCcw class="h-5 w-5" aria-hidden="true" />
+				{:else if archived}
+					<ArchiveRestore class="h-5 w-5" aria-hidden="true" />
 				{:else}
 					<Archive class="h-5 w-5" aria-hidden="true" />
 				{/if}

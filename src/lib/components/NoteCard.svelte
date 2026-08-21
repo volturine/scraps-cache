@@ -6,7 +6,7 @@
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Archive, RotateCcw, Trash2 } from '@lucide/svelte';
+	import { Archive, ArchiveRestore, RotateCcw, Trash2 } from '@lucide/svelte';
 
 	let {
 		note,
@@ -75,6 +75,8 @@
 		>
 			{#if note.trashed}
 				<RotateCcw class="h-6 w-6" aria-hidden="true" />
+			{:else if note.archived}
+				<ArchiveRestore class="h-6 w-6" aria-hidden="true" />
 			{:else}
 				<Archive class="h-6 w-6" aria-hidden="true" />
 			{/if}
