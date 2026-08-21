@@ -117,19 +117,23 @@ export function cloneNote(note: import('$lib/types').Note): import('$lib/types')
 		reminder: note.reminder,
 		labels: [...note.labels],
 		...(note.fieldTimes ? { fieldTimes: { ...note.fieldTimes } } : {}),
-		images: (note.images ?? []).map((image) => ({
-			id: image.id,
-			mime: image.mime,
-			dataUrl: image.dataUrl,
-			createdAt: image.createdAt,
-			...(image.name != null ? { name: image.name } : {}),
-			...(image.thumbUrl ? { thumbUrl: image.thumbUrl } : {}),
-			...(image.width != null ? { width: image.width } : {}),
-			...(image.height != null ? { height: image.height } : {}),
-			...(image.byteSize != null ? { byteSize: image.byteSize } : {}),
-			...(image.contentHash ? { contentHash: image.contentHash } : {}),
-			...(image.encodingVersion != null ? { encodingVersion: image.encodingVersion } : {})
-		})),
+		...(note.images
+			? {
+					images: note.images.map((image) => ({
+						id: image.id,
+						mime: image.mime,
+						dataUrl: image.dataUrl,
+						createdAt: image.createdAt,
+						...(image.name != null ? { name: image.name } : {}),
+						...(image.thumbUrl ? { thumbUrl: image.thumbUrl } : {}),
+						...(image.width != null ? { width: image.width } : {}),
+						...(image.height != null ? { height: image.height } : {}),
+						...(image.byteSize != null ? { byteSize: image.byteSize } : {}),
+						...(image.contentHash ? { contentHash: image.contentHash } : {}),
+						...(image.encodingVersion != null ? { encodingVersion: image.encodingVersion } : {})
+					}))
+				}
+			: {}),
 		...(note.linkPreviews?.length
 			? {
 					linkPreviews: note.linkPreviews.map((preview) => ({

@@ -76,6 +76,7 @@ export class ReminderStore {
 		this.notes = notes;
 		this.fired = pruneFiredReminders(notes, this.fired);
 		const current = new Set(relayReminderWakes(notes, Date.now()).map((wake) => wake.id));
+		this.seen = new Set([...this.seen].filter((id) => current.has(id)));
 		this.armed = new Set([...this.armed].filter((id) => current.has(id)));
 		const kept = this.alerts.filter((alert) => {
 			const note = notes.find((item) => item.id === alert.noteId);
@@ -92,17 +93,23 @@ export class ReminderStore {
 		const candidateIds = new Set(relayReminderWakes(notes, Date.now()).map((wake) => wake.id));
 		if (notificationPermission() === 'granted') this.armed = candidateIds;
 		this.sync(notes);
-		void Promise.all([publishReminderWakes(notes), registerReminderDevice()]).then(
-			([wakes, registered]) => {
+		void Promise.all([publishReminderWakes(notes), registerReminderDevice()])
+			.then(([wakes, registered]) => {
 				if (wakes && registered) {
 					this.armed = new Set(wakes.map((wake) => wake.id));
 					return;
 				}
-				this.armed = new Set();
-				for (const id of candidateIds) this.seen.delete(id);
-				this.scan();
-			}
-		);
+				this.resetArmed(candidateIds);
+			})
+			.catch(() => {
+				this.resetArmed(candidateIds);
+			});
+	}
+
+	private resetArmed(candidateIds: Set<string>): void {
+		this.armed = new Set();
+		for (const id of candidateIds) this.seen.delete(id);
+		this.scan();
 	}
 
 	dismiss(noteId: string): void {

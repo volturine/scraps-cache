@@ -126,4 +126,77 @@ describe('WakeScheduler', () => {
 		expect(await scheduler.tick()).toBe(0);
 		expect(store.claimDueWakes(200)).toHaveLength(1);
 	});
+
+	it('survives a throwing store call during a scheduled tick', async () => {
+		vi.useFakeTimers();
+		const store = createStore();
+		const claim = vi.spyOn(store, 'claimDueWakes').mockImplementation(() => {
+			throw new Error('store exploded');
+		});
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const scheduler = new WakeScheduler({
+			store: () => store,
+			send: vi.fn().mockResolvedValue('sent'),
+			now: () => 200
+		});
+		scheduler.start();
+
+		await vi.advanceTimersByTimeAsync(250);
+		expect(error).toHaveBeenCalledWith(expect.stringContaining('wake_tick_failed'));
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(claim).toHaveBeenCalledTimes(2);
+
+		error.mockRestore();
+		scheduler.stop();
+	});
+
+	it('re-arms after arming fails', async () => {
+		vi.useFakeTimers();
+		const store = createStore();
+		const claim = vi.spyOn(store, 'claimDueWakes').mockReturnValue([]);
+		vi.spyOn(store, 'nextWakeAt').mockImplementation(() => {
+			throw new Error('database is locked');
+		});
+		const scheduler = new WakeScheduler({
+			store: () => store,
+			send: vi.fn().mockResolvedValue('sent'),
+			now: () => 200
+		});
+		scheduler.start();
+
+		await vi.advanceTimersByTimeAsync(250);
+		expect(claim).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(claim).toHaveBeenCalledTimes(2);
+
+		scheduler.stop();
+	});
+
+	it('keeps a nudge that arrives while a tick is running', async () => {
+		vi.useFakeTimers();
+		const store = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice(device('device-nudge000000', 'https://push.example/nudge'));
+		store.replaceReminderWakes('account', [wake('a', 100)]);
+		const claim = vi.spyOn(store, 'claimDueWakes');
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const send = vi.fn(async () => {
+			await gate;
+			return 'sent' as const;
+		});
+		const scheduler = new WakeScheduler({ store: () => store, send, now: () => 200 });
+		scheduler.start();
+
+		await vi.advanceTimersByTimeAsync(250);
+		scheduler.nudge();
+		release();
+		await vi.advanceTimersByTimeAsync(250);
+
+		expect(send).toHaveBeenCalledOnce();
+		expect(claim).toHaveBeenCalledTimes(2);
+		scheduler.stop();
+	});
 });

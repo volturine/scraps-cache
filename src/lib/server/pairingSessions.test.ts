@@ -17,4 +17,24 @@ describe('anonymous pairing rendezvous', () => {
 		const old = s.start('tag', 'existing', key, 1);
 		expect(s.poll(old.id, 60_001)).toEqual({ state: 'expired' });
 	});
+	it('reports expired, not not-found, to the surviving peer', () => {
+		const ids = ['old', 'new'];
+		const s = new PairingSessions(() => ids.shift()!);
+		const old = s.start('tag', 'existing', key, 1);
+		const fresh = s.start('tag', 'new', key, 2);
+		expect(s.poll(old.id, 60_001)).toEqual({ state: 'expired' });
+		expect(s.poll(fresh.id, 60_002)).toEqual({ state: 'expired' });
+	});
+	it('accepts only the first grant per session', () => {
+		const ids = ['old', 'new'];
+		const s = new PairingSessions(() => ids.shift()!);
+		const old = s.start('tag', 'existing', key, 1);
+		s.start('tag', 'new', key, 2);
+		expect(s.submitGrant(old.id, grant, 4)).toEqual({ success: true });
+		expect(s.submitGrant(old.id, { ciphertext: 'second' }, 5)).toEqual({
+			success: false,
+			reason: 'already-granted'
+		});
+		expect(s.poll('new', 6)).toMatchObject({ state: 'connected', grant });
+	});
 });

@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BackupManager } from './backupManager';
 import { SyncStore } from './syncStore';
+import { env } from '$env/dynamic/private';
 
 const stores: SyncStore[] = [];
 const directories: string[] = [];
@@ -158,5 +159,35 @@ describe('BackupManager', () => {
 		});
 		expect(manager.getStatus().lastError).toBeTruthy();
 		expect(readdirSync(backupDirectory)).toEqual([]);
+	});
+
+	it('records a directory failure instead of throwing out of start', () => {
+		const blocker = join(tempDirectory('scraps-cache-backup-block-'), 'file');
+		writeFileSync(blocker, 'not a directory');
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const manager = new BackupManager({ directory: join(blocker, 'backups') });
+		managers.push(manager);
+
+		expect(() => manager.start()).not.toThrow();
+		expect(manager.getStatus().lastError).toBeTruthy();
+		error.mockRestore();
+	});
+
+	it('warns when SCRAPS_CACHE_BACKUP_RETAIN is invalid', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const previous = env.SCRAPS_CACHE_BACKUP_RETAIN;
+		env.SCRAPS_CACHE_BACKUP_RETAIN = '0';
+		try {
+			const manager = new BackupManager({
+				directory: tempDirectory('scraps-cache-backups-'),
+				source: { async backup() {} }
+			});
+			managers.push(manager);
+			expect(warn).toHaveBeenCalledWith(expect.stringContaining('backup_env_invalid'));
+		} finally {
+			if (previous === undefined) delete env.SCRAPS_CACHE_BACKUP_RETAIN;
+			else env.SCRAPS_CACHE_BACKUP_RETAIN = previous;
+			warn.mockRestore();
+		}
 	});
 });

@@ -24,6 +24,7 @@ import {
 import * as idb from '$lib/db/idb';
 import { openDB } from 'idb';
 import { loadBoardsFromDevice } from '$lib/syncTombstones';
+import * as syncTombstones from '$lib/syncTombstones';
 import { writeNotesMirror } from '$lib/noteStorage';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
@@ -241,6 +242,24 @@ describe('notes store sync apply', () => {
 			gone: expect.any(Number)
 		});
 		expect((await getAllNotesMetadata()).map(({ id }) => id)).toContain('gone');
+	});
+
+	it('keeps trashed notes in memory when the tombstone write fails', async () => {
+		const doomed = remoteNote('doomed');
+		doomed.trashed = true;
+		doomed.trashedAt = Date.now();
+		notesStore.notes = [doomed];
+		vi.spyOn(syncTombstones, 'writeTombstones').mockRejectedValueOnce(
+			new Error('tombstone write failed')
+		);
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		notesStore.emptyTrash();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		error.mockRestore();
+
+		expect(notesStore.notes.map((item) => item.id)).toEqual(['doomed']);
+		expect(notesStore.deletedNoteIds.doomed).toBeUndefined();
 	});
 
 	it('reattaches photo blobs after a crash between blob write and note commit', async () => {

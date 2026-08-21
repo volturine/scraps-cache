@@ -12,6 +12,8 @@ export type CardSwipeHandlers = {
 	wasDrag: () => boolean;
 	getOffsetX: () => number;
 	isDragging: () => boolean;
+	/** Cancels pending swipe/click timers; call on component teardown. */
+	dispose: () => void;
 };
 
 export function createCardSwipe(opts: {
@@ -30,6 +32,8 @@ export function createCardSwipe(opts: {
 	let decidedHorizontal = false;
 	let pointerId: number | null = null;
 	let justDragged = false;
+	let swipeTimer: ReturnType<typeof setTimeout> | null = null;
+	let dragResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function publish() {
 		opts.setVisual({ offsetX, dragging });
@@ -43,6 +47,7 @@ export function createCardSwipe(opts: {
 
 	function onPointerDown(e: PointerEvent) {
 		if (tracking) return;
+		justDragged = false;
 		const target = e.target as HTMLElement;
 		if (
 			target.closest('[data-checklist-toggle], [data-photo], [data-file], button, input, textarea')
@@ -98,11 +103,11 @@ export function createCardSwipe(opts: {
 			if (offsetX < 0) {
 				offsetX = -300;
 				publish();
-				setTimeout(() => opts.onSwipeLeft(), 150);
+				swipeTimer = setTimeout(() => opts.onSwipeLeft(), 150);
 			} else {
 				offsetX = 300;
 				publish();
-				setTimeout(() => opts.onSwipeRight(), 150);
+				swipeTimer = setTimeout(() => opts.onSwipeRight(), 150);
 			}
 		} else {
 			offsetX = 0;
@@ -112,7 +117,7 @@ export function createCardSwipe(opts: {
 		if (moved) {
 			e.stopPropagation();
 			justDragged = true;
-			setTimeout(() => {
+			dragResetTimer = setTimeout(() => {
 				justDragged = false;
 			}, 50);
 		}
@@ -134,7 +139,13 @@ export function createCardSwipe(opts: {
 		onPointerCancel,
 		wasDrag: () => justDragged,
 		getOffsetX: () => offsetX,
-		isDragging: () => dragging
+		isDragging: () => dragging,
+		dispose: () => {
+			if (swipeTimer !== null) clearTimeout(swipeTimer);
+			if (dragResetTimer !== null) clearTimeout(dragResetTimer);
+			swipeTimer = null;
+			dragResetTimer = null;
+		}
 	};
 }
 

@@ -221,6 +221,7 @@
 	<div class="kanban-columns -mx-4 overflow-x-auto px-4 pb-4">
 		<div class="flex min-w-max items-start gap-3">
 			{#each board.columns as column (column.id)}
+				{@const notes = columnNotes(board, column, visibleNotes)}
 				<section
 					data-kanban-column={column.id}
 					class="w-[min(19rem,calc(100vw-2rem))] shrink-0 rounded-2xl bg-black/[0.035] p-2 dark:bg-white/[0.055]"
@@ -345,10 +346,10 @@
 					{/if}
 
 					<div class="flex flex-col gap-2" aria-live="polite">
-						{#each columnNotes(board, column, visibleNotes) as note (note.id)}
+						{#each notes as note (note.id)}
 							<KanbanCard {note} sourceColumnId={column.id} onOpen={openNote} onMove={moveNote} />
 						{/each}
-						{#if columnNotes(board, column, visibleNotes).length === 0}
+						{#if notes.length === 0}
 							<div
 								class="rounded-xl border border-dashed border-black/10 px-3 py-5 text-center text-xs text-[var(--scraps-cache-text-muted)] dark:border-white/10"
 							>

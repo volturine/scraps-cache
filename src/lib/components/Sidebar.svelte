@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
-	import { flushSync } from 'svelte';
+	import { flushSync, onDestroy } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import type { Label } from '$lib/types';
@@ -87,6 +87,13 @@
 		});
 	}
 
+	onDestroy(() => {
+		if (navigationFrame !== null) cancelAnimationFrame(navigationFrame);
+		if (navigationTimer !== null) clearTimeout(navigationTimer);
+		navigationFrame = null;
+		navigationTimer = null;
+	});
+
 	function isActive(view: View, labelId: string | null = null): boolean {
 		const target = destination(view, labelId);
 		if (!target) return false;
@@ -117,6 +124,7 @@
 	}
 
 	function finishCreateLabel() {
+		if (!creatingLabel) return;
 		notesStore.createLabel(newLabelName);
 		newLabelName = '';
 		creatingLabel = false;

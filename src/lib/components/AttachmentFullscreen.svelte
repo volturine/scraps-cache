@@ -15,6 +15,7 @@
 	let sourceUrl = $state<string | null>(null);
 	let textContent = $state<string | null>(null);
 	let loading = $state(false);
+	let failed = $state(false);
 
 	const mime = $derived(attachment?.mime || 'application/octet-stream');
 	const isAudio = $derived(mime.startsWith('audio/'));
@@ -36,12 +37,14 @@
 			sourceUrl = null;
 			textContent = null;
 			loading = false;
+			failed = false;
 			return;
 		}
 
 		let current = true;
 		let url: string | null = null;
 		loading = true;
+		failed = false;
 		sourceUrl = null;
 		textContent = null;
 		void dataUrlToBlob(dataUrl)
@@ -55,7 +58,7 @@
 				}
 			})
 			.catch(() => {
-				if (current) textContent = 'Could not open this attachment.';
+				if (current) failed = true;
 			})
 			.finally(() => {
 				if (current) loading = false;
@@ -76,7 +79,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={attachment ? onKeydown : undefined} />
 
 {#if attachment}
 	<div {@attach portal}>
@@ -103,6 +106,12 @@
 				<div class="grid flex-1 place-items-center text-sm text-[var(--scraps-cache-text-muted)]">
 					Opening file…
 				</div>
+			{:else if failed}
+				<div
+					class="grid flex-1 place-items-center p-6 text-sm text-[var(--scraps-cache-text-muted)]"
+				>
+					Could not open this attachment.
+				</div>
 			{:else if isText}
 				<pre
 					class="scrollable m-0 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm leading-relaxed text-[var(--scraps-cache-text)]">{textContent ??
@@ -121,6 +130,7 @@
 					class="h-full w-full flex-1 border-0 bg-white"
 					title={attachment.name || 'Attachment'}
 					src={sourceUrl}
+					sandbox="allow-same-origin"
 				></iframe>
 			{/if}
 		</div>

@@ -409,14 +409,20 @@ export class SyncStore {
 		applyPulled?: ApplyPulled
 	): Promise<SyncResult> {
 		if (!this.account) return { success: false, error: 'Not linked' };
+		const account = this.account;
+		const syncCancelled = (): boolean => this.account !== account;
 		if (indicate) this.onSyncStart?.();
 		try {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
 			const UPLOAD_RECORD_BUDGET = 500;
 			const DOWNLOAD_LIMIT = 12;
+			const MAX_QUOTA_RETRIES = 1000;
+			const MAX_RESET_RETRIES = 3;
+			let quotaRetries = 0;
+			let resetRetries = 0;
 			const quotaBlockedKeys = new Set<string>();
 			let quotaSingleUpload = false;
-			const keys = syncControlKeys(this.account.accountId);
+			const keys = syncControlKeys(account.accountId);
 			let baseline: Record<string, string> = {};
 			try {
 				const durable = await getSyncState<unknown>(keys.baseline);
@@ -458,6 +464,7 @@ export class SyncStore {
 			let poisonCount = 0;
 			let stalledWrites = 0;
 			while (hasMore) {
+				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				const startedWithDownloadsDrained = downloadsDrained;
 				const tombstoneMaps = {
 					notes: mergedTombstones,
@@ -504,13 +511,13 @@ export class SyncStore {
 						sentRecordIds.set(record.key, id);
 						// Keyed, non-reversible slot token: relay can replace old ciphertext but cannot
 						// infer whether this is a note, attachment, board, or its plaintext identity.
-						const slot = await sha256(`${this.account!.syncKey}\u0000${record.key}`);
+						const slot = await sha256(`${account.syncKey}\u0000${record.key}`);
 						sentSlots.set(slot, record.key);
 						return {
 							id,
 							slot,
 							expectedId: recordIds[record.key] ?? null,
-							ciphertext: encryptSyncPayload(this.account!.syncKey, record.payload)
+							ciphertext: encryptSyncPayload(account.syncKey, record.payload)
 						};
 					})
 				);
@@ -532,12 +539,12 @@ export class SyncStore {
 				const deleteSlots = await Promise.all(
 					deletableKeys.map(async (key) => ({
 						id: recordIds[key],
-						slot: await sha256(`${this.account!.syncKey}\u0000${key}`)
+						slot: await sha256(`${account.syncKey}\u0000${key}`)
 					}))
 				);
 				const payload = JSON.stringify({
-					accountId: this.account.accountId,
-					authSecret: this.account.authSecret,
+					accountId: account.accountId,
+					authSecret: account.authSecret,
 					cursor,
 					limit: DOWNLOAD_LIMIT,
 					envelopes: outbound,
@@ -549,7 +556,11 @@ export class SyncStore {
 					new Blob([payload]).size,
 					indicate
 				);
+				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				if (!response.success && response.status === 507 && outgoing.length > 0) {
+					quotaRetries += 1;
+					if (quotaRetries > MAX_QUOTA_RETRIES)
+						throw new Error('Relay kept rejecting uploads for storage quota');
 					if (outgoing.length > 1) quotaSingleUpload = true;
 					else {
 						const blockedKey = outgoing[0].key;
@@ -586,6 +597,9 @@ export class SyncStore {
 				if (response.data.reset === true) {
 					// The relay was deliberately reset while this device retained a baseline.
 					// Ask the notes store to reload full attachments before its retry.
+					resetRetries += 1;
+					if (resetRetries > MAX_RESET_RETRIES)
+						throw new Error('Relay repeatedly requested a state reset');
 					this.bootstrapRequested = true;
 					baseline = {};
 					recordIds = {};
@@ -654,7 +668,7 @@ export class SyncStore {
 					let decodedRecords: SyncRecordPayload[] | null = null;
 					try {
 						const remote = decryptSyncPayload(
-							this.account.syncKey,
+							account.syncKey,
 							(envelope as { ciphertext: string }).ciphertext
 						);
 						decodedRecords = isSyncRecordPayload(remote)
@@ -736,6 +750,7 @@ export class SyncStore {
 						}
 					}
 				}
+				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				const appliedTombstoneMaps = {
 					notes: mergedTombstones,
 					labels: mergedLabelTombstones,
@@ -785,6 +800,7 @@ export class SyncStore {
 						keysAtGeneration.push(key);
 						internalAcknowledgements.set(markedAt, keysAtGeneration);
 					}
+					if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 					await commitSyncControl(
 						[
 							[keys.cursor, cursor],
@@ -828,6 +844,7 @@ export class SyncStore {
 				});
 			}
 
+			if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 			if (poisonCount > 0) {
 				this.lastError = `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`;
 			} else if (quotaBlockedKeys.size > 0) {
@@ -847,6 +864,7 @@ export class SyncStore {
 				boardTombstones: mergedBoardTombstones
 			};
 		} catch (err) {
+			if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 			return this.fail({
 				success: false,
 				error:

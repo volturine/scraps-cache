@@ -11,6 +11,23 @@ describe('readJsonBody', () => {
 		await expect(readJsonBody(request, 1_024)).resolves.toEqual({ value: 42 });
 	});
 
+	it('reassembles bodies delivered across many chunks', async () => {
+		const payload = JSON.stringify({ value: 'chunked' });
+		const encoded = new TextEncoder().encode(payload);
+		const streamed = new Request('https://example.test', {
+			method: 'POST',
+			body: new ReadableStream({
+				start(controller) {
+					for (let index = 0; index < encoded.length; index += 3)
+						controller.enqueue(encoded.subarray(index, index + 3));
+					controller.close();
+				}
+			}),
+			duplex: 'half'
+		} as RequestInit);
+		await expect(readJsonBody(streamed, 1_024)).resolves.toEqual({ value: 'chunked' });
+	});
+
 	it('rejects declared and streamed bodies above the limit', async () => {
 		const declared = new Request('https://example.test', {
 			method: 'POST',

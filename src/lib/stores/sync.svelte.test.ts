@@ -759,4 +759,52 @@ describe('client sync state machine', () => {
 			true
 		);
 	});
+
+	it('aborts cleanly when the account is logged out mid-sync', async () => {
+		const { store, account } = createHarness((_request, index) => {
+			if (index === 0) {
+				store.logout();
+				return { success: true, data: emptyData({ cursor: 1, hasMore: true }) };
+			}
+			return { success: true, data: emptyData({ cursor: 2 }) };
+		});
+		const keys = syncControlKeys(account.accountId);
+		await seedControl(account.accountId, { cursor: 0 });
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, true, passthrough);
+
+		expect(result).toEqual({ success: false, error: 'Sync was cancelled' });
+		expect(store.lastError).toBeNull();
+		expect(await idb.getSyncState(keys.cursor)).toBeUndefined();
+	});
+
+	it('stops after repeated relay reset requests instead of looping forever', async () => {
+		const local = note();
+		const { store, requests } = createHarness(() => ({
+			success: true,
+			data: emptyData({ cursor: 0, reset: true, writesAccepted: false })
+		}));
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/reset/);
+		expect(requests.length).toBeLessThanOrEqual(5);
+	});
+
+	it('caps quota retries when the relay keeps rejecting uploads with 507', async () => {
+		const notes = Array.from({ length: 1010 }, (_, index) => note(`note-${index}`));
+		const { store, requests } = createHarness((_request, index) =>
+			index === 0
+				? { success: true, data: emptyData({ cursor: 1 }) }
+				: { success: false, status: 507, error: 'Sync account storage quota exceeded' }
+		);
+
+		const result = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/quota/i);
+		expect(requests.length).toBeGreaterThan(1000);
+		expect(requests.length).toBeLessThanOrEqual(1100);
+	}, 60000);
 });

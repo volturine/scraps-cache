@@ -10,11 +10,23 @@ const META_PRIVATE = 'vapid-private-v1';
 
 export type WakeSendResult = 'sent' | 'gone' | 'failed';
 
+let warnedDefaultSubject = false;
+
 function vapidSubject(): string {
 	const subject = env.SCRAPS_CACHE_VAPID_SUBJECT?.trim();
 	if (subject && (/^mailto:/i.test(subject) || /^https:/i.test(subject))) return subject;
 	const origin = env.SCRAPS_CACHE_ORIGIN?.trim() || env.ORIGIN?.trim();
 	if (origin && /^https:/i.test(origin)) return origin.replace(/\/$/, '');
+	if (!warnedDefaultSubject) {
+		warnedDefaultSubject = true;
+		console.warn(
+			JSON.stringify({
+				level: 'warn',
+				event: 'vapid_subject_default',
+				message: 'SCRAPS_CACHE_VAPID_SUBJECT is not configured; using placeholder mailto subject'
+			})
+		);
+	}
 	return 'mailto:scraps-cache@localhost';
 }
 

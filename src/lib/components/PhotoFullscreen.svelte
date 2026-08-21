@@ -33,6 +33,17 @@
 		activeIndex = null;
 	}
 
+	$effect(() => {
+		if (activeIndex !== null) return;
+		if (controlsTimer) clearTimeout(controlsTimer);
+		controlsTimer = null;
+		controlsVisible = false;
+		return () => {
+			if (controlsTimer) clearTimeout(controlsTimer);
+			controlsTimer = null;
+		};
+	});
+
 	function move(offset: number) {
 		if (activeIndex === null || images.length < 2) return;
 		activeIndex = (activeIndex + offset + images.length) % images.length;

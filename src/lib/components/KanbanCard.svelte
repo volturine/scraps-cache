@@ -102,9 +102,10 @@
 		const layers: HTMLElement[] = [];
 		for (let current: HTMLElement | null = element; current; current = current.parentElement)
 			layers.push(current);
-		let red = 255;
-		let green = 255;
-		let blue = 255;
+		const seed = uiStore.effectiveDark ? 0 : 255;
+		let red = seed;
+		let green = seed;
+		let blue = seed;
 		for (const layer of layers.reverse()) {
 			const parts = getComputedStyle(layer)
 				.backgroundColor.match(/rgba?\(([^)]+)\)/)?.[1]
