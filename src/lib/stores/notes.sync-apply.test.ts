@@ -538,4 +538,79 @@ describe('notes store sync apply', () => {
 		expect(notesStore.notes.find((item) => item.id === 'shared')?.title).toBe('theirs');
 		expect(notesStore.notes.find((item) => item.id !== 'shared')?.title).toBe('mine');
 	});
+
+	it('runs the pairing merge through the same web lock as automatic sync without overlap or re-entry', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		let depth = 0;
+		let maxDepth = 0;
+		let active = 0;
+		let overlaps = 0;
+		const events: string[] = [];
+		let tail: Promise<unknown> = Promise.resolve();
+		const locks = {
+			request: async (_name: string, callback: () => Promise<boolean>) => {
+				const run = tail.then(async () => {
+					depth += 1;
+					active += 1;
+					maxDepth = Math.max(maxDepth, depth);
+					if (active > 1) overlaps += 1;
+					events.push('enter');
+					try {
+						return await callback();
+					} finally {
+						events.push('exit');
+						active -= 1;
+						depth -= 1;
+					}
+				});
+				tail = run.catch(() => undefined);
+				return run;
+			}
+		};
+		Object.defineProperty(navigator, 'locks', { configurable: true, value: locks });
+		let firstAutoRound: (() => void) | null = null;
+		const started = new Promise<void>((resolve) => {
+			firstAutoRound = resolve;
+		});
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(
+					path: string,
+					payload: string
+				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async () => {
+			firstAutoRound?.();
+			firstAutoRound = null;
+			return {
+				success: true,
+				data: {
+					cursor: 1,
+					envelopes: [],
+					conflicts: [],
+					hasMore: false,
+					reset: false,
+					writesAccepted: true
+				}
+			};
+		});
+		vi.spyOn(syncStore, 'clearAccountControlPlane').mockImplementation(async () => undefined);
+
+		try {
+			const auto = notesStore.flushSync(true);
+			await started;
+
+			const merged = notesStore.mergeWithCloudManual();
+			expect(await auto).toBe(true);
+			expect(await merged).toBe(true);
+		} finally {
+			Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
+		}
+
+		expect(overlaps).toBe(0);
+		expect(maxDepth).toBe(1);
+		expect(events.filter((event) => event === 'enter').length).toBeGreaterThanOrEqual(3);
+	});
 });
