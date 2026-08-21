@@ -9,10 +9,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json(await retentionManager.runNow(), {
 			headers: { 'cache-control': 'no-store' }
 		});
-	} catch (error) {
-		if (error instanceof Error && error.message === 'Account retention is not configured') {
-			return json({ error: error.message }, { status: 400 });
-		}
+	} catch {
 		return json({ error: 'Retention sweep failed' }, { status: 503 });
 	}
 };
