@@ -121,6 +121,7 @@ export class NotesStore {
 	}
 
 	// Derived collections -------------------------------------------------
+	labelsById = $derived(new Map(this.labels.map((label) => [label.id, label])));
 	activeNotes = $derived(this.notes.filter((n) => !n.archived && !n.trashed));
 	pinnedNotes = $derived(this.activeNotes.filter((n) => n.pinned));
 	unpinnedNotes = $derived(this.activeNotes.filter((n) => !n.pinned));
@@ -558,25 +559,16 @@ export class NotesStore {
 		this.markLabelsDeleted([id], deletedAt);
 	}
 
-	notesForLabel(id: string): Note[] {
-		return this.activeNotes.filter((n) => n.labels.includes(id));
-	}
-
 	// Search ---------------------------------------------------------------
 	search(query: string, pool?: Note[]): Note[] {
 		const q = query.trim().toLowerCase();
-		if (!q) return pool ?? this.activeNotes;
 		const base = pool ?? this.activeNotes;
+		if (!q) return base;
+		const labelsById = this.labelsById;
 		return base.filter((n) => {
-			const inTitle = n.title.toLowerCase().includes(q);
-			const inBody = (n.body ?? '').toLowerCase().includes(q);
-			const inLabels = n.labels.some((lid) =>
-				this.labels
-					.find((l) => l.id === lid)
-					?.name.toLowerCase()
-					.includes(q)
-			);
-			return inTitle || inBody || inLabels;
+			if (n.title.toLowerCase().includes(q)) return true;
+			if ((n.body ?? '').toLowerCase().includes(q)) return true;
+			return n.labels.some((lid) => labelsById.get(lid)?.name.toLowerCase().includes(q));
 		});
 	}
 

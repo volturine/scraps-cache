@@ -39,10 +39,14 @@
 		return Math.min(h, 320);
 	}
 
-	const columns = $derived.by(() => {
-		// Always pack into the responsive column count so a single card keeps
-		// the same width as multi-note gallery (never stretches full width).
-		const n = colCount;
+	/** Packing results survive route remounts so returning to a view skips re-packing. */
+	const packCache = new Map<string, Note[][]>();
+	const PACK_CACHE_LIMIT = 12;
+
+	function packColumns(notes: Note[], n: number): Note[][] {
+		const key = `${n}|${notes.map((note) => note.id).join(',')}`;
+		const cached = packCache.get(key);
+		if (cached) return cached;
 		const cols: Note[][] = Array.from({ length: n }, () => []);
 		const heights: number[] = Array(n).fill(0);
 		for (const note of notes) {
@@ -53,8 +57,18 @@
 			cols[minIdx].push(note);
 			heights[minIdx] += estimateHeight(note) + 10;
 		}
+		if (packCache.size >= PACK_CACHE_LIMIT) {
+			packCache.delete(packCache.keys().next().value as string);
+		}
+		packCache.set(key, cols);
 		return cols;
-	});
+	}
+
+	const columns = $derived.by(() =>
+		// Always pack into the responsive column count so a single card keeps
+		// the same width as multi-note gallery (never stretches full width).
+		packColumns(notes, colCount)
+	);
 </script>
 
 <div class="masonry-balanced {className}" style="--masonry-cols: {colCount}">

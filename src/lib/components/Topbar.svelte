@@ -155,16 +155,17 @@
 	>
 		<Search class="h-4 w-4 shrink-0 text-[var(--scraps-cache-text-muted)]" aria-hidden="true" />
 		<input
-			bind:value={uiStore.search}
+			value={uiStore.searchInput}
+			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
 			type="text"
 			placeholder="Search"
 			class="h-full min-w-0 flex-1 appearance-none bg-transparent text-sm text-[var(--scraps-cache-text)] focus:outline-none placeholder:text-[var(--scraps-cache-text-muted)]"
 		/>
-		{#if uiStore.search}
+		{#if uiStore.searchInput}
 			<button
 				type="button"
 				class="icon-btn h-6 w-6 min-h-0 shrink-0 appearance-none p-0 text-[var(--scraps-cache-text-muted)]"
-				onclick={() => (uiStore.search = '')}
+				onclick={() => uiStore.clearSearch()}
 				aria-label="Clear search"
 			>
 				<X class="h-4 w-4" aria-hidden="true" />

@@ -19,7 +19,11 @@
 	} = $props();
 
 	const PAGE_SIZE = 200;
+	/** Cards painted in the first frame of a view; the rest stream in over the next frames. */
+	const FIRST_BATCH = 24;
+	const BATCH_STEP = 40;
 	let pageIndex = $state(0);
+	let renderedCount = $state(FIRST_BATCH);
 	const pageCount = $derived(Math.max(1, Math.ceil(notes.length / PAGE_SIZE)));
 	$effect.pre(() => {
 		if (pageIndex > pageCount - 1) pageIndex = pageCount - 1;
@@ -28,14 +32,23 @@
 	const visibleNotes = $derived(
 		notes.slice(safePageIndex * PAGE_SIZE, (safePageIndex + 1) * PAGE_SIZE)
 	);
+	const shownNotes = $derived(visibleNotes.slice(0, renderedCount));
+
+	$effect(() => {
+		if (renderedCount >= visibleNotes.length) return;
+		const frame = requestAnimationFrame(() => {
+			renderedCount += BATCH_STEP;
+		});
+		return () => cancelAnimationFrame(frame);
+	});
 </script>
 
 <div class="notes-content {className}">
 	{#if uiStore.layout === 'grid'}
-		<MasonryGrid notes={visibleNotes} {onOpen} {children} />
+		<MasonryGrid notes={shownNotes} {onOpen} {children} />
 	{:else}
 		<div class="masonry masonry-list">
-			{#each visibleNotes as note (note.id)}
+			{#each shownNotes as note (note.id)}
 				<div>
 					{#if children}
 						{@render children(note)}

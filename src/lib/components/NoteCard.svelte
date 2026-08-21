@@ -32,7 +32,7 @@
 
 	const labelsForNote = $derived(
 		note.labels
-			.map((id) => notesStore.labels.find((l) => l.id === id))
+			.map((id) => notesStore.labelsById.get(id))
 			.filter((l): l is NonNullable<typeof l> => !!l)
 	);
 
@@ -68,7 +68,7 @@
 	});
 </script>
 
-<div class="relative overflow-hidden rounded-lg">
+<div class="card-stream-in relative overflow-hidden rounded-lg">
 	{#if offsetX < 0}
 		<div
 			class="absolute inset-0 flex items-center justify-end rounded-lg bg-green-500 pr-4 text-white"

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import { page } from '$app/state';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
@@ -9,6 +8,7 @@
 	import NoteEditor from '$lib/components/NoteEditor.svelte';
 	import ReminderAlert from '$lib/components/ReminderAlert.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
+	import AppViews from '$lib/components/AppViews.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { preloadVapidPublicKey } from '$lib/reminderWake';
 	import { provideEditorActions } from '$lib/editorContext';
@@ -19,7 +19,6 @@
 	import { attachAppViewport } from '$lib/appViewport';
 	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
 
-	let { children } = $props();
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
 	let editorDismissTick = $state(0);
@@ -93,11 +92,11 @@
 	});
 
 	function startNewNote() {
-		const routeLabelId = page.params.label;
 		const labels =
-			typeof routeLabelId === 'string' &&
-			notesStore.labels.some((label) => label.id === routeLabelId)
-				? [routeLabelId]
+			uiStore.view === 'label' &&
+			uiStore.activeLabelId &&
+			notesStore.labels.some((label) => label.id === uiStore.activeLabelId)
+				? [uiStore.activeLabelId]
 				: [];
 		const n = notesStore.createNote({
 			title: '',
@@ -118,6 +117,43 @@
 	// Toggle editor-open class on <html> for compositing isolation.
 	$effect(() => {
 		document.documentElement.classList.toggle('editor-open', editingId !== null);
+	});
+
+	let feedEl: HTMLElement | null = $state(null);
+
+	// Preserve each view's scroll offset across switches; display:none panes
+	// would otherwise lose it.
+	const scrollTops = new Map<string, number>();
+	let lastViewKey = viewKey(uiStore.view, uiStore.activeLabelId);
+
+	function viewKey(view: View, labelId: string | null): string {
+		return labelId ? `${view}:${labelId}` : view;
+	}
+
+	// Save before the swap: the outgoing pane is still visible here.
+	$effect.pre(() => {
+		const key = viewKey(uiStore.view, uiStore.activeLabelId);
+		if (!feedEl || key === lastViewKey) return;
+		scrollTops.set(lastViewKey, feedEl.scrollTop);
+		lastViewKey = key;
+	});
+
+	// Restore once the incoming pane is unhidden: this effect may run before
+	// AppViews' DOM update in the same flush, and writing scrollTop on a
+	// display:none element silently clamps to 0. A microtask runs after the
+	// full flush (unlike rAF, which never fires in backgrounded tabs).
+	$effect(() => {
+		const key = viewKey(uiStore.view, uiStore.activeLabelId);
+		if (!feedEl) return;
+		const target = scrollTops.get(key) ?? 0;
+		queueMicrotask(() => {
+			if (feedEl && viewKey(uiStore.view, uiStore.activeLabelId) === key) {
+				feedEl.scrollTop = target;
+				(window as any).__slog = ((window as any).__slog ?? []).concat([
+					['restore', key, target, feedEl.scrollTop]
+				]);
+			}
+		});
 	});
 
 	function closeEditor() {
@@ -182,9 +218,10 @@
 			<Topbar />
 			<div class="app-canvas relative min-h-0 min-w-0 flex-1">
 				<main
+					bind:this={feedEl}
 					class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
 				>
-					{@render children()}
+					<AppViews />
 				</main>
 				<div class="app-float" data-app-float>
 					<BottomNav />

@@ -22,7 +22,7 @@
 
 	const labelsForNote = $derived(
 		note.labels
-			.map((id) => notesStore.labels.find((label) => label.id === id))
+			.map((id) => notesStore.labelsById.get(id))
 			.filter((label): label is NonNullable<typeof label> => !!label)
 	);
 
