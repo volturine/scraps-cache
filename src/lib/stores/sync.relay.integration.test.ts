@@ -102,7 +102,7 @@ function wire(
 			};
 		} catch (error) {
 			if (error instanceof SyncQuotaExceededError) {
-				return { success: false, error: 'Sync account storage quota exceeded' };
+				return { success: false, status: 507, error: 'Sync account storage quota exceeded' };
 			}
 			throw error;
 		}
