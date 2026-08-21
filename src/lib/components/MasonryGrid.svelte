@@ -39,15 +39,16 @@
 		return Math.min(h, 320);
 	}
 
+	// Always pack into the responsive column count so a single card keeps
+	// the same width as multi-note gallery (never stretches full width).
+	// $derived memoizes this while mounted; views persist across navigation,
+	// so no cross-mount cache is needed.
 	const columns = $derived.by(() => {
-		// Always pack into the responsive column count so a single card keeps
-		// the same width as multi-note gallery (never stretches full width).
-		const n = colCount;
-		const cols: Note[][] = Array.from({ length: n }, () => []);
-		const heights: number[] = Array(n).fill(0);
+		const cols: Note[][] = Array.from({ length: colCount }, () => []);
+		const heights: number[] = Array(colCount).fill(0);
 		for (const note of notes) {
 			let minIdx = 0;
-			for (let i = 1; i < n; i++) {
+			for (let i = 1; i < colCount; i++) {
 				if (heights[i] < heights[minIdx]) minIdx = i;
 			}
 			cols[minIdx].push(note);

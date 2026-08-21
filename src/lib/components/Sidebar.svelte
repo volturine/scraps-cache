@@ -3,7 +3,6 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
-	import { flushSync, onDestroy } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import type { Label } from '$lib/types';
@@ -20,6 +19,7 @@
 		type LucideIcon
 	} from '@lucide/svelte';
 	import { portalToAppOverlay } from '$lib/appViewport';
+	import { pathForView } from '$lib/viewRoutes';
 	import { useEditorActions } from '$lib/editorContext';
 
 	const { closeNote } = useEditorActions();
@@ -33,8 +33,6 @@
 	let pendingDelete: Label | null = $state(null);
 	let newLabelInput: HTMLInputElement | null = $state(null);
 	let renameInput: HTMLInputElement | null = $state(null);
-	let navigationFrame: number | null = null;
-	let navigationTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const navItems: { view: View; label: string; icon: LucideIcon }[] = [
 		{ view: 'notes', label: 'Notes', icon: StickyNote },
@@ -44,19 +42,19 @@
 		{ view: 'trash', label: 'Trash', icon: Trash2 }
 	];
 
-	const labelCounts = $derived(
-		new Map(notesStore.labels.map((label) => [label.id, notesStore.notesForLabel(label.id).length]))
-	);
+	// One pass over active notes instead of one filter per label.
+	const labelCounts = $derived.by(() => {
+		const counts = new Map<string, number>();
+		for (const note of notesStore.activeNotes) {
+			for (const id of note.labels) counts.set(id, (counts.get(id) ?? 0) + 1);
+		}
+		return counts;
+	});
 
 	type Destination = '/' | '/kanban' | '/reminders' | '/archive' | '/trash' | `/label/${string}`;
 
 	function destination(view: View, labelId: string | null = null): Destination | null {
-		if (view === 'notes') return '/';
-		if (view === 'kanban') return '/kanban';
-		if (view === 'reminders') return '/reminders';
-		if (view === 'archive') return '/archive';
-		if (view === 'trash') return '/trash';
-		return view === 'label' && labelId ? `/label/${labelId}` : null;
+		return pathForView(view, labelId) as Destination | null;
 	}
 
 	function navigate(view: View, labelId: string | null = null) {
@@ -67,32 +65,13 @@
 		onNavigate?.();
 		if (target === page.url.pathname) return;
 
-		// The iPad trace showed that route work could run for ~300 ms before its
-		// first animation frame. Commit the selection, then begin navigation from a
-		// timer scheduled *after* the next rendering update. This is an actual paint
-		// boundary rather than merely queueing goto() beside the state change.
-		flushSync(() => {
-			uiStore.pendingPath = target;
-		});
-		if (navigationFrame !== null) cancelAnimationFrame(navigationFrame);
-		if (navigationTimer !== null) clearTimeout(navigationTimer);
-		navigationFrame = requestAnimationFrame(() => {
-			navigationFrame = null;
-			navigationTimer = setTimeout(() => {
-				navigationTimer = null;
-				void goto(resolve(target)).finally(() => {
-					if (uiStore.pendingPath === target) uiStore.pendingPath = null;
-				});
-			}, 0);
+		// Navigate immediately; pendingPath only covers the highlight until
+		// the route's own URL state catches up.
+		uiStore.pendingPath = target;
+		void goto(resolve(target)).finally(() => {
+			if (uiStore.pendingPath === target) uiStore.pendingPath = null;
 		});
 	}
-
-	onDestroy(() => {
-		if (navigationFrame !== null) cancelAnimationFrame(navigationFrame);
-		if (navigationTimer !== null) clearTimeout(navigationTimer);
-		navigationFrame = null;
-		navigationTimer = null;
-	});
 
 	function isActive(view: View, labelId: string | null = null): boolean {
 		const target = destination(view, labelId);

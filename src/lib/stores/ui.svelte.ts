@@ -35,8 +35,33 @@ export class UIStore {
 	activeLabelId = $state<string | null>(null);
 	// Ephemeral route-feedback state; never persisted across a reload.
 	pendingPath = $state<string | null>(null);
+	/** What the search input shows; updates on every keystroke. */
+	searchInput = $state('');
+	/** Committed search value; lags the input by a short debounce. */
 	search = $state('');
 	settingsOpen = $state(false);
+
+	#searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+	setSearchInput(value: string) {
+		if (this.#searchTimer !== null) {
+			clearTimeout(this.#searchTimer);
+			this.#searchTimer = null;
+		}
+		this.searchInput = value;
+		if (!value.trim()) {
+			this.search = '';
+			return;
+		}
+		this.#searchTimer = setTimeout(() => {
+			this.#searchTimer = null;
+			this.search = this.searchInput;
+		}, 120);
+	}
+
+	clearSearch() {
+		this.setSearchInput('');
+	}
 
 	constructor() {
 		if (typeof localStorage !== 'undefined') {
@@ -96,7 +121,7 @@ export class UIStore {
 	setView(view: View, labelId: string | null = null) {
 		this.view = view;
 		this.activeLabelId = labelId;
-		this.search = '';
+		this.clearSearch();
 	}
 
 	/** Restore persisted UI preferences from a full device backup. */
