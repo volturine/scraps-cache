@@ -14,7 +14,7 @@ export async function readJsonBody(request: Request, maxBytes: number): Promise<
 	const reader = request.body.getReader();
 	const decoder = new TextDecoder();
 	let bytes = 0;
-	let text = '';
+	const parts: string[] = [];
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
@@ -24,12 +24,13 @@ export async function readJsonBody(request: Request, maxBytes: number): Promise<
 				await reader.cancel();
 				throw new InvalidRequestBody('Request body is too large');
 			}
-			text += decoder.decode(value, { stream: true });
+			parts.push(decoder.decode(value, { stream: true }));
 		}
-		text += decoder.decode();
+		parts.push(decoder.decode());
 	} finally {
 		reader.releaseLock();
 	}
+	const text = parts.join('');
 
 	try {
 		return JSON.parse(text) as unknown;

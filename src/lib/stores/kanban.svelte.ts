@@ -105,6 +105,7 @@ export class KanbanStore {
 	boards = $state<KanbanBoard[]>(readBoards());
 	activeBoardId = $state<string>('');
 	boardTombstones = $state<Record<string, number>>(readTombstones());
+	private pendingDeviceWrites: Promise<void> = Promise.resolve();
 
 	constructor() {
 		if (typeof localStorage !== 'undefined') {
@@ -122,7 +123,8 @@ export class KanbanStore {
 				localStorage.setItem(BOARDS_KEY, JSON.stringify(this.boards));
 				localStorage.setItem(ACTIVE_BOARD_KEY, this.activeBoardId);
 				localStorage.setItem(BOARD_TOMBSTONES_KEY, JSON.stringify(this.boardTombstones));
-				void this.persistSyncState().catch(() => undefined);
+				const write = this.pendingDeviceWrites.then(() => this.persistSyncState());
+				this.pendingDeviceWrites = write.catch(() => undefined);
 			});
 		});
 	}
@@ -200,7 +202,8 @@ export class KanbanStore {
 			(board) => (this.boardTombstones[board.id] || 0) < board.updatedAt
 		);
 		this.boards = boards.length ? boards : [createKanbanBoard()];
-		this.activeBoardId = this.boards[0].id;
+		if (!this.boards.some((board) => board.id === this.activeBoardId))
+			this.activeBoardId = this.boards[0].id;
 	}
 
 	selectBoard(id: string): void {

@@ -18,6 +18,7 @@
 	let loading = $state(false);
 	let syncing = $state(false);
 	let copyFlash = $state(false);
+	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setInterval> | null = null;
@@ -27,7 +28,10 @@
 		if (timer) clearInterval(timer);
 		timer = null;
 	}
-	onDestroy(stopWaiting);
+	onDestroy(() => {
+		stopWaiting();
+		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
+	});
 
 	function friendlyError(raw: string | null | undefined, fallback: string): string {
 		const text = (raw || '').trim();
@@ -93,6 +97,7 @@
 		now = Date.now();
 		const active = waiting;
 		const result = await syncStore.pollDeviceLink(active);
+		if (waiting !== active) return;
 		if (result.linked) {
 			const wasExisting = active.role === 'existing';
 			stopWaiting();
@@ -225,8 +230,10 @@
 			document.body.removeChild(ta);
 		}
 		copyFlash = true;
-		setTimeout(() => {
+		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
+		copyFlashTimer = setTimeout(() => {
 			copyFlash = false;
+			copyFlashTimer = null;
 		}, 1500);
 	}
 

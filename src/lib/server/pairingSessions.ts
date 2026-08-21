@@ -53,7 +53,11 @@ export class PairingSessions {
 		id: string,
 		grant: PairingGrant,
 		now = Date.now()
-	): { success: true } | { success: false; reason: 'not-found' | 'expired' | 'unmatched' } {
+	):
+		| {
+				success: true;
+		  }
+		| { success: false; reason: 'not-found' | 'expired' | 'unmatched' | 'already-granted' } {
 		const session = this.sessions.get(id);
 		if (!session) return { success: false, reason: 'not-found' };
 		if (session.expiresAt <= now) {
@@ -62,6 +66,7 @@ export class PairingSessions {
 		}
 		if (session.role !== 'existing' || !session.peerId)
 			return { success: false, reason: 'unmatched' };
+		if (session.grant) return { success: false, reason: 'already-granted' };
 		session.grant = grant;
 		return { success: true };
 	}
@@ -74,7 +79,10 @@ export class PairingSessions {
 			return { state: 'expired' };
 		}
 		const peer = session.peerId ? this.sessions.get(session.peerId) : null;
-		if (!peer) return { state: 'waiting', expiresAt: session.expiresAt };
+		if (!peer)
+			return session.peerId
+				? { state: 'expired' }
+				: { state: 'waiting', expiresAt: session.expiresAt };
 		if (session.role === 'new' && peer.grant)
 			return {
 				state: 'connected',
@@ -87,7 +95,6 @@ export class PairingSessions {
 
 	private remove(session: Session): void {
 		this.sessions.delete(session.id);
-		if (session.peerId) this.sessions.delete(session.peerId);
 	}
 	private prune(now: number): void {
 		for (const session of [...this.sessions.values()])

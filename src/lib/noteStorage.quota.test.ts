@@ -65,7 +65,7 @@ describe('notes mirror quota fallback (#83)', () => {
 		});
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-		expect(() => writeNotesMirror([note('new', 2)])).not.toThrow();
+		expect(writeNotesMirror([note('new', 2)])).toBe(false);
 		setItem.mockRestore();
 		logged.mockRestore();
 

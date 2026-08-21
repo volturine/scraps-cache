@@ -17,6 +17,6 @@ export default defineConfig({
 		include: ['src/**/*.{test,spec}.{js,ts}'],
 		environment: 'jsdom',
 		globals: true,
-		setupFiles: ['src/tests/structuredClone.ts', 'src/tests/setup.ts']
+		setupFiles: ['src/tests/setup.ts']
 	}
 });

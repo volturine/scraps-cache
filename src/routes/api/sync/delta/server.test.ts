@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => {
 	return {
 		QuotaError,
 		getCredentialHash: vi.fn((): string | null => 'credential-hash'),
-		sync: vi.fn()
+		sync: vi.fn(),
+		limitChecks: vi.fn<(key: string) => { allowed: true }>(() => ({ allowed: true }))
 	};
 });
 
@@ -20,7 +21,7 @@ vi.mock('$lib/server/syncAuth', () => ({ sameSyncSecret: () => true }));
 vi.mock('$lib/server/rateLimit', () => ({
 	clientAddress: () => '127.0.0.1',
 	enterSyncRequest: () => vi.fn(),
-	publicApiLimiter: { check: () => ({ allowed: true }) },
+	publicApiLimiter: { check: (key: string) => mocks.limitChecks(key) },
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
 vi.mock('$lib/server/metrics', () => ({
@@ -61,6 +62,7 @@ async function post(body: unknown): Promise<Response> {
 describe('sync delta route', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.limitChecks.mockImplementation(() => ({ allowed: true }));
 		mocks.getCredentialHash.mockReturnValue('credential-hash');
 		mocks.sync.mockReturnValue({
 			cursor: 2,
@@ -138,6 +140,20 @@ describe('sync delta route', () => {
 
 		expect(response.status).toBe(404);
 		expect(await response.json()).toEqual({ error: 'Invalid sync account credentials' });
+	});
+
+	it('consumes the per-account bucket only after credentials verify', async () => {
+		mocks.getCredentialHash.mockReturnValue(null);
+		await post({ ...credentials, envelopes: [], deleteSlots: [] });
+		expect(mocks.limitChecks.mock.calls.map(([key]) => key)).toEqual(['sync-ip:127.0.0.1']);
+
+		mocks.getCredentialHash.mockReturnValue('credential-hash');
+		await post({ ...credentials, envelopes: [], deleteSlots: [] });
+		expect(mocks.limitChecks.mock.calls.map(([key]) => key)).toEqual([
+			'sync-ip:127.0.0.1',
+			'sync-ip:127.0.0.1',
+			'sync-account:account-123456789'
+		]);
 	});
 
 	it('maps an atomic relay quota rejection to HTTP 507', async () => {

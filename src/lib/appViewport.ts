@@ -281,6 +281,17 @@ export function attachAppViewport(_node: HTMLElement) {
 		document.removeEventListener('focusout', onFocusOut);
 		editorClassObserver.disconnect();
 		document.documentElement.classList.remove('keyboard-open');
+		const style = document.documentElement.style;
+		for (const name of [
+			'--app-inset-top',
+			'--app-inset-right',
+			'--app-inset-bottom',
+			'--app-inset-left',
+			'--app-visual-offset-top',
+			'--app-keyboard-top',
+			'--app-keyboard-bottom'
+		])
+			style.removeProperty(name);
 	};
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createKanbanBoard } from '$lib/kanban';
 import { loadBoardsFromDevice } from '$lib/syncTombstones';
 import { KanbanStore } from './kanban.svelte';
 
@@ -27,5 +28,27 @@ describe('kanban persist during sync', () => {
 		await store.hydrateFromDevice();
 		expect(store.boards[0]?.name).toBe('from-ls');
 		expect((await loadBoardsFromDevice(store.boardsForSync()))[0]?.name).toBe('from-ls');
+	});
+});
+
+describe('replaceWithCloud', () => {
+	it('keeps the active board when it still exists in the cloud state', () => {
+		const store = new KanbanStore();
+		const kept = createKanbanBoard('Kept');
+		const other = createKanbanBoard('Other');
+		store.replaceWithCloud([other, kept]);
+		store.selectBoard(kept.id);
+		store.replaceWithCloud([kept, { ...other, name: 'Renamed' }]);
+		expect(store.activeBoardId).toBe(kept.id);
+		expect(store.boards.map((board) => board.name)).toEqual(['Kept', 'Renamed']);
+	});
+
+	it('falls back to the first board when the active board is gone', () => {
+		const store = new KanbanStore();
+		const kept = createKanbanBoard('Kept');
+		store.replaceWithCloud([kept]);
+		store.selectBoard(kept.id);
+		store.replaceWithCloud([createKanbanBoard('Fresh')]);
+		expect(store.activeBoardId).toBe(store.boards[0].id);
 	});
 });

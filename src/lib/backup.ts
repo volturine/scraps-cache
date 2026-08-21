@@ -1,7 +1,8 @@
 import { normalizeBacklogFilter, type KanbanBoard } from '$lib/kanban';
+import { NOTE_FIELDS } from './noteMerge';
 import type { LinkPreview } from '$lib/linkPreview';
 import type { Layout, View } from '$lib/stores/ui.svelte';
-import type { Label, Note, NoteImage } from '$lib/types';
+import type { Label, Note, NoteFieldTimes, NoteImage } from '$lib/types';
 import { cloneNote } from '$lib/utils';
 
 const NOTE_COLORS = new Set<Note['color']>([
@@ -37,10 +38,6 @@ export type ScrapsCacheBackup = {
 		layout: Layout;
 		view: View;
 	};
-	sync: null | {
-		syncKey: string;
-		lastSync: number;
-	};
 	linkPreviews: LinkPreview[];
 };
 
@@ -56,6 +53,18 @@ function asTombstoneMap(value: unknown): Record<string, number> {
 		Object.entries(value).flatMap(([id, timestamp]) => {
 			const parsed = Number(timestamp);
 			return typeof id === 'string' && Number.isFinite(parsed) && parsed > 0 ? [[id, parsed]] : [];
+		})
+	);
+}
+
+function asFieldTimes(value: unknown): NoteFieldTimes {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+	return Object.fromEntries(
+		Object.entries(value).flatMap(([field, time]) => {
+			const parsed = Number(time);
+			return (NOTE_FIELDS as string[]).includes(field) && Number.isFinite(parsed) && parsed > 0
+				? [[field, parsed]]
+				: [];
 		})
 	);
 }
@@ -156,7 +165,7 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 				labels: Array.isArray(note.labels) ? note.labels.map(String) : [],
 				images,
 				...(note.fieldTimes && typeof note.fieldTimes === 'object'
-					? { fieldTimes: { ...note.fieldTimes } }
+					? { fieldTimes: asFieldTimes(note.fieldTimes) }
 					: {}),
 				linkPreviews: Array.isArray(note.linkPreviews)
 					? note.linkPreviews.flatMap((preview) => {
@@ -179,8 +188,6 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 		];
 	});
 	const uiRaw = raw.ui && typeof raw.ui === 'object' ? (raw.ui as Record<string, unknown>) : {};
-	const syncRaw =
-		raw.sync && typeof raw.sync === 'object' ? (raw.sync as Record<string, unknown>) : null;
 	return {
 		version: 4,
 		exportedAt: Number(raw.exportedAt) || Date.now(),
@@ -205,10 +212,6 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 			layout: uiRaw.layout === 'list' ? 'list' : 'grid',
 			view: VIEWS.has(uiRaw.view as View) ? (uiRaw.view as View) : 'notes'
 		},
-		sync:
-			syncRaw && typeof syncRaw.syncKey === 'string'
-				? { syncKey: syncRaw.syncKey, lastSync: Number(syncRaw.lastSync) || 0 }
-				: null,
 		linkPreviews: Array.isArray(raw.linkPreviews)
 			? raw.linkPreviews.flatMap((preview) => {
 					const normalized = normalizeLinkPreview(preview);

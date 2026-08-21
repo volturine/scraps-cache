@@ -19,6 +19,12 @@ function prefersDark(): boolean {
 
 const LS_KEY = 'gkc-ui-state';
 
+const VIEWS: readonly View[] = ['notes', 'kanban', 'reminders', 'archive', 'trash', 'label'];
+
+function isView(value: unknown): value is View {
+	return typeof value === 'string' && (VIEWS as readonly string[]).includes(value);
+}
+
 export class UIStore {
 	sidebarOpen = $state(true);
 	/** Explicit preference. `null` means follow the operating system. */
@@ -41,7 +47,7 @@ export class UIStore {
 					if (typeof parsed.sidebarOpen === 'boolean') this.sidebarOpen = parsed.sidebarOpen;
 					if (typeof parsed.dark === 'boolean' || parsed.dark === null) this.dark = parsed.dark;
 					if (parsed.layout === 'grid' || parsed.layout === 'list') this.layout = parsed.layout;
-					if (typeof parsed.view === 'string') this.view = parsed.view as View;
+					if (isView(parsed.view)) this.view = parsed.view;
 				}
 			} catch {
 				/* ignore */
@@ -103,7 +109,7 @@ export class UIStore {
 		if (typeof state.sidebarOpen === 'boolean') this.sidebarOpen = state.sidebarOpen;
 		if (typeof state.dark === 'boolean' || state.dark === null) this.dark = state.dark;
 		if (state.layout === 'grid' || state.layout === 'list') this.layout = state.layout;
-		if (typeof state.view === 'string') this.view = state.view;
+		if (isView(state.view)) this.view = state.view;
 	}
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Label, Note } from '$lib/types';
+import type { Label, Note, NoteImage } from '$lib/types';
 import { getAllLabels, getAllNotesMetadata, putNote, replaceAllDeviceData } from './idb';
 
 function note(id: string, title: string): Note {
@@ -38,5 +38,28 @@ describe('replaceAllDeviceData', () => {
 			{ id: 'cloud', title: 'downloaded cloud note' }
 		]);
 		expect(await getAllLabels()).toEqual([label('cloud-label', 'Cloud')]);
+	});
+
+	it('still writes the remaining notes and labels when one note fails mid-replacement', async () => {
+		const broken = {
+			...note('broken', 'undecodable attachment'),
+			images: [
+				{
+					id: 'img',
+					mime: 'image/png',
+					dataUrl: 'not-a-valid-url',
+					createdAt: 1
+				} as NoteImage
+			]
+		};
+		const replacement = replaceAllDeviceData(
+			[broken, note('good', 'survives')],
+			[label('kept-label', 'Kept')]
+		);
+
+		await expect(replacement).rejects.toThrow('Not a valid image URL');
+
+		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['good']);
+		expect(await getAllLabels()).toEqual([label('kept-label', 'Kept')]);
 	});
 });

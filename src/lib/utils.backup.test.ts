@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cloneNote } from './utils';
+import { stableStringify } from './syncHash';
 import type { Note } from './types';
 
 function noteWithPhoto(): Note {
@@ -50,5 +51,14 @@ describe('full backup note clone', () => {
 		expect(backup.images?.[0]?.dataUrl).toBe(source.images?.[0]?.dataUrl);
 		expect(backup.images?.[0]?.thumbUrl).toBe('data:image/jpeg;base64,thumb');
 		expect(backup.images?.[0]?.name).toBe('shot.jpg');
+	});
+
+	it('omits images when the source note has none so clones hash identically', () => {
+		const source = noteWithPhoto() as Partial<Note>;
+		delete source.images;
+		delete source.linkPreviews;
+		const cloned = cloneNote(source as Note);
+		expect('images' in cloned).toBe(false);
+		expect(stableStringify(cloned)).toBe(stableStringify(source));
 	});
 });

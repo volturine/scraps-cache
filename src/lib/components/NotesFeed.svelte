@@ -21,6 +21,9 @@
 	const PAGE_SIZE = 200;
 	let pageIndex = $state(0);
 	const pageCount = $derived(Math.max(1, Math.ceil(notes.length / PAGE_SIZE)));
+	$effect.pre(() => {
+		if (pageIndex > pageCount - 1) pageIndex = pageCount - 1;
+	});
 	const safePageIndex = $derived(Math.min(pageIndex, pageCount - 1));
 	const visibleNotes = $derived(
 		notes.slice(safePageIndex * PAGE_SIZE, (safePageIndex + 1) * PAGE_SIZE)

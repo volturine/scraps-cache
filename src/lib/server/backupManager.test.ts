@@ -1,9 +1,19 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+	copyFileSync,
+	existsSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BackupManager } from './backupManager';
 import { SyncStore } from './syncStore';
+import Database from 'better-sqlite3';
+import { env } from '$env/dynamic/private';
 
 const stores: SyncStore[] = [];
 const directories: string[] = [];
@@ -45,7 +55,13 @@ describe('BackupManager', () => {
 	it('writes a verified snapshot that restores into a fresh SyncStore', async () => {
 		const store = createStore();
 		store.createAccount('account', 'credential-hash');
-		store.sync('account', 0, [{ id: 'env-1', slot: slot('a'), ciphertext: 'opaque-payload' }], 10);
+		store.sync(
+			'account',
+			0,
+			[{ id: 'env-1', slot: slot('a'), ciphertext: 'opaque-payload' }],
+			[],
+			10
+		);
 
 		const backupDirectory = tempDirectory('scraps-cache-backups-');
 		const manager = new BackupManager({
@@ -72,9 +88,37 @@ describe('BackupManager', () => {
 		stores.push(restored);
 
 		expect(restored.getCredentialHash('account')).toBe('credential-hash');
-		expect(restored.sync('account', 0, [], 10).envelopes).toEqual([
+		expect(restored.sync('account', 0, [], [], 10).envelopes).toEqual([
 			{ seq: 1, id: 'env-1', slot: slot('a'), ciphertext: 'opaque-payload' }
 		]);
+	});
+
+	it('keeps the VAPID private key out of backup snapshots', async () => {
+		const store = createStore();
+		store.setMeta('vapid-public-v1', 'public-key-value');
+		store.setMeta('vapid-private-v1', 'private-key-secret');
+		const backupDirectory = tempDirectory('scraps-cache-backups-');
+		const manager = new BackupManager({ directory: backupDirectory, source: store });
+		managers.push(manager);
+
+		const status = await manager.runNow();
+
+		const snapshot = new Database(status.lastFile!, { readonly: true });
+		try {
+			const meta = snapshot
+				.prepare('SELECT value FROM meta WHERE key = ?')
+				.get('vapid-public-v1') as { value: string } | undefined;
+			expect(meta?.value).toBe('public-key-value');
+			const privateRow = snapshot
+				.prepare('SELECT value FROM meta WHERE key = ?')
+				.get('vapid-private-v1') as { value: string } | undefined;
+			expect(privateRow).toBeUndefined();
+			const raw = readFileSync(status.lastFile!, 'latin1');
+			expect(raw).not.toContain('private-key-secret');
+			expect(store.getMeta('vapid-private-v1')).toBe('private-key-secret');
+		} finally {
+			snapshot.close();
+		}
 	});
 
 	it('prunes older snapshots beyond the retention count', async () => {
@@ -158,5 +202,35 @@ describe('BackupManager', () => {
 		});
 		expect(manager.getStatus().lastError).toBeTruthy();
 		expect(readdirSync(backupDirectory)).toEqual([]);
+	});
+
+	it('records a directory failure instead of throwing out of start', () => {
+		const blocker = join(tempDirectory('scraps-cache-backup-block-'), 'file');
+		writeFileSync(blocker, 'not a directory');
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const manager = new BackupManager({ directory: join(blocker, 'backups') });
+		managers.push(manager);
+
+		expect(() => manager.start()).not.toThrow();
+		expect(manager.getStatus().lastError).toBeTruthy();
+		error.mockRestore();
+	});
+
+	it('warns when SCRAPS_CACHE_BACKUP_RETAIN is invalid', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const previous = env.SCRAPS_CACHE_BACKUP_RETAIN;
+		env.SCRAPS_CACHE_BACKUP_RETAIN = '0';
+		try {
+			const manager = new BackupManager({
+				directory: tempDirectory('scraps-cache-backups-'),
+				source: { async backup() {} }
+			});
+			managers.push(manager);
+			expect(warn).toHaveBeenCalledWith(expect.stringContaining('backup_env_invalid'));
+		} finally {
+			if (previous === undefined) delete env.SCRAPS_CACHE_BACKUP_RETAIN;
+			else env.SCRAPS_CACHE_BACKUP_RETAIN = previous;
+			warn.mockRestore();
+		}
 	});
 });

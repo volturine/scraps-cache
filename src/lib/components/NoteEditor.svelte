@@ -48,6 +48,7 @@
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
 	let copyFlash = $state(false);
+	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	let images = $state<NoteImage[]>([]);
 	let draftDirty = false;
 	let focusBodySignal = $state(0);
@@ -167,6 +168,7 @@
 			window.removeEventListener('resize', onViewportChange);
 			document.removeEventListener('focusin', onFocusIn);
 			if (revealTimer !== null) clearTimeout(revealTimer);
+			if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 		};
 	});
 
@@ -370,11 +372,19 @@
 			document.body.removeChild(ta);
 		}
 		copyFlash = true;
-		setTimeout(() => {
+		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
+		copyFlashTimer = setTimeout(() => {
 			copyFlash = false;
+			copyFlashTimer = null;
 		}, 1500);
 	}
 </script>
+
+<svelte:window
+	onkeydown={(e) => {
+		if (isOpen && e.key === 'Escape') void close();
+	}}
+/>
 
 {#if isOpen && note}
 	<div
@@ -384,9 +394,6 @@
 			// Backdrop click always dismisses, including while a task is focused.
 			if (editorDialog && e.target instanceof Node && editorDialog.contains(e.target)) return;
 			void close();
-		}}
-		onkeydown={(e) => {
-			if (e.key === 'Escape') void close();
 		}}
 	>
 		<div

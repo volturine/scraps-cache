@@ -318,6 +318,7 @@ export class NotesStore {
 			this.scheduleSyncPush();
 		} catch (err) {
 			this.recordPersistenceError(`Could not save note ${id}`, err);
+			this.scheduleNoteRetry(id);
 			throw err;
 		}
 	}
@@ -330,13 +331,10 @@ export class NotesStore {
 
 	/** Remove notes that have been in trash > 7 days. */
 	purgeOldTrash() {
-		const toPurge = this.notes.filter(
-			(n) => n.trashed && daysSinceTrashed(n.trashedAt) >= TRASH_PURGE_DAYS
-		);
-		if (toPurge.length === 0) return;
-		const ids = toPurge.map((note) => note.id);
-		this.notes = this.notes.filter((n) => !toPurge.find((p) => p.id === n.id));
-		this.mirrorToLS();
+		const ids = this.notes
+			.filter((n) => n.trashed && daysSinceTrashed(n.trashedAt) >= TRASH_PURGE_DAYS)
+			.map((n) => n.id);
+		if (ids.length === 0) return;
 		void this.persistDeletedNotes(ids).catch((err) =>
 			this.recordPersistenceError('Could not purge expired trash', err)
 		);
@@ -474,8 +472,7 @@ export class NotesStore {
 
 	emptyTrash(): void {
 		const ids = this.trashedNotes.map((n) => n.id);
-		this.notes = this.notes.filter((n) => !n.trashed);
-		this.mirrorToLS();
+		if (ids.length === 0) return;
 		void this.persistDeletedNotes(ids).catch((err) =>
 			this.recordPersistenceError('Could not empty trash', err)
 		);
@@ -572,7 +569,7 @@ export class NotesStore {
 		const base = pool ?? this.activeNotes;
 		return base.filter((n) => {
 			const inTitle = n.title.toLowerCase().includes(q);
-			const inBody = n.body.toLowerCase().includes(q);
+			const inBody = (n.body ?? '').toLowerCase().includes(q);
 			const inLabels = n.labels.some((lid) =>
 				this.labels
 					.find((l) => l.id === lid)
@@ -586,7 +583,7 @@ export class NotesStore {
 	// Backup ---------------------------------------------------------------
 	/**
 	 * Full app/DB backup: notes (with full-resolution attachments), labels, boards,
-	 * tombstones, UI prefs, and the optional sync account.
+	 * tombstones, and UI prefs. Never carries sync identity.
 	 */
 	async exportBackup(): Promise<ScrapsCacheBackup> {
 		const fullNotes: Note[] = [];
@@ -610,9 +607,6 @@ export class NotesStore {
 				layout: uiStore.layout,
 				view: uiStore.view
 			},
-			sync: syncStore.account
-				? { syncKey: syncStore.account.syncKey, lastSync: syncStore.lastSync }
-				: null,
 			// Kept empty for v1-v3 import compatibility; new backups never retain remote metadata.
 			linkPreviews: []
 		};
@@ -672,7 +666,6 @@ export class NotesStore {
 				kanbanStore.selectBoard(backup.activeBoardId);
 			}
 			uiStore.restoreState(backup.ui);
-			syncStore.restoreFromBackup(backup.sync);
 			this.mirrorToLS();
 			const outbox = [
 				...this.notes.flatMap((note) => [
@@ -694,6 +687,9 @@ export class NotesStore {
 			return { success: true };
 		} catch (err) {
 			this.recordPersistenceError('Could not import full backup', err);
+			// The replacement may have partially committed; reload memory from the
+			// device store so the UI matches what a restart would show.
+			await this.hardResync();
 			return { success: false, error: this.lastPersistError ?? 'Could not import full backup.' };
 		} finally {
 			this.backupImportProgress = null;
@@ -723,10 +719,14 @@ export class NotesStore {
 	private async persistDeletedNotes(ids: string[]): Promise<void> {
 		if (ids.length === 0) return;
 		const deletedAt = Date.now();
-		for (const id of ids) this.deletedNoteIds[id] = deletedAt;
+		const next = { ...this.deletedNoteIds };
+		for (const id of ids) next[id] = deletedAt;
+		await writeTombstones(next);
+		this.deletedNoteIds = next;
+		this.notes = this.notes.filter((n) => !ids.includes(n.id));
+		this.mirrorToLS();
 		this.dirty = true;
 		this.scheduleSyncPush();
-		await writeTombstones(this.deletedNoteIds);
 		await syncStore.queueOutbox(ids.map((id) => `note-tombstone:${id}`));
 		await Promise.all(ids.map((id) => deleteNote(id)));
 	}
@@ -746,7 +746,12 @@ export class NotesStore {
 	}
 
 	private mirrorToLS() {
-		writeNotesMirror(this.notes);
+		if (!writeNotesMirror(this.notes)) {
+			this.recordPersistenceError(
+				'Could not update the local notes mirror',
+				new Error('localStorage write failed')
+			);
+		}
 		writeLabelsMirror(this.labels);
 	}
 
@@ -997,12 +1002,22 @@ export class NotesStore {
 	/** Pairing merge: keep every local note and every account note. Same ids get a new local id. */
 	async mergeWithCloudManual(): Promise<boolean> {
 		if (!syncStore.isLoggedIn || !syncStore.account) return false;
+		const merged = await this.withSyncLock(() => this.mergeWithCloudLocked());
+		if (!merged) return false;
+		return this.syncWithCloudManual();
+	}
+
+	// Runs under the same web lock as automatic sync: the control-plane reset below must
+	// never interleave with another flight's baseline/cursor commits.
+	private async mergeWithCloudLocked(): Promise<boolean> {
+		const account = syncStore.account;
+		if (!syncStore.isLoggedIn || !account) return false;
 		const original = this.notes.map(cloneNote);
 		try {
 			await this.hydrateAllAttachments();
 			const leftover = await getSyncOutboxKeys().catch(() => []);
 			if (leftover.length) await clearSyncOutbox(leftover);
-			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
+			await syncStore.clearAccountControlPlane(account.accountId);
 			const pulledSnapshots: SyncSnapshot[] = [];
 			const pulled = await syncStore.sync([], [], {}, {}, [], {}, true, true, async (snapshot) => {
 				pulledSnapshots.push({
@@ -1057,8 +1072,8 @@ export class NotesStore {
 			for (const note of original) {
 				if (!kept.has(note.id)) await deleteNote(note.id);
 			}
-			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
-			return this.syncWithCloudManual();
+			await syncStore.clearAccountControlPlane(account.accountId);
+			return true;
 		} catch (err) {
 			this.recordPersistenceError('Could not merge local notes with synced notes', err);
 			return false;

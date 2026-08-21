@@ -2,6 +2,10 @@
 
 /** Decode a data URL without fetch() — large iPhone photos can fail fetch(data:) / hit clone issues. */
 export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+	if (!/^(https?:\/\/|blob:|data:)/i.test(dataUrl)) {
+		throw new Error('Not a valid image URL');
+	}
+
 	if (!dataUrl.startsWith('data:')) {
 		const res = await fetch(dataUrl);
 		return res.blob();

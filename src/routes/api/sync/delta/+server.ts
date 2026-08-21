@@ -12,7 +12,9 @@ import {
 import { env } from '$env/dynamic/private';
 import { recordSqliteError, recordSyncBatch } from '$lib/server/metrics';
 
-const MAX_ENVELOPE_BYTES = 100_000_000;
+// Clients re-encode attachments to ~4 MiB before upload (imageOptimize.ts);
+// 16 MB leaves ample headroom for base64 expansion and encoding variance.
+const MAX_ENVELOPE_BYTES = 16_000_000;
 const MAX_REQUEST_BYTES = MAX_ENVELOPE_BYTES + 1_000_000;
 const MAX_ENVELOPES_PER_REQUEST = 2_000;
 const DEFAULT_DOWNLOAD_LIMIT = 12;
@@ -86,11 +88,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		) {
 			return json({ error: 'Sync account credentials are required' }, { status: 400 });
 		}
-		const accountLimit = publicApiLimiter.check(`sync-account:${body.accountId}`, {
-			capacity: 60,
-			refillWindowMs: 60_000
-		});
-		if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
 		const cursor =
 			typeof body.cursor === 'number' && Number.isInteger(body.cursor) && body.cursor >= 0
 				? body.cursor
@@ -119,9 +116,14 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		try {
 			const store = getSyncStore();
 			const credentialHash = store.getCredentialHash(body.accountId);
-			if (!credentialHash || !sameSyncSecret(credentialHash, body.authSecret)) {
+			if (!credentialHash || !(await sameSyncSecret(credentialHash, body.authSecret))) {
 				return json({ error: 'Invalid sync account credentials' }, { status: 404 });
 			}
+			const accountLimit = publicApiLimiter.check(`sync-account:${body.accountId}`, {
+				capacity: 60,
+				refillWindowMs: 60_000
+			});
+			if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
 			return json(store.sync(body.accountId, cursor, envelopes, deleteSlots, limit));
 		} catch (error) {
 			recordSqliteError(error);

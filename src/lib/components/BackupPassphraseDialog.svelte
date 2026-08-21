@@ -18,7 +18,33 @@
 	let passphrase = $state('');
 	let confirmation = $state('');
 	let localError = $state('');
+	let dialogElement: HTMLDivElement | null = $state(null);
+	let passphraseInput: HTMLInputElement | null = $state(null);
 	const exporting = $derived(mode === 'export');
+
+	$effect(() => {
+		passphraseInput?.focus({ preventScroll: true });
+	});
+
+	function trapFocus(event: KeyboardEvent) {
+		if (event.key !== 'Tab' || !dialogElement) return;
+		const focusables = dialogElement.querySelectorAll<HTMLElement>(
+			'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+		);
+		if (focusables.length === 0) return;
+		const first = focusables[0];
+		const last = focusables[focusables.length - 1];
+		const active = document.activeElement;
+		if (event.shiftKey) {
+			if (active === first || !dialogElement.contains(active)) {
+				event.preventDefault();
+				last.focus();
+			}
+		} else if (active === last || !dialogElement.contains(active)) {
+			event.preventDefault();
+			first.focus();
+		}
+	}
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
@@ -51,9 +77,12 @@
 >
 	<div
 		class="scraps-cache-dialog w-full max-w-sm"
+		bind:this={dialogElement}
 		role="dialog"
+		tabindex="-1"
 		aria-modal="true"
 		aria-labelledby="backup-dialog-title"
+		onkeydown={trapFocus}
 	>
 		<div class="border-b border-[var(--scraps-cache-border)] px-5 py-4">
 			<p
@@ -80,6 +109,7 @@
 					type="password"
 					autocomplete={exporting ? 'new-password' : 'current-password'}
 					bind:value={passphrase}
+					bind:this={passphraseInput}
 					disabled={busy}
 					class="scraps-cache-input w-full px-3 py-2.5 text-[16px]"
 				/>

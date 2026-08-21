@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import { mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { getSyncStore } from '$lib/server/syncStore';
+import { VAPID_PRIVATE_META_KEY } from '$lib/server/webPush';
 
 export type BackupStatus = {
 	enabled: boolean;
@@ -29,6 +30,24 @@ export type BackupManagerOptions = {
 function positiveNumber(value: string | undefined, fallback: number): number {
 	const parsed = Number(value);
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const warnedEnvNames = new Set<string>();
+
+function warnInvalidEnv(name: string, value: string | undefined, fallback: number): void {
+	if (value === undefined || value.trim() === '') return;
+	const parsed = Number(value);
+	if (Number.isFinite(parsed) && parsed > 0) return;
+	if (warnedEnvNames.has(name)) return;
+	warnedEnvNames.add(name);
+	console.warn(
+		JSON.stringify({
+			level: 'warn',
+			event: 'backup_env_invalid',
+			name,
+			fallback
+		})
+	);
 }
 
 /** Remove SQLite companion files left after opening a WAL-mode snapshot. */
@@ -59,6 +78,13 @@ export class BackupManager {
 			60 *
 			60 *
 			1000;
+		if (options.intervalHours === undefined) {
+			warnInvalidEnv(
+				'SCRAPS_CACHE_BACKUP_INTERVAL_HOURS',
+				env.SCRAPS_CACHE_BACKUP_INTERVAL_HOURS,
+				24
+			);
+		}
 		this.retain = Math.max(
 			1,
 			Math.floor(
@@ -68,6 +94,9 @@ export class BackupManager {
 				)
 			)
 		);
+		if (options.retain === undefined) {
+			warnInvalidEnv('SCRAPS_CACHE_BACKUP_RETAIN', env.SCRAPS_CACHE_BACKUP_RETAIN, 2);
+		}
 		this.source = options.source ?? {
 			backup: (destination) => getSyncStore().backup(destination)
 		};
@@ -86,7 +115,18 @@ export class BackupManager {
 	start(): void {
 		if (this.started || !this.directory) return;
 		this.started = true;
-		mkdirSync(this.directory, { recursive: true });
+		try {
+			mkdirSync(this.directory, { recursive: true });
+		} catch (error) {
+			this.status.lastError = error instanceof Error ? error.message : 'Backup directory failed';
+			console.error(
+				JSON.stringify({
+					level: 'error',
+					event: 'backup_directory_failed',
+					message: this.status.lastError
+				})
+			);
+		}
 		this.schedule(Math.min(60_000, this.intervalMs));
 	}
 
@@ -118,6 +158,12 @@ export class BackupManager {
 			const verification = new Database(temporary, { fileMustExist: true });
 			try {
 				verification.pragma('journal_mode = DELETE');
+				// Keep the VAPID private key out of backup artifacts; a fresh key
+				// invalidates existing push subscriptions, so it must not be lost silently
+				// from the live store but also must not leak into snapshot files.
+				// VACUUM afterwards drops the freed pages that still hold its bytes.
+				verification.prepare('DELETE FROM meta WHERE key = ?').run(VAPID_PRIVATE_META_KEY);
+				verification.exec('VACUUM');
 				const result = verification.pragma('integrity_check', { simple: true });
 				if (result !== 'ok') throw new Error('SQLite integrity check failed');
 			} finally {

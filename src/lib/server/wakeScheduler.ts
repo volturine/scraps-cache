@@ -13,6 +13,7 @@ export class WakeScheduler {
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	private started = false;
 	private running = false;
+	private pending = false;
 	private readonly send: WakeSender;
 	private readonly store: typeof getSyncStore;
 	private readonly now: () => number;
@@ -38,6 +39,10 @@ export class WakeScheduler {
 	nudge(): void {
 		if (!this.started) {
 			this.start();
+			return;
+		}
+		if (this.running) {
+			this.pending = true;
 			return;
 		}
 		this.schedule(MIN_DELAY_MS);
@@ -79,7 +84,7 @@ export class WakeScheduler {
 						recordReminderWake('gone');
 						continue;
 					}
-					this.store().markWakeDelivered(device, now);
+					this.store().markWakeDelivered(device, this.now());
 					recordReminderWake('sent');
 					sent += 1;
 				}
@@ -87,7 +92,18 @@ export class WakeScheduler {
 			this.store().pruneStaleWakes(now);
 		} finally {
 			this.running = false;
-			if (this.started) this.arm(failed);
+			if (this.started) {
+				try {
+					this.arm(failed);
+				} catch (error) {
+					logError('wake_arm_failed', error);
+					this.schedule(FAILED_RETRY_MS);
+				}
+			}
+			if (this.pending) {
+				this.pending = false;
+				if (this.started) this.schedule(MIN_DELAY_MS);
+			}
 		}
 		return sent;
 	}
@@ -106,10 +122,22 @@ export class WakeScheduler {
 	private schedule(delay: number): void {
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = setTimeout(() => {
-			void this.tick();
+			void this.tick().catch((error) => {
+				logError('wake_tick_failed', error);
+			});
 		}, delay);
 		this.timer.unref?.();
 	}
+}
+
+function logError(event: string, error: unknown): void {
+	console.error(
+		JSON.stringify({
+			level: 'error',
+			event,
+			message: error instanceof Error ? error.message : 'Wake scheduler failure'
+		})
+	);
 }
 
 export const wakeScheduler = new WakeScheduler();

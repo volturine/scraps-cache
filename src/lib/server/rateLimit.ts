@@ -7,6 +7,9 @@ export type RateLimitPolicy = {
 
 export type RateLimitResult = { allowed: true } | { allowed: false; retryAfterSeconds: number };
 
+const STALE_AFTER_MS = 10 * 60_000;
+const PRUNE_INTERVAL_MS = 60_000;
+
 type Bucket = {
 	tokens: number;
 	updatedAt: number;
@@ -15,6 +18,7 @@ type Bucket = {
 
 export class TokenBucketLimiter {
 	private readonly buckets = new Map<string, Bucket>();
+	private lastPruneAt = Number.NEGATIVE_INFINITY;
 
 	constructor(
 		private readonly maxEntries = 20_000,
@@ -26,7 +30,7 @@ export class TokenBucketLimiter {
 		const refillPerMs = policy.capacity / policy.refillWindowMs;
 		this.pruneExpired(now);
 		const existing = this.buckets.get(key);
-		if (!existing && this.buckets.size >= this.maxEntries) {
+		if (!existing && this.buckets.size >= this.maxEntries && !this.evictExpired(now)) {
 			return { allowed: false, retryAfterSeconds: 1 };
 		}
 		const bucket = existing ?? { tokens: policy.capacity, updatedAt: now, lastSeen: now };
@@ -46,14 +50,37 @@ export class TokenBucketLimiter {
 	}
 
 	private pruneExpired(now: number): void {
-		const staleBefore = now - 10 * 60_000;
+		if (now - this.lastPruneAt < PRUNE_INTERVAL_MS) return;
+		this.lastPruneAt = now;
+		const staleBefore = now - STALE_AFTER_MS;
 		for (const [key, bucket] of this.buckets) {
 			if (bucket.lastSeen < staleBefore) this.buckets.delete(key);
 		}
 	}
+
+	/** Fallback when the table is full between throttled prunes: make room from expired entries. */
+	private evictExpired(now: number): boolean {
+		const staleBefore = now - STALE_AFTER_MS;
+		for (const [key, bucket] of this.buckets) {
+			if (bucket.lastSeen < staleBefore) {
+				this.buckets.delete(key);
+				return true;
+			}
+		}
+		return false;
+	}
 }
 
 export const publicApiLimiter = new TokenBucketLimiter();
+
+const adminApiLimiter = new TokenBucketLimiter();
+
+export function checkAdminApiLimit(getClientAddress: () => string): RateLimitResult {
+	return adminApiLimiter.check(`admin:${clientAddress(getClientAddress)}`, {
+		capacity: 30,
+		refillWindowMs: 60_000
+	});
+}
 
 export function clientAddress(getClientAddress: () => string): string {
 	try {

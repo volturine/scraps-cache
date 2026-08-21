@@ -29,7 +29,7 @@ export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		const store = getSyncStore();
 		const credentialHash = store.getCredentialHash(body.accountId);
-		if (!credentialHash || !sameSyncSecret(credentialHash, body.authSecret)) {
+		if (!credentialHash || !(await sameSyncSecret(credentialHash, body.authSecret))) {
 			return json({ error: 'Account could not be deleted' }, { status: 404 });
 		}
 		store.deleteAccount(body.accountId);

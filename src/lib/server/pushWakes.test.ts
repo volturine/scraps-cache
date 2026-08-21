@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isHttpsEndpoint, isPushSubscription, parseReminderWakes } from './pushWakes';
-import { MAX_WAKES_PER_ACCOUNT } from './syncStore';
+import { MAX_WAKES_PER_ACCOUNT, WAKE_RETAIN_MS } from './syncStore';
 
 const wakeId = (character: string) => character.repeat(43);
 
@@ -52,6 +52,17 @@ describe('blind wake request validation', () => {
 				[
 					{ id: wakeId('a'), fireAt: 100 },
 					{ id: wakeId('a'), fireAt: 200 }
+				],
+				100
+			)
+		).toBeNull();
+	});
+	it('rejects duplicates even when both copies fall outside the retained range', () => {
+		expect(
+			parseReminderWakes(
+				[
+					{ id: wakeId('a'), fireAt: 100 - WAKE_RETAIN_MS - 1 },
+					{ id: wakeId('a'), fireAt: 100 - WAKE_RETAIN_MS - 2 }
 				],
 				100
 			)

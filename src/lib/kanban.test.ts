@@ -112,8 +112,10 @@ describe('Kanban board tag mapping', () => {
 		expect(mergeKanbanBoards([remote], [board], { board: 30 })).toEqual([]);
 	});
 
-	it('drops a board once a tombstone exists, even if the board is newer', () => {
-		const local: KanbanBoard = { ...board, updatedAt: 40 };
-		expect(mergeKanbanBoards([local], [], { board: 30 })).toEqual([]);
+	it('drops a board only when its tombstone is newer than its last edit', () => {
+		const stale: KanbanBoard = { ...board, updatedAt: 20 };
+		const edited: KanbanBoard = { ...board, name: 'Edited after delete', updatedAt: 40 };
+		expect(mergeKanbanBoards([stale], [], { board: 30 })).toEqual([]);
+		expect(mergeKanbanBoards([edited], [], { board: 30 })).toEqual([edited]);
 	});
 });

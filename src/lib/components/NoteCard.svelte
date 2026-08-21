@@ -62,6 +62,10 @@
 			dragging = s.dragging;
 		}
 	});
+
+	$effect(() => {
+		return () => swipe.dispose();
+	});
 </script>
 
 <div class="relative overflow-hidden rounded-lg">

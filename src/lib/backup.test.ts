@@ -32,8 +32,7 @@ describe('backup normalization', () => {
 			exportedAt: 123,
 			activeBoardId: '',
 			tombstones: { kept: 12 },
-			ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes' },
-			sync: null
+			ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes' }
 		});
 		expect(backup?.notes).toEqual([
 			expect.objectContaining({
@@ -62,5 +61,15 @@ describe('backup normalization', () => {
 
 		(source.notes[0] as { labels: Array<string | number> }).labels.push('later');
 		expect(backup?.notes[0].labels).toEqual(['1', 'two']);
+	});
+
+	it('never retains sync identity from the backup file', () => {
+		const backup = normalizeBackup({
+			notes: [{ id: 'note' }],
+			labels: [],
+			sync: { syncKey: 'root-secret', lastSync: 42 }
+		});
+		expect(backup).not.toHaveProperty('sync');
+		expect(JSON.stringify(backup)).not.toContain('root-secret');
 	});
 });

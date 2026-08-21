@@ -105,7 +105,7 @@ describe('fast-boot note mirror', () => {
 		expect(readNotesMirror()[0]?.images?.[0]?.id).toBe('pic');
 	});
 
-	it('keeps link-preview image and icon URLs in the notes mirror', () => {
+	it('strips link-preview media from the notes mirror but keeps text fields', () => {
 		const note: Note = {
 			id: 'n1',
 			title: 'Link',
@@ -126,18 +126,22 @@ describe('fast-boot note mirror', () => {
 					url: 'https://example.com',
 					hostname: 'example.com',
 					title: 'Example',
-					image: 'https://cdn.example/og.png',
-					icon: 'https://cdn.example/icon.png'
+					description: 'A page',
+					image: 'data:image/png;base64,AAAA',
+					icon: 'data:image/png;base64,BBBB'
 				}
 			]
 		};
 		writeNotesMirror([note]);
-		expect(readNotesMirror()[0]?.linkPreviews?.[0]).toMatchObject({
-			image: 'https://cdn.example/og.png',
-			icon: 'https://cdn.example/icon.png'
+		expect(readNotesMirror()[0]?.linkPreviews?.[0]).toEqual({
+			url: 'https://example.com',
+			hostname: 'example.com',
+			title: 'Example',
+			description: 'A page'
 		});
+		expect(localStorage.getItem(NOTES_MIRROR_KEY)).not.toContain('base64');
+
 		const merged = mergeNoteLists(readNotesMirror(), [note])[0];
-		expect(merged?.linkPreviews?.[0]?.image).toBe('https://cdn.example/og.png');
-		expect(merged?.linkPreviews?.[0]?.icon).toBe('https://cdn.example/icon.png');
+		expect(merged?.linkPreviews?.[0]?.url).toBe('https://example.com');
 	});
 });

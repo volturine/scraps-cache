@@ -32,6 +32,7 @@ describe('operator snapshot', () => {
 				lastSuccessAt: 10,
 				lastDeletedAccounts: 0,
 				deletedAccountsTotal: 0,
+				lastPurgedSlots: 0,
 				failures: 0,
 				lastError: null
 			},
@@ -82,6 +83,7 @@ describe('operator snapshot', () => {
 				lastSuccessAt: 0,
 				lastDeletedAccounts: 0,
 				deletedAccountsTotal: 0,
+				lastPurgedSlots: 0,
 				failures: 0,
 				lastError: null
 			},

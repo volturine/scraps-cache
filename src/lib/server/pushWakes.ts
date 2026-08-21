@@ -112,6 +112,7 @@ export function isPushSubscription(value: unknown): value is PushSubscriptionBod
 
 export function parseReminderWakes(value: unknown, now: number): ReminderWakeInput[] | null {
 	if (!Array.isArray(value) || value.length > MAX_WAKES_PER_ACCOUNT) return null;
+	const seen = new Set<string>();
 	const wakes = new Map<string, ReminderWakeInput>();
 	for (const item of value) {
 		if (!item || typeof item !== 'object') return null;
@@ -124,8 +125,9 @@ export function parseReminderWakes(value: unknown, now: number): ReminderWakeInp
 		) {
 			return null;
 		}
+		if (seen.has(wake.id)) return null;
+		seen.add(wake.id);
 		if (wake.fireAt <= now - WAKE_RETAIN_MS || wake.fireAt > now + TWENTY_YEARS_MS) continue;
-		if (wakes.has(wake.id)) return null;
 		wakes.set(wake.id, { id: wake.id, fireAt: wake.fireAt });
 	}
 	return [...wakes.values()].sort(

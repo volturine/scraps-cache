@@ -26,7 +26,7 @@
 	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
 	const links = $derived(extractHttpUrls(note.body ?? ''));
 	let contentElement: HTMLDivElement;
-	let focusedImageIndex = $state<number | null>(null);
+	let focusedImageId = $state<string | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
 
 	$effect(() => {
@@ -50,10 +50,10 @@
 		return () => observer.disconnect();
 	});
 
-	async function focusImage(index: number, event: MouseEvent) {
+	async function focusImage(id: string, event: MouseEvent) {
 		event.stopPropagation();
 		await notesStore.ensureNoteAttachments(note.id);
-		focusedImageIndex = index;
+		focusedImageId = id;
 	}
 
 	function openFile(event: MouseEvent, id: string) {
@@ -121,12 +121,12 @@
 
 {#if photos.length > 0 || pendingPhotos.length > 0}
 	<div class="mt-2 flex flex-wrap gap-1.5">
-		{#each photos as img, index (img.id)}
+		{#each photos as img (img.id)}
 			<button
 				type="button"
 				class="block max-w-full touch-manipulation overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
 				data-photo
-				onclick={(event) => focusImage(index, event)}
+				onclick={(event) => focusImage(img.id, event)}
 				aria-label={`Open ${img.name ?? 'photo'}`}
 			>
 				<img
@@ -172,7 +172,19 @@
 	</div>
 {/if}
 
-<PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />
+<PhotoFullscreen
+	images={photos}
+	bind:activeIndex={
+		() => {
+			if (focusedImageId === null) return null;
+			const index = photos.findIndex((photo) => photo.id === focusedImageId);
+			return index >= 0 ? index : null;
+		},
+		(index) => {
+			focusedImageId = index === null ? null : (photos[index]?.id ?? null);
+		}
+	}
+/>
 <AttachmentFullscreen
 	attachment={focusedAttachment}
 	onClose={() => {

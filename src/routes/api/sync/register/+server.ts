@@ -29,7 +29,10 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		return json({ error: 'Invalid account credential' }, { status: 400 });
 	}
 	try {
-		const created = getSyncStore().createAccount(body.accountId, syncSecretHash(body.authSecret));
+		const created = getSyncStore().createAccount(
+			body.accountId,
+			await syncSecretHash(body.authSecret)
+		);
 		if (!created)
 			return json({ error: 'This sync account already exists on this device.' }, { status: 409 });
 		return json({ accountId: body.accountId });
