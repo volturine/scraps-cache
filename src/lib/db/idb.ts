@@ -292,6 +292,31 @@ export async function getAllNotesMetadata(): Promise<Note[]> {
 	return ((await db.getAll(NOTES_STORE)) as Note[]).map(plainNote);
 }
 
+/**
+ * Image blobs exist only while a note row references them. Writes land bytes
+ * before the row (crash safety) and metadata-only writes keep existing blobs,
+ * so unreferenced keys can accumulate; ownership is reclaimed at boot. Runs
+ * inside the device write queue so it cannot observe a half-committed write.
+ */
+export function pruneOrphanImageBlobs(): Promise<void> {
+	return enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const [keys, notes] = await Promise.all([
+			db.getAllKeys(IMAGES_STORE),
+			db.getAll(NOTES_STORE) as Promise<Note[]>
+		]);
+		const referenced = new Set<string>();
+		for (const note of notes) {
+			for (const image of note.images ?? []) referenced.add(imageKey(note.id, image.id));
+		}
+		const orphans = keys.filter((key) => !referenced.has(String(key)));
+		if (orphans.length === 0) return;
+		const tx = db.transaction(IMAGES_STORE, 'readwrite');
+		for (const key of orphans) void tx.objectStore(IMAGES_STORE).delete(key);
+		await tx.done;
+	});
+}
+
 /** Hydrate every attachment for one note. Callers schedule this with bounded concurrency. */
 export async function hydrateNoteAttachments(note: Note): Promise<Note> {
 	const db = await getDB();
