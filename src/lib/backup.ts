@@ -37,10 +37,6 @@ export type ScrapsCacheBackup = {
 		layout: Layout;
 		view: View;
 	};
-	sync: null | {
-		syncKey: string;
-		lastSync: number;
-	};
 	linkPreviews: LinkPreview[];
 };
 
@@ -179,8 +175,6 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 		];
 	});
 	const uiRaw = raw.ui && typeof raw.ui === 'object' ? (raw.ui as Record<string, unknown>) : {};
-	const syncRaw =
-		raw.sync && typeof raw.sync === 'object' ? (raw.sync as Record<string, unknown>) : null;
 	return {
 		version: 4,
 		exportedAt: Number(raw.exportedAt) || Date.now(),
@@ -205,10 +199,6 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 			layout: uiRaw.layout === 'list' ? 'list' : 'grid',
 			view: VIEWS.has(uiRaw.view as View) ? (uiRaw.view as View) : 'notes'
 		},
-		sync:
-			syncRaw && typeof syncRaw.syncKey === 'string'
-				? { syncKey: syncRaw.syncKey, lastSync: Number(syncRaw.lastSync) || 0 }
-				: null,
 		linkPreviews: Array.isArray(raw.linkPreviews)
 			? raw.linkPreviews.flatMap((preview) => {
 					const normalized = normalizeLinkPreview(preview);
