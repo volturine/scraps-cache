@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-21 · **Scope:** all 172 source files under `src/` (server, client crypto/sync, storage, stores, components, routes, config) · **Method:** per-file review by parallel auditors; High/Medium findings re-verified manually against source.
 
-> **Remediation status (2026-08-21):** H1, M1, M3, M8, M11, M12 and ~28 Low findings are **fixed** in the working tree (validated: `npm run validate` green, 336/336 tests, new regression tests added for tombstone-write failure, sync cancellation/retry caps, pairing grant lock, wake-dedup ordering). Remaining open: M2 (attachment GC grace), M4/M5 (secret-at-rest redesign), M6/M7 (IDB atomicity), M9 (manual merge locking), M10 (key storage), plus the residual Lows listed below and the test-coverage gaps.
+> **Remediation status (2026-08-21):** H1, M1, M3-adjacent, M8, M11, M12 and ~28 Low findings are **fixed** in PR #88 (validated: `npm run validate` green, 336/336 tests). Remaining open items are tracked as issues: #89 (attachment GC grace), #90 (backup syncKey), #91 (VAPID key at rest), #92 (IDB atomicity/memory), #93 (manual merge locking), #94 (localStorage keys), #95 (API hardening batch), #96 (server core batch), #97 (sync polish batch), #98 (storage polish batch), #99 (test-coverage gaps).
 
 ---
 
