@@ -116,7 +116,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		try {
 			const store = getSyncStore();
 			const credentialHash = store.getCredentialHash(body.accountId);
-			if (!credentialHash || !sameSyncSecret(credentialHash, body.authSecret)) {
+			if (!credentialHash || !(await sameSyncSecret(credentialHash, body.authSecret))) {
 				return json({ error: 'Invalid sync account credentials' }, { status: 404 });
 			}
 			const accountLimit = publicApiLimiter.check(`sync-account:${body.accountId}`, {

@@ -38,6 +38,7 @@ describe('RetentionManager', () => {
 			'account',
 			0,
 			[{ id: 'photo', slot: slot('a'), ciphertext: 'opaque' }],
+			[],
 			10
 		);
 		store.sync('account', uploaded.cursor, [], [{ id: 'photo', slot: slot('a') }], 10);
@@ -75,6 +76,7 @@ describe('RetentionManager', () => {
 			'fresh',
 			0,
 			[{ id: 'photo', slot: slot('b'), ciphertext: 'opaque' }],
+			[],
 			10
 		);
 		store.sync('fresh', uploaded.cursor, [], [{ id: 'photo', slot: slot('b') }], 10);

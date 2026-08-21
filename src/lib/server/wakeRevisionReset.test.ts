@@ -28,6 +28,7 @@ describe('wake revision across a relay sequence reset', () => {
 					slot: index.toString(16).padStart(64, '0'),
 					ciphertext: 'opaque'
 				})),
+				[],
 				10
 			);
 			expect(store.replaceReminderWakes('account', [wake('a', 1_000)], 5)).toBe(true);
@@ -42,12 +43,13 @@ describe('wake revision across a relay sequence reset', () => {
 			database.prepare('UPDATE accounts SET next_seq = 1 WHERE account_id = ?').run('account');
 
 			// The device detects the reset, rewinds to 0 and rebuilds to cursor 2.
-			const reset = store.sync('account', 5, [], 10);
+			const reset = store.sync('account', 5, [], [], 10);
 			expect(reset.reset).toBe(true);
 			const rebuilt = store.sync(
 				'account',
 				0,
 				[{ id: 'env-new', slot: 'f'.repeat(64), ciphertext: 'opaque' }],
+				[],
 				10
 			);
 			expect(rebuilt.writesAccepted).toBe(true);

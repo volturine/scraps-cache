@@ -88,6 +88,8 @@ export type ReminderWakeInput = { id: string; fireAt: number };
 
 const LEGACY_MIGRATION_KEY = 'legacy-users-json-v1';
 const USAGE_MIGRATION_KEY = 'account-usage-counters-v1';
+/** ASCII-only ciphertext keeps JS `.length` equal to SQLite `length()` for quota math. */
+const BASE64URL = /^[A-Za-z0-9_-]+$/;
 
 export class SyncQuotaExceededError extends Error {
 	constructor() {
@@ -109,7 +111,8 @@ function isLegacyEnvelope(value: unknown): value is EncryptedEnvelope {
 		Number(envelope.seq) > 0 &&
 		typeof envelope.id === 'string' &&
 		typeof envelope.slot === 'string' &&
-		typeof envelope.ciphertext === 'string'
+		typeof envelope.ciphertext === 'string' &&
+		BASE64URL.test(envelope.ciphertext)
 	);
 }
 
@@ -243,13 +246,9 @@ export class SyncStore {
 		accountId: string,
 		cursor: number,
 		uploads: OpaqueUpload[],
-		deletionsOrLimit: OpaqueDelete[] | number,
-		requestedDownloadLimit?: number
+		deletions: OpaqueDelete[],
+		downloadLimit = 12
 	): SyncResult & { usage: UsageRow & { maxBytes: number; maxEnvelopes: number } } {
-		const deletions = Array.isArray(deletionsOrLimit) ? deletionsOrLimit : [];
-		const downloadLimit = Array.isArray(deletionsOrLimit)
-			? (requestedDownloadLimit ?? 12)
-			: deletionsOrLimit;
 		return this.database.transaction(() => {
 			const account = this.database
 				.prepare(
@@ -385,6 +384,9 @@ export class SyncStore {
 
 			for (const upload of uploads) {
 				if (hasId.get(accountId, upload.id)) continue;
+				if (!BASE64URL.test(upload.ciphertext)) {
+					throw new Error('Envelope ciphertext is not base64url');
+				}
 				const prior = currentSlot.get(accountId, upload.slot) as EncryptedEnvelope | undefined;
 				const projectedCount = envelopeCount + (prior ? 0 : 1);
 				const projectedBytes =
@@ -711,8 +713,16 @@ export class SyncStore {
 			.get(now, now - WAKE_CLAIM_LEASE_MS) as { present: number } | undefined;
 		if (due) return now;
 		const row = this.database
-			.prepare('SELECT MIN(fire_at) AS fireAt FROM reminder_wakes_v2 WHERE fire_at > ?')
-			.get(now) as { fireAt: number | null } | undefined;
+			.prepare(
+				`SELECT MIN(w.fire_at) AS fireAt
+				 FROM reminder_wakes_v2 w
+				 INNER JOIN reminder_push_devices d ON d.account_id = w.account_id
+				 LEFT JOIN reminder_wake_deliveries x
+					ON x.account_id = d.account_id AND x.device_id = d.device_id AND x.wake_id = w.wake_id
+				 WHERE w.fire_at > ? AND x.delivered_at IS NULL
+					AND (x.claimed_at IS NULL OR x.claimed_at <= ?)`
+			)
+			.get(now, now - WAKE_CLAIM_LEASE_MS) as { fireAt: number | null } | undefined;
 		return row?.fireAt ?? null;
 	}
 

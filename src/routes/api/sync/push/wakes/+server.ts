@@ -28,10 +28,10 @@ function validCredentials(body: Credentials): body is { accountId: string; authS
 	);
 }
 
-function authenticate(body: Credentials): { accountId: string } | null {
+async function authenticate(body: Credentials): Promise<{ accountId: string } | null> {
 	if (!validCredentials(body)) return null;
 	const credentialHash = getSyncStore().getCredentialHash(body.accountId);
-	if (!credentialHash || !sameSyncSecret(credentialHash, body.authSecret)) return null;
+	if (!credentialHash || !(await sameSyncSecret(credentialHash, body.authSecret))) return null;
 	return { accountId: body.accountId };
 }
 
@@ -58,7 +58,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (!isPushSubscription(body.subscription)) {
 		return json({ error: 'A push subscription is required' }, { status: 400 });
 	}
-	const account = authenticate(body);
+	const account = await authenticate(body);
 	if (!account) return json({ error: 'Invalid sync account credentials' }, { status: 404 });
 	if (!(await isPublicEndpoint(body.subscription.endpoint))) {
 		return json({ error: 'The push endpoint must be a public https origin' }, { status: 400 });
@@ -94,7 +94,7 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 	} catch {
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
-	const account = authenticate(body);
+	const account = await authenticate(body);
 	if (!account) return json({ error: 'Invalid sync account credentials' }, { status: 404 });
 	const wakes = parseReminderWakes(body.wakes, Date.now());
 	if (!wakes) return json({ error: 'Invalid reminder wakes' }, { status: 400 });
@@ -129,7 +129,7 @@ export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 	if (typeof body.deviceId !== 'string' || !DEVICE_ID_RE.test(body.deviceId)) {
 		return json({ error: 'A device id is required' }, { status: 400 });
 	}
-	const account = authenticate(body);
+	const account = await authenticate(body);
 	if (!account) return json({ error: 'Invalid sync account credentials' }, { status: 404 });
 	try {
 		getSyncStore().deletePushDevice(account.accountId, body.deviceId);

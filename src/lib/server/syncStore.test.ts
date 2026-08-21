@@ -48,11 +48,11 @@ describe('SQLite sync store', () => {
 		for (const [index, upload] of uploads.entries()) {
 			upload.slot = index.toString(16).padStart(64, '0');
 		}
-		store.sync('account', 0, uploads, 600);
+		store.sync('account', 0, uploads, [], 600);
 		let cursor = 0;
 		let seen = 0;
 		for (let page = 0; page < 60; page++) {
-			const result = store.sync('account', cursor, [], 12);
+			const result = store.sync('account', cursor, [], [], 12);
 			seen += result.envelopes.length;
 			cursor = result.cursor;
 			if (!result.hasMore) break;
@@ -71,6 +71,7 @@ describe('SQLite sync store', () => {
 				{ id: 'b', slot: slot('b'), ciphertext: 'b' },
 				{ id: 'c', slot: slot('c'), ciphertext: 'c' }
 			],
+			[],
 			10
 		);
 
@@ -78,6 +79,7 @@ describe('SQLite sync store', () => {
 			'account',
 			0,
 			[{ id: 'mine', slot: slot('d'), ciphertext: 'local' }],
+			[],
 			2
 		);
 		expect(first.envelopes.map((envelope) => envelope.id)).toEqual(['a', 'b']);
@@ -85,7 +87,7 @@ describe('SQLite sync store', () => {
 		expect(first.cursor).toBe(2);
 		expect(first.writesAccepted).toBe(false);
 
-		const second = store.sync('account', first.cursor, [], 2);
+		const second = store.sync('account', first.cursor, [], [], 2);
 		expect(second.envelopes.map((envelope) => envelope.id)).toEqual(['c']);
 		expect(second.hasMore).toBe(false);
 		expect(second.cursor).toBe(3);
@@ -94,10 +96,11 @@ describe('SQLite sync store', () => {
 			'account',
 			second.cursor,
 			[{ id: 'mine', slot: slot('d'), ciphertext: 'local', expectedId: null }],
+			[],
 			2
 		);
 		expect(uploaded.writesAccepted).toBe(true);
-		expect(store.sync('account', second.cursor, [], 2).envelopes.map(({ id }) => id)).toEqual([
+		expect(store.sync('account', second.cursor, [], [], 2).envelopes.map(({ id }) => id)).toEqual([
 			'mine'
 		]);
 	});
@@ -105,15 +108,16 @@ describe('SQLite sync store', () => {
 	it('keeps only the newest ciphertext in an opaque slot', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'old', slot: slot('a'), ciphertext: 'first' }], 10);
+		store.sync('account', 0, [{ id: 'old', slot: slot('a'), ciphertext: 'first' }], [], 10);
 		store.sync(
 			'account',
 			1,
 			[{ id: 'new', slot: slot('a'), ciphertext: 'replacement', expectedId: 'old' }],
+			[],
 			10
 		);
 
-		const result = store.sync('account', 1, [], 10);
+		const result = store.sync('account', 1, [], [], 10);
 		expect(result.envelopes).toEqual([
 			{ seq: 2, id: 'new', slot: slot('a'), ciphertext: 'replacement' }
 		]);
@@ -130,11 +134,12 @@ describe('SQLite sync store', () => {
 					{ id: 'a', slot: slot('a'), ciphertext: '123' },
 					{ id: 'b', slot: slot('b'), ciphertext: '456' }
 				],
+				[],
 				10
 			)
 		).toThrow(SyncQuotaExceededError);
 
-		expect(store.sync('account', 0, [], 10)).toMatchObject({
+		expect(store.sync('account', 0, [], [], 10)).toMatchObject({
 			cursor: 0,
 			envelopes: [],
 			hasMore: false
@@ -144,7 +149,7 @@ describe('SQLite sync store', () => {
 	it('rolls back deletions together with an over-quota replacement batch', () => {
 		const { store } = createStore({ maxAccountBytes: 5 });
 		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'kept', slot: slot('a'), ciphertext: '123' }], 10);
+		store.sync('account', 0, [{ id: 'kept', slot: slot('a'), ciphertext: '123' }], [], 10);
 
 		expect(() =>
 			store.sync(
@@ -155,7 +160,7 @@ describe('SQLite sync store', () => {
 				10
 			)
 		).toThrow(SyncQuotaExceededError);
-		expect(store.sync('account', 0, [], 10)).toMatchObject({
+		expect(store.sync('account', 0, [], [], 10)).toMatchObject({
 			envelopes: [expect.objectContaining({ id: 'kept' })],
 			usage: expect.objectContaining({ envelopeCount: 1, ciphertextBytes: 3 })
 		});
@@ -168,6 +173,7 @@ describe('SQLite sync store', () => {
 			'account',
 			0,
 			[{ id: 'old', slot: slot('a'), ciphertext: 'first' }],
+			[],
 			10
 		);
 		expect(first.usage).toMatchObject({ envelopeCount: 1, ciphertextBytes: 5 });
@@ -208,6 +214,7 @@ describe('SQLite sync store', () => {
 				{ id: 'note', slot: slot('a'), ciphertext: 'cipher-note' },
 				{ id: 'photo', slot: slot('b'), ciphertext: 'cipher-photo' }
 			],
+			[],
 			10
 		);
 
@@ -224,7 +231,7 @@ describe('SQLite sync store', () => {
 		});
 
 		// A slower device rewinding behind the deletion never sees the slot again.
-		expect(store.sync('account', 0, [], 10).envelopes.map(({ id }) => id)).toEqual(['note']);
+		expect(store.sync('account', 0, [], [], 10).envelopes.map(({ id }) => id)).toEqual(['note']);
 
 		const raw = new Database(join(directory, 'sync.sqlite'));
 		try {
@@ -245,6 +252,7 @@ describe('SQLite sync store', () => {
 			'account',
 			0,
 			[{ id: 'photo', slot: slot('a'), ciphertext: 'opaque' }],
+			[],
 			10
 		);
 		store.sync('account', uploaded.cursor, [], [{ id: 'photo', slot: slot('a') }], 10);
@@ -262,19 +270,20 @@ describe('SQLite sync store', () => {
 	it('returns the current slot and rejects a stale conditional replacement', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'current', slot: slot('a'), ciphertext: 'remote' }], 10);
+		store.sync('account', 0, [{ id: 'current', slot: slot('a'), ciphertext: 'remote' }], [], 10);
 
 		const stale = store.sync(
 			'account',
 			1,
 			[{ id: 'stale', slot: slot('a'), ciphertext: 'local', expectedId: 'older' }],
+			[],
 			10
 		);
 		expect(stale).toMatchObject({
 			writesAccepted: false,
 			conflicts: [{ id: 'current', slot: slot('a'), ciphertext: 'remote', seq: 1 }]
 		});
-		expect(store.sync('account', 0, [], 10).envelopes.map(({ id }) => id)).toEqual(['current']);
+		expect(store.sync('account', 0, [], [], 10).envelopes.map(({ id }) => id)).toEqual(['current']);
 	});
 
 	it('rejects an entire mixed batch when any conditional replacement conflicts', () => {
@@ -287,6 +296,7 @@ describe('SQLite sync store', () => {
 				{ id: 'current-a', slot: slot('a'), ciphertext: 'a' },
 				{ id: 'current-b', slot: slot('b'), ciphertext: 'b' }
 			],
+			[],
 			10
 		);
 
@@ -302,7 +312,7 @@ describe('SQLite sync store', () => {
 		);
 
 		expect(rejected).toMatchObject({ writesAccepted: false, usage: { envelopeCount: 2 } });
-		expect(store.sync('account', 0, [], 10).envelopes.map(({ id }) => id)).toEqual([
+		expect(store.sync('account', 0, [], [], 10).envelopes.map(({ id }) => id)).toEqual([
 			'current-a',
 			'current-b'
 		]);
@@ -312,8 +322,8 @@ describe('SQLite sync store', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
 		const upload = { id: 'same-id', slot: slot('a'), ciphertext: 'opaque', expectedId: null };
-		const first = store.sync('account', 0, [upload], 10);
-		const retry = store.sync('account', first.cursor, [upload], 10);
+		const first = store.sync('account', 0, [upload], [], 10);
+		const retry = store.sync('account', first.cursor, [upload], [], 10);
 
 		expect(retry).toMatchObject({ cursor: 1, writesAccepted: true });
 		expect(retry.usage).toMatchObject({ envelopeCount: 1, ciphertextBytes: 6 });
@@ -322,16 +332,17 @@ describe('SQLite sync store', () => {
 	it('advances across sequence gaps left by current-state deletion', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'old', slot: slot('a'), ciphertext: 'old' }], 10);
+		store.sync('account', 0, [{ id: 'old', slot: slot('a'), ciphertext: 'old' }], [], 10);
 		store.sync(
 			'account',
 			1,
 			[{ id: 'new', slot: slot('a'), ciphertext: 'new', expectedId: 'old' }],
+			[],
 			10
 		);
 		store.sync('account', 2, [], [{ id: 'new', slot: slot('a') }], 10);
 
-		expect(store.sync('account', 1, [], 10)).toMatchObject({
+		expect(store.sync('account', 1, [], [], 10)).toMatchObject({
 			cursor: 2,
 			envelopes: [],
 			hasMore: false
@@ -346,7 +357,7 @@ describe('SQLite sync store', () => {
 			slot: index.toString(16).padStart(64, '0'),
 			ciphertext: `cipher-${index + 1}`
 		}));
-		store.sync('account', 0, remote, 20);
+		store.sync('account', 0, remote, [], 20);
 
 		const first = store.sync(
 			'account',
@@ -359,11 +370,12 @@ describe('SQLite sync store', () => {
 					expectedId: null
 				}
 			],
+			[],
 			12
 		);
 		expect(first.envelopes).toHaveLength(12);
 		expect(first.writesAccepted).toBe(false);
-		const second = store.sync('account', first.cursor, [], 12);
+		const second = store.sync('account', first.cursor, [], [], 12);
 		expect(second.envelopes.map(({ id }) => id)).toEqual(['remote-13']);
 	});
 
@@ -471,6 +483,47 @@ describe('SQLite sync store', () => {
 		expect(store.claimDueWakes(1_000)).toEqual([]);
 	});
 
+	it('does not schedule a wake time for wakes with no deliverable device', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.replaceReminderWakes('account', [wake('a', 5_000)]);
+		expect(store.nextWakeAt(1_000)).toBeNull();
+	});
+
+	it('ignores delivered wakes when projecting the next fire time', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		store.savePushDevice({
+			deviceId: 'device-aaaaaaaaaaaa',
+			endpoint: 'https://push.example/sub-a',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16),
+			accountId: 'account'
+		});
+		store.replaceReminderWakes('account', [wake('a', 1_000), wake('b', 2_000)]);
+		const [claimed] = store.claimDueWakes(1_000);
+		store.markWakeDelivered(claimed, 1_000);
+		expect(store.nextWakeAt(1_000)).toBe(2_000);
+
+		store.releaseWakeClaim(claimed);
+		expect(store.nextWakeAt(1_000)).toBe(2_000);
+	});
+
+	it('rejects uploads whose ciphertext is not base64url', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		expect(() =>
+			store.sync(
+				'account',
+				0,
+				[{ id: 'bad', slot: slot('a'), ciphertext: 'not+base64url/chars' }],
+				[],
+				10
+			)
+		).toThrow(/base64url/);
+		expect(store.sync('account', 0, [], [], 10).usage.envelopeCount).toBe(0);
+	});
+
 	it('keeps at most 32 push devices per account', () => {
 		const { store } = createStore();
 		store.createAccount('account-a', 'credential-a');
@@ -502,7 +555,7 @@ describe('SQLite sync store', () => {
 		store.createAccount('fresh', 'credential', now);
 		store.createAccount('week-old', 'credential', now - 8 * 24 * 60 * 60 * 1000);
 		store.createAccount('stale', 'credential', 1);
-		store.sync('fresh', 0, [{ id: 'note', slot: slot('a'), ciphertext: 'opaque' }], 10);
+		store.sync('fresh', 0, [{ id: 'note', slot: slot('a'), ciphertext: 'opaque' }], [], 10);
 		store.touchAccount('fresh', now);
 		store.touchAccount('week-old', now - 8 * 24 * 60 * 60 * 1000);
 		store.touchAccount('stale', 1);
@@ -530,7 +583,7 @@ describe('SQLite sync store', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential', 1);
 		store.touchAccount('account', 1);
-		store.sync('account', 0, [], 10);
+		store.sync('account', 0, [], [], 10);
 		expect(store.deleteInactiveAccounts(Date.now() - 1_000)).toBe(0);
 		expect(store.getCredentialHash('account')).toBe('credential');
 		expect(store.aggregateUsage()).toEqual({
@@ -543,9 +596,9 @@ describe('SQLite sync store', () => {
 	it('resets a cursor that is ahead of a restored relay sequence', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }], 10);
+		store.sync('account', 0, [{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }], [], 10);
 
-		expect(store.sync('account', 50, [], 10)).toMatchObject({
+		expect(store.sync('account', 50, [], [], 10)).toMatchObject({
 			cursor: 0,
 			reset: true,
 			writesAccepted: false
@@ -589,7 +642,7 @@ describe('SQLite sync store', () => {
 	it('deletes an account and all of its opaque envelopes', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }], 10);
+		store.sync('account', 0, [{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }], [], 10);
 		store.savePushDevice({
 			accountId: 'account',
 			deviceId: 'device-aaaaaaaaaaaa',
@@ -629,7 +682,7 @@ describe('SQLite sync store', () => {
 		const store = new SyncStore(directory);
 		stores.push(store);
 		expect(store.getCredentialHash('account')).toBe('credential');
-		expect(store.sync('account', 0, [], 10).envelopes).toEqual([
+		expect(store.sync('account', 0, [], [], 10).envelopes).toEqual([
 			{ seq: 7, id: 'new', slot: slot('a'), ciphertext: 'new' }
 		]);
 		expect(readFileSync(legacyFile, 'utf8')).toBe(legacy);
@@ -645,6 +698,7 @@ describe('SQLite sync store', () => {
 				{ id: 'note-1', slot: slot('a'), ciphertext: 'cipher-a' },
 				{ id: 'note-2', slot: slot('b'), ciphertext: 'cipher-b' }
 			],
+			[],
 			10
 		);
 
@@ -654,7 +708,7 @@ describe('SQLite sync store', () => {
 		await store.backup(snapshotPath);
 
 		// Later live writes must not appear in the already-taken snapshot.
-		store.sync('account', 2, [{ id: 'note-3', slot: slot('c'), ciphertext: 'cipher-c' }], 10);
+		store.sync('account', 2, [{ id: 'note-3', slot: slot('c'), ciphertext: 'cipher-c' }], [], 10);
 
 		const restoredDirectory = mkdtempSync(join(tmpdir(), 'scraps-cache-restored-'));
 		directories.push(restoredDirectory);
@@ -663,7 +717,7 @@ describe('SQLite sync store', () => {
 		stores.push(restored);
 
 		expect(restored.getCredentialHash('account')).toBe('restore-credential');
-		expect(restored.sync('account', 0, [], 10)).toMatchObject({
+		expect(restored.sync('account', 0, [], [], 10)).toMatchObject({
 			cursor: 2,
 			hasMore: false,
 			envelopes: [
