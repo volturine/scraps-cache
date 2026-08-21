@@ -64,6 +64,12 @@ export function isHttpsEndpoint(value: string): boolean {
 	}
 }
 
+/** Minimal DNS resolution surface the endpoint check depends on. */
+export type EndpointResolver = (
+	hostname: string,
+	options: { all: true; verbatim: boolean }
+) => Promise<Array<{ address: string }>>;
+
 /**
  * Endpoint hostnames must resolve to public addresses at registration time.
  * Literal-level checks alone cannot see DNS answers, so a name the registrant
@@ -71,7 +77,7 @@ export function isHttpsEndpoint(value: string): boolean {
  */
 export async function isPublicEndpoint(
 	value: string,
-	resolve: typeof lookup = lookup
+	resolve: EndpointResolver = lookup
 ): Promise<boolean> {
 	if (!isHttpsEndpoint(value)) return false;
 	const hostname = new URL(value).hostname.replace(/^\[|\]$/g, '').toLowerCase();

@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { LookupAddress } from 'node:dns/promises';
 import { isHttpsEndpoint, isPublicEndpoint } from './pushWakes';
 
-const resolve = vi.fn<[], Promise<LookupAddress[]>>();
+const resolve = vi.fn<() => Promise<Array<{ address: string }>>>();
 
 /**
  * Issue #87: literal-level checks cannot see DNS answers. Registration-time

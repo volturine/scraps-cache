@@ -171,7 +171,9 @@ export class SyncStore {
 
 	async queueOutbox(keys: Iterable<string> = []): Promise<void> {
 		const pendingKeys = [...new Set(keys)];
-		const write = this.pendingOutboxWrites.then(() => markSyncOutbox(pendingKeys));
+		const write = this.pendingOutboxWrites.then(async () => {
+			await markSyncOutbox(pendingKeys);
+		});
 		this.pendingOutboxWrites = write.catch(() => undefined);
 		await write;
 		this.onLocalDataChange?.();
