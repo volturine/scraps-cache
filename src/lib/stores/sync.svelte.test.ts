@@ -400,6 +400,52 @@ describe('client sync state machine', () => {
 		});
 	});
 
+	it('backfills records the relay is missing when its envelope count runs short', async () => {
+		const local = note('note-1', { title: 'must exist on relay' });
+		const { store, account, requests } = createHarness((request, index) => {
+			if (index === 0)
+				return {
+					success: true,
+					data: emptyData({
+						cursor: 1,
+						usage: { ciphertextBytes: 0, envelopeCount: 0, maxBytes: 1000, maxEnvelopes: 50 }
+					})
+				};
+			// Repair round: the record the ledger claimed was uploaded is missing.
+			return { success: true, data: emptyData({ cursor: 2, writesAccepted: true }) };
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({ slots: [] })
+			}))
+		);
+		const keys = syncControlKeys(account.accountId);
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': 'claimed-fingerprint' },
+			recordIds: { 'note:note-1': 'old-id' }
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(vi.mocked(fetch)).toHaveBeenCalled();
+		vi.unstubAllGlobals();
+		// The repair round re-uploaded the missing record as a replacement.
+		const upload = requests.at(-1)?.envelopes[0];
+		expect(upload?.expectedId).toBe('old-id');
+		expect(decryptSyncPayload(account.syncKey, upload!.ciphertext)).toMatchObject({
+			kind: 'note',
+			value: { title: 'must exist on relay' }
+		});
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual([]);
+		expect(await idb.getSyncState(keys.baseline)).toMatchObject({
+			'note:note-1': expect.any(String)
+		});
+	});
+
 	it('rewinds a leftover cursor when there is no baseline so a full pull can run', async () => {
 		const pulled = note('note-1', { title: 'from account' });
 		const { store, account, requests } = createHarness((request) => {

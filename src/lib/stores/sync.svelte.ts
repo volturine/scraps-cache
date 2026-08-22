@@ -622,6 +622,7 @@ export class SyncStore {
 			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
 			let stalledWrites = 0;
+			let integrityBackfillDone = false;
 			while (hasMore) {
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				const startedWithDownloadsDrained = downloadsDrained;
@@ -769,6 +770,7 @@ export class SyncStore {
 				}
 				if (!response.success || !response.data) return this.fail(response);
 				const remoteUsage = response.data.usage;
+				let serverEnvelopeCount: number | null = null;
 				if (remoteUsage && typeof remoteUsage === 'object') {
 					const candidate = remoteUsage as Partial<SyncUsage>;
 					if (
@@ -780,6 +782,7 @@ export class SyncStore {
 						].every((value) => typeof value === 'number' && Number.isFinite(value))
 					) {
 						this.usage = candidate as SyncUsage;
+						serverEnvelopeCount = candidate.envelopeCount ?? null;
 					}
 				}
 				const writesAccepted = response.data.writesAccepted === true;
@@ -1047,6 +1050,44 @@ export class SyncStore {
 					remainingUploads,
 					pendingDeletes
 				});
+
+				// Integrity backfill: the local ledger ("what the relay already has")
+				// can drift from reality — wiped relays, deleted accounts, lost upload
+				// queues, migrations. When the relay reports fewer envelopes than this
+				// device tracks as current, diff exact slots and re-queue whatever is
+				// missing. One repair attempt per sync keeps a bad state from looping.
+				if (
+					downloadsDrained &&
+					!pullOnly &&
+					!integrityBackfillDone &&
+					serverEnvelopeCount != null &&
+					serverEnvelopeCount < currentKeys.size &&
+					!syncCancelled()
+				) {
+					integrityBackfillDone = true;
+					const serverSlots = await this.fetchServerSlots();
+					if (serverSlots) {
+						const missingKeys: string[] = [];
+						for (const key of currentKeys) {
+							if (quotaBlockedKeys.has(key)) continue;
+							if (!serverSlots.has(await sha256(`${account.syncKey}\u0000${key}`)))
+								missingKeys.push(key);
+						}
+						if (missingKeys.length) {
+							for (const key of missingKeys) delete baseline[key];
+							const generation = await markSyncOutbox(pid, missingKeys);
+							for (const key of missingKeys) {
+								outboxKeys.add(key);
+								internallyMarkedOutbox.set(key, generation);
+							}
+							console.info(
+								`[sync] relay copy is missing ${missingKeys.length} record(s); re-uploading`
+							);
+							hasMore = true;
+							continue;
+						}
+					}
+				}
 			}
 
 			if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
@@ -1131,17 +1172,27 @@ export class SyncStore {
 	}
 
 	/**
-	 * Drop this account's sync control plane so the next sync re-uploads every
-	 * record and pulls from cursor 0. Recovery for drifted or incomplete relay
-	 * copies; local data is never touched.
+	 * Integrity handshake half: fetch the exact set of slots the relay holds
+	 * for the active account. The caller diffs them against what it expects.
 	 */
-	async resetSyncControlPlane(): Promise<boolean> {
-		if (!this.account) return false;
-		await this.clearAccountControlPlane(this.account.accountId);
-		this.lastError = null;
-		this.lastSync = 0;
-		this.saveStatus();
-		return true;
+	async fetchServerSlots(): Promise<Set<string> | null> {
+		if (!this.account) return null;
+		try {
+			const response = await fetch('/api/sync/verify', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					accountId: this.account.accountId,
+					authSecret: this.account.authSecret
+				})
+			});
+			if (!response.ok) return null;
+			const data = (await response.json().catch(() => null)) as { slots?: unknown } | null;
+			if (!data || !Array.isArray(data.slots)) return null;
+			return new Set(data.slots.filter((slot): slot is string => typeof slot === 'string'));
+		} catch {
+			return null;
+		}
 	}
 
 	async logout(): Promise<void> {

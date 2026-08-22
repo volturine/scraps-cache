@@ -31,7 +31,6 @@
 	let editingId = $state<string | null>(null);
 	let editName = $state('');
 	let removingId = $state<string | null>(null);
-	let forceResyncConfirm = $state(false);
 
 	// A running sync must finish before a dataset handover can start.
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
@@ -353,24 +352,6 @@
 		}, 1500);
 	}
 
-	async function forceFullResync() {
-		if (loading) return;
-		loading = true;
-		error = '';
-		forceResyncConfirm = false;
-		try {
-			if (!(await syncStore.resetSyncControlPlane())) throw new Error('not linked');
-			info = 'Rebuilding the relay copy…';
-			const ok = await notesStore.syncWithCloudManual();
-			info = ok ? 'Relay copy rebuilt.' : '';
-			if (!ok) error = friendlyError(syncStore.lastError, 'Full resync did not finish');
-		} catch {
-			error = 'Could not start a full resync.';
-		} finally {
-			loading = false;
-		}
-	}
-
 	async function deleteCloudData() {
 		if (!deleteConfirm || loading) return;
 		loading = true;
@@ -542,43 +523,6 @@
 						}}
 						class="scraps-cache-button scraps-cache-button-destructive w-full text-xs"
 						>Delete cloud data</button
-					>
-				{/if}
-				{#if forceResyncConfirm}
-					<div
-						class="rounded-[var(--scraps-cache-radius-md)] border border-[var(--scraps-cache-border)] p-3"
-					>
-						<p class="text-xs leading-relaxed text-[var(--scraps-cache-text-muted)]">
-							Re-upload every record and re-download from scratch? Use this if the relay copy looks
-							incomplete. Notes on this device are not touched.
-						</p>
-						<div class="mt-2 flex gap-2">
-							<button
-								type="button"
-								onclick={() => {
-									forceResyncConfirm = false;
-								}}
-								disabled={loading}
-								class="flex-1 rounded border border-[var(--scraps-cache-border)] px-2 py-1.5 text-xs"
-								>Cancel</button
-							>
-							<button
-								type="button"
-								onclick={() => void forceFullResync()}
-								disabled={loading}
-								class="flex-1 rounded border border-[var(--scraps-cache-border)] px-2 py-1.5 text-xs font-medium"
-								>{loading ? 'Working…' : 'Full resync'}</button
-							>
-						</div>
-					</div>
-				{:else}
-					<button
-						type="button"
-						onclick={() => {
-							forceResyncConfirm = true;
-						}}
-						class="w-full text-xs text-[var(--scraps-cache-text-muted)] touch-manipulation"
-						>Force full resync</button
 					>
 				{/if}
 			</div>

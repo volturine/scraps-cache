@@ -446,6 +446,18 @@ export class SyncStore {
 			.run(now, accountId);
 	}
 
+	/**
+	 * All slots this account currently holds. Slots are keyed hashes the client
+	 * can recompute locally, so returning them leaks nothing; owners use them to
+	 * detect and repair an incomplete relay copy.
+	 */
+	listAccountSlots(accountId: string): string[] {
+		return this.database
+			.prepare('SELECT slot FROM envelopes WHERE account_id = ? ORDER BY slot')
+			.all(accountId)
+			.map((row) => String((row as { slot: string }).slot));
+	}
+
 	getQuotas(): SyncQuotas {
 		return {
 			maxAccountBytes: this.maxAccountBytes,
