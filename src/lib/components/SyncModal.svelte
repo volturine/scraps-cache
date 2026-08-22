@@ -507,6 +507,16 @@
 					class="scraps-cache-button scraps-cache-button-secondary w-full px-3 py-2.5 text-sm"
 					>Connect another device</button
 				>
+				<button
+					type="button"
+					onclick={() => {
+						error = '';
+						info = '';
+						mode = 'menu';
+					}}
+					class="w-full rounded-lg border border-[var(--scraps-cache-border)] px-3 py-2.5 text-sm touch-manipulation"
+					>Switch sync key</button
+				>
 				{#if syncStore.usage}
 					<div class="text-center text-xs text-[var(--scraps-cache-text-muted)]">
 						{formatBytes(syncStore.usage.ciphertextBytes)} stored for this account
@@ -619,19 +629,35 @@
 								<div
 									class="flex items-center gap-2 rounded-lg border border-[var(--scraps-cache-border)] px-3 py-2"
 								>
-									<span class="min-w-0 flex-1">
-										<span class="block truncate text-sm">{profile.name}</span>
-										{#if sizeLabel(profile.id)}
-											<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
-												>{sizeLabel(profile.id)} on this device</span
-											>
-										{/if}
-									</span>
 									{#if profile.id === syncStore.activeProfile?.id}
-										<span class="text-xs font-medium text-[var(--scraps-cache-success)]"
-											>Active</span
+										<button
+											type="button"
+											class="min-w-0 flex-1 text-left"
+											onclick={() => {
+												mode = 'linked';
+												error = '';
+												info = '';
+											}}
 										>
+											<span class="block truncate text-sm">{profile.name}</span>
+											{#if sizeLabel(profile.id)}
+												<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
+													>{sizeLabel(profile.id)} on this device</span
+												>
+											{/if}
+											<span class="block text-xs font-medium text-[var(--scraps-cache-success)]"
+												>Active — tap to manage</span
+											>
+										</button>
 									{:else}
+										<span class="min-w-0 flex-1">
+											<span class="block truncate text-sm">{profile.name}</span>
+											{#if sizeLabel(profile.id)}
+												<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
+													>{sizeLabel(profile.id)} on this device</span
+												>
+											{/if}
+										</span>
 										<button
 											type="button"
 											onclick={() => void switchProfile(profile.id)}
