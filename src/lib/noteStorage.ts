@@ -3,6 +3,18 @@ import type { Label, Note, NoteImage } from './types';
 /** Canonical fast-boot mirrors. IndexedDB remains the durable device store. */
 export const NOTES_MIRROR_KEY = 'gkc-notes-mirror';
 export const LABELS_MIRROR_KEY = 'gkc-labels-mirror';
+export const KANBAN_BOARDS_LS_KEY = 'gkc-kanban-boards-v1';
+export const KANBAN_ACTIVE_BOARD_LS_KEY = 'gkc-kanban-active-board-v1';
+export const KANBAN_BOARD_TOMBSTONES_LS_KEY = 'gkc-kanban-board-tombstones-v1';
+
+/** localStorage keys that mirror the active profile's dataset; cleared on profile switches. */
+export const PROFILE_MIRROR_KEYS = [
+	NOTES_MIRROR_KEY,
+	LABELS_MIRROR_KEY,
+	KANBAN_BOARDS_LS_KEY,
+	KANBAN_ACTIVE_BOARD_LS_KEY,
+	KANBAN_BOARD_TOMBSTONES_LS_KEY
+] as const;
 
 type MirroredImage = Omit<NoteImage, 'dataUrl' | 'thumbUrl'>;
 type MirroredNote = Omit<Note, 'images'> & { images?: MirroredImage[] };

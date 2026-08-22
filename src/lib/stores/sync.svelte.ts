@@ -45,6 +45,14 @@ import {
 	getSyncState,
 	markSyncOutbox
 } from '$lib/db/idb';
+import {
+	loadProfiles,
+	nextProfileName,
+	profileForSyncKey,
+	removeProfileRecord,
+	saveProfile,
+	type StoredProfile
+} from '$lib/profiles';
 
 const LS_SYNC_KEY = 'gkc-sync-account';
 const LS_SYNC_STATUS_KEY = 'gkc-sync-status';
@@ -134,6 +142,9 @@ export class SyncStore {
 	lastError = $state<string | null>(null);
 	progress = $state<SyncProgress | null>(null);
 	usage = $state<SyncUsage | null>(null);
+	/** Saved sync keys on this device; the one matching `account` is active. */
+	profiles = $state<StoredProfile[]>([]);
+	private profilesReady: Promise<void> | null = null;
 	private bootstrapRequested = false;
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
 
@@ -157,10 +168,75 @@ export class SyncStore {
 		} catch (err) {
 			console.error('[sync] could not restore local status:', err);
 		}
+		void this.ensureProfilesLoaded();
 	}
 
 	get isLoggedIn(): boolean {
 		return this.account !== null;
+	}
+
+	get activeProfile(): StoredProfile | null {
+		return this.account
+			? (profileForSyncKey(this.profiles, this.account.syncKey) ?? this.profiles[0] ?? null)
+			: null;
+	}
+
+	/**
+	 * Load the keyring. Installs that predate profiles get their single sync key
+	 * adopted as the first entry, so nothing about their setup changes.
+	 */
+	ensureProfilesLoaded(): Promise<void> {
+		this.profilesReady ??= (async () => {
+			try {
+				let profiles = await loadProfiles();
+				if (!profiles.length && this.account) {
+					const adopted: StoredProfile = {
+						id: randomOpaqueId(),
+						name: nextProfileName(profiles),
+						syncKey: this.account.syncKey,
+						createdAt: Date.now()
+					};
+					await saveProfile(adopted);
+					profiles = [adopted];
+				}
+				this.profiles = profiles;
+			} catch (err) {
+				console.error('[sync] could not load saved profiles:', err);
+			}
+		})();
+		return this.profilesReady;
+	}
+
+	/** Persist a keyring entry and surface it in the reactive profile list. */
+	async addKeyringEntry(profile: StoredProfile): Promise<void> {
+		await saveProfile(profile);
+		this.profiles = [...this.profiles, profile].sort((a, b) => a.createdAt - b.createdAt);
+	}
+
+	async renameProfile(id: string, name: string): Promise<StoredProfile | null> {
+		const trimmed = name.trim().slice(0, 60);
+		const profile = this.profiles.find((entry) => entry.id === id);
+		if (!profile || !trimmed || profile.name === trimmed) return profile ?? null;
+		const updated = { ...profile, name: trimmed };
+		this.profiles = this.profiles.map((entry) => (entry.id === id ? updated : entry));
+		await saveProfile(updated).catch((err) =>
+			console.error('[sync] could not rename profile:', err)
+		);
+		return updated;
+	}
+
+	/** Remove a non-active keyring entry together with its stashed dataset. */
+	async removeProfile(id: string): Promise<boolean> {
+		if (this.activeProfile?.id === id) return false;
+		if (!this.profiles.some((entry) => entry.id === id)) return false;
+		try {
+			await removeProfileRecord(id);
+		} catch (err) {
+			console.error('[sync] could not remove profile:', err);
+			return false;
+		}
+		this.profiles = this.profiles.filter((entry) => entry.id !== id);
+		return true;
 	}
 
 	requestAutoSync(keys: Iterable<string> = []): void {
@@ -202,7 +278,14 @@ export class SyncStore {
 		}
 	}
 
-	async register(): Promise<{ success: boolean; error?: string }> {
+	/**
+	 * Create a new sync key on the relay and save it as a keyring entry.
+	 * Activation is the caller's job: any current profile's dataset must be
+	 * stashed first so this device's live data lands in the right profile.
+	 */
+	async register(
+		name?: string
+	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		const account = createSyncIdentity();
 		try {
 			const res = await fetch('/api/sync/register', {
@@ -216,13 +299,28 @@ export class SyncStore {
 					success: false,
 					error: typeof data.error === 'string' ? data.error : 'Registration failed'
 				};
-			this.account = account;
-			this.lastError = null;
-			this.saveAccount();
-			return { success: true };
+			const profile: StoredProfile = {
+				id: randomOpaqueId(),
+				name: name?.trim() || nextProfileName(this.profiles),
+				syncKey: account.syncKey,
+				createdAt: Date.now()
+			};
+			await this.addKeyringEntry(profile);
+			return { success: true, profile };
 		} catch (err) {
 			return { success: false, error: err instanceof Error ? err.message : 'Network error' };
 		}
+	}
+
+	/** Make a saved sync key the active account. Caller owns the dataset swap. */
+	activateProfile(profile: StoredProfile): void {
+		this.account = identityFromSyncKey(profile.syncKey);
+		this.lastError = null;
+		this.progress = null;
+		this.usage = null;
+		this.lastSync = 0;
+		this.saveStatus();
+		this.saveAccount();
 	}
 
 	async startDeviceLink(
@@ -274,6 +372,7 @@ export class SyncStore {
 		linked?: boolean;
 		matched?: boolean;
 		expired?: boolean;
+		receivedSyncKey?: string;
 		error?: string;
 	}> {
 		try {
@@ -311,14 +410,12 @@ export class SyncStore {
 			const grant = data.grant as { existingPublicKey?: unknown; ciphertext?: unknown };
 			if (typeof grant.ciphertext !== 'string')
 				return { success: false, error: 'Invalid encrypted sync key' };
-			this.account = identityFromSyncKey(
-				openSyncKeyFromPeer(link.syncCode, link.pake, data.peerPublicKey ?? '', {
-					ciphertext: grant.ciphertext
-				})
-			);
-			this.lastError = null;
-			this.saveAccount();
-			return { success: true, linked: true };
+			// Hand the raw key back; activation is the caller's job so the current
+			// profile's dataset can be stashed first.
+			const syncKey = openSyncKeyFromPeer(link.syncCode, link.pake, data.peerPublicKey ?? '', {
+				ciphertext: grant.ciphertext
+			});
+			return { success: true, linked: true, receivedSyncKey: syncKey };
 		} catch (err) {
 			return {
 				success: false,
@@ -928,14 +1025,21 @@ export class SyncStore {
 		]);
 	}
 
-	logout(): void {
+	async logout(): Promise<void> {
 		const accountId = this.account?.accountId;
+		const profile = this.activeProfile;
 		this.account = null;
 		this.lastError = null;
 		this.progress = null;
 		this.usage = null;
 		this.saveAccount();
 		if (accountId) void this.clearAccountControlPlane(accountId);
+		if (profile) {
+			await removeProfileRecord(profile.id).catch((err) =>
+				console.error('[sync] could not remove the signed-out profile:', err)
+			);
+			this.profiles = this.profiles.filter((entry) => entry.id !== profile.id);
+		}
 	}
 
 	async deleteCloudAccount(): Promise<{ success: boolean; error?: string }> {
@@ -956,7 +1060,7 @@ export class SyncStore {
 					error: typeof data.error === 'string' ? data.error : 'Could not delete synced data'
 				};
 			}
-			this.logout();
+			await this.logout();
 			return { success: true };
 		} catch (error) {
 			return {
