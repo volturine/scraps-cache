@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { flushSync, tick } from 'svelte';
-	import { CHECK_RE, formatCheckLine, parseCheckLine } from '$lib/checklistBody';
+	import {
+		CHECK_RE,
+		formatCheckLine,
+		parseCheckLine,
+		toggleCheckEntries
+	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
 
 	const MAX_TASK_INDENT = 1;
@@ -440,7 +445,8 @@
 
 	function toggleCheck(index: number, event: MouseEvent) {
 		event.stopPropagation();
-		lines[index].checked = !lines[index].checked;
+		const tasks = lines.filter((line) => line.isCheck);
+		toggleCheckEntries(tasks, tasks.indexOf(lines[index]));
 		syncBody();
 	}
 

@@ -70,14 +70,76 @@ export function parseBody(body: string): BodySegment[] {
 	});
 }
 
+/**
+ * Toggle one task and propagate across its group:
+ * completing a parent task completes its sub-tasks, and completing every
+ * sub-task of a parent completes the parent.
+ */
+export function toggleCheckEntries(
+	entries: { indent: number; checked: boolean }[],
+	index: number
+): void {
+	const entry = entries[index];
+	if (!entry) return;
+	entry.checked = !entry.checked;
+	if (entry.checked && entry.indent === 0) {
+		for (let cursor = index + 1; cursor < entries.length; cursor++) {
+			if (entries[cursor].indent === 0) break;
+			entries[cursor].checked = true;
+		}
+		return;
+	}
+	if (!entry.checked && entry.indent > 0) {
+		for (let cursor = index - 1; cursor >= 0; cursor--) {
+			if (entries[cursor].indent < entry.indent) {
+				entries[cursor].checked = false;
+				break;
+			}
+		}
+		return;
+	}
+	if (entry.checked && entry.indent > 0) {
+		let parent = -1;
+		for (let cursor = index - 1; cursor >= 0; cursor--) {
+			if (entries[cursor].indent < entry.indent) {
+				parent = cursor;
+				break;
+			}
+		}
+		if (parent < 0 || entries[parent].checked) return;
+		let allChecked = true;
+		for (let cursor = parent + 1; cursor < entries.length; cursor++) {
+			if (entries[cursor].indent <= entries[parent].indent) break;
+			if (!entries[cursor].checked) {
+				allChecked = false;
+				break;
+			}
+		}
+		if (allChecked) entries[parent].checked = true;
+	}
+}
+
 export function toggleLineAt(body: string, lineIndex: number): string {
-	const lines = body.split('\n');
-	const line = lines[lineIndex];
-	if (!line) return body;
-	const check = parseCheckLine(line);
-	if (!check) return body;
-	lines[lineIndex] = formatCheckLine(check.indent, !check.checked, check.text);
-	return lines.join('\n');
+	const rawLines = body.split('\n');
+	const target = parseCheckLine(rawLines[lineIndex] ?? '');
+	if (!target) return body;
+	const parsed = rawLines.map((raw) => parseCheckLine(raw));
+	const entries = parsed.map((check) =>
+		check ? { indent: check.indent, checked: check.checked } : null
+	);
+	const positions = entries.flatMap((entry, i) => (entry ? [i] : []));
+	toggleCheckEntries(
+		positions.map((i) => entries[i]!),
+		positions.indexOf(lineIndex)
+	);
+	return rawLines
+		.map((raw, i) => {
+			const check = parsed[i];
+			const entry = entries[i];
+			if (!check || !entry || entry.checked === check.checked) return raw;
+			return formatCheckLine(check.indent, entry.checked, check.text);
+		})
+		.join('\n');
 }
 
 export function noteAttachments(note: Note) {
