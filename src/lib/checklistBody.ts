@@ -89,6 +89,15 @@ export function toggleCheckEntries(
 		}
 		return;
 	}
+	if (!entry.checked && entry.indent > 0) {
+		for (let cursor = index - 1; cursor >= 0; cursor--) {
+			if (entries[cursor].indent < entry.indent) {
+				entries[cursor].checked = false;
+				break;
+			}
+		}
+		return;
+	}
 	if (entry.checked && entry.indent > 0) {
 		let parent = -1;
 		for (let cursor = index - 1; cursor >= 0; cursor--) {

@@ -52,4 +52,11 @@ describe('checklist toggle propagation', () => {
 		const next = toggleLineAt(partial, 2);
 		expect(next).toBe(['[ ] parent', '  [x] a', '  [x] b', '  [ ] c'].join('\n'));
 	});
+
+	it('unchecks the main task when a sub-task is unchecked', () => {
+		const done = ['[x] parent', '  [x] a', '  [x] b', '[ ] other'].join('\n');
+		expect(toggleLineAt(done, 2)).toBe(
+			['[ ] parent', '  [x] a', '  [ ] b', '[ ] other'].join('\n')
+		);
+	});
 });
