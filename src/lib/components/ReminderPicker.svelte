@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createSubscriber, SvelteDate } from 'svelte/reactivity';
+	import { createSubscriber } from 'svelte/reactivity';
 	import WheelPicker from './WheelPicker.svelte';
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import { requestReminderPermission } from '$lib/reminderNotify';
@@ -29,18 +29,19 @@
 		label: String(minute).padStart(2, '0')
 	}));
 
-	// Initialize from existing reminder or now+1h default
-	function initDate(ts: number | null): SvelteDate {
+	// Initialize once from the existing reminder or now+1h default
+	function initDate(ts: number | null): Date {
 		if (ts == null) {
-			const d = new SvelteDate();
+			const d = new Date();
 			d.setHours(d.getHours() + 1, 0, 0, 0);
 			return d;
 		}
-		return new SvelteDate(ts);
+		return new Date(ts);
 	}
 
-	// A writable derived follows a changed prop but can still hold local picker edits.
-	let selected = $derived(initDate(reminder));
+	// Plain state so sync-driven prop changes cannot discard unsaved picker edits.
+	// svelte-ignore state_referenced_locally -- snapshot the reminder at open time on purpose
+	let selected = $state(initDate(reminder));
 	let monthYearOpen = $state(false);
 
 	function apply(ts: number | null) {
@@ -53,7 +54,7 @@
 	}
 
 	function setDateParts(parts: { year?: number; month?: number; day?: number }) {
-		const d = new SvelteDate(selected);
+		const d = new Date(selected);
 		const year = parts.year ?? d.getFullYear();
 		const month = parts.month ?? d.getMonth();
 		const day = parts.day ?? d.getDate();
@@ -62,7 +63,7 @@
 	}
 
 	function shiftDay(delta: number) {
-		const d = new SvelteDate(selected);
+		const d = new Date(selected);
 		d.setDate(d.getDate() + delta);
 		selected = d;
 	}
@@ -125,13 +126,13 @@
 	});
 
 	function setHour(hour: number) {
-		const d = new SvelteDate(selected);
+		const d = new Date(selected);
 		d.setHours(hour);
 		selected = d;
 	}
 
 	function setMinute(minute: number) {
-		const d = new SvelteDate(selected);
+		const d = new Date(selected);
 		d.setMinutes(minute);
 		selected = d;
 	}
