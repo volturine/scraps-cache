@@ -194,16 +194,16 @@
 	<div
 		class="mt-2 flex h-7 items-center justify-between border-t border-[var(--scraps-cache-border)] pt-1 text-xs"
 	>
-		<div class="flex flex-1">
+		<div class="flex flex-1 items-center">
 			<button
 				type="button"
-				class="rounded-full px-2 py-0.5 font-medium text-[var(--scraps-cache-text-muted)] hover:bg-black/5 hover:text-[var(--scraps-cache-text)] dark:hover:bg-white/10"
+				class="rounded-full px-2 py-0.5 font-medium leading-5 text-[var(--scraps-cache-text-muted)] hover:bg-black/5 hover:text-[var(--scraps-cache-text)] dark:hover:bg-white/10"
 				onclick={filterToday}
 			>
 				Today
 			</button>
 		</div>
-		<span class="shrink-0 truncate px-2 text-[var(--scraps-cache-text-muted)]">
+		<span class="shrink-0 truncate px-2 leading-5 text-[var(--scraps-cache-text-muted)]">
 			{#if pickingEnd}
 				Pick an end day
 			{:else if selected && selected.from !== selected.to}
@@ -212,10 +212,10 @@
 				Day filter active
 			{/if}
 		</span>
-		<div class="flex flex-1 justify-end">
+		<div class="flex flex-1 items-center justify-end">
 			<button
 				type="button"
-				class="rounded-full px-2 py-0.5 text-[var(--scraps-cache-text-muted)] hover:bg-black/5 hover:text-[var(--scraps-cache-text)] disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-white/10"
+				class="rounded-full px-2 py-0.5 leading-5 text-[var(--scraps-cache-text-muted)] hover:bg-black/5 hover:text-[var(--scraps-cache-text)] disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-white/10"
 				disabled={!selected}
 				onclick={() => (selected = null)}
 			>
