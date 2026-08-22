@@ -26,8 +26,15 @@ export class ProfileCoordinator {
 		return locks.request(SYNC_LOCK, run);
 	}
 
-	private guard(): string | null {
-		return this.switching ? 'Another profile change is still running' : null;
+	private guard(blockOnSync = true): string | null {
+		if (this.switching) return 'Another profile change is still running';
+		// A running sync must finish before its dataset can be stashed; the web
+		// lock below is only a safety net against races, not a waiting room.
+		// Pairing grants are exempt: they are one-time and expire in 60 seconds,
+		// so waiting out the flight beats losing the key.
+		if (blockOnSync && notesStore.syncing)
+			return 'Sync is still running. Try again when it finishes.';
+		return null;
 	}
 
 	/** Create a brand-new sync key and make it the active profile. */
@@ -102,7 +109,7 @@ export class ProfileCoordinator {
 	async receiveLinkedKey(
 		syncKey: string
 	): Promise<{ outcome: 'choice' | 'linked'; error?: string }> {
-		const blocked = this.guard();
+		const blocked = this.guard(false);
 		if (blocked) return { outcome: 'choice', error: blocked };
 		this.switching = true;
 		try {

@@ -29,6 +29,9 @@
 	let editName = $state('');
 	let removingId = $state<string | null>(null);
 
+	// A running sync must finish before a dataset handover can start.
+	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
+
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
 		timer = null;
@@ -582,7 +585,8 @@
 										<button
 											type="button"
 											onclick={() => void switchProfile(profile.id)}
-											disabled={loading || syncing || profileCoordinator.switching}
+											disabled={handoverBlocked}
+											title={notesStore.syncing ? 'Wait for the current sync to finish' : undefined}
 											class="shrink-0 rounded-md border border-[var(--scraps-cache-border)] px-2 py-1 text-xs font-medium touch-manipulation"
 										>
 											{profileCoordinator.switching ? '…' : 'Switch'}
@@ -617,9 +621,13 @@
 				<p class="text-sm text-[var(--scraps-cache-text-muted)]">
 					Create one private sync key, then connect your own devices by starting the connection on
 					both within 60 seconds. Each key keeps its own notes on this device.
+					{#if handoverBlocked}<span class="block">
+							Switching sync keys is paused until the current sync finishes.</span
+						>{/if}
 				</p>
 				<button
 					type="button"
+					disabled={handoverBlocked}
 					onclick={() => {
 						mode = 'register';
 						error = '';
