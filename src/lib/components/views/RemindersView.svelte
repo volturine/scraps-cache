@@ -34,19 +34,21 @@
 	<div class={notesShellClass()}>
 		<ReminderCalendar notes={reminders} bind:selected={selectedDay} />
 	</div>
-	{#if reminders.length === 0}
-		<EmptyState
-			icon={AlarmClock}
-			description="Create a note, then add a reminder when you need to return to it."
-		/>
-	{:else if visible.length === 0}
-		<EmptyState
-			icon={AlarmClock}
-			description={selectedDay || uiStore.search
-				? 'No reminders match the current filters.'
-				: 'Create a note, then add a reminder when you need to return to it.'}
-		/>
-	{:else}
-		<NotesFeed notes={visible} onOpen={openEditor} />
-	{/if}
+	<div class="mt-4">
+		{#if reminders.length === 0}
+			<EmptyState
+				icon={AlarmClock}
+				description="Create a note, then add a reminder when you need to return to it."
+			/>
+		{:else if visible.length === 0}
+			<EmptyState
+				icon={AlarmClock}
+				description={selectedDay || uiStore.search
+					? 'No reminders match the current filters.'
+					: 'Create a note, then add a reminder when you need to return to it.'}
+			/>
+		{:else}
+			<NotesFeed notes={visible} onOpen={openEditor} />
+		{/if}
+	</div>
 </div>
