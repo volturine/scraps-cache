@@ -244,6 +244,13 @@ export class SyncStore {
 			if (!activeNotes.length && localNotes.length) {
 				console.error('[sync] adopting pre-upgrade notes into the active profile');
 				await adoptLocalDatasetInto(activePid);
+				// The rescued rows match this device's stale baseline, but the relay
+				// copy may be incomplete or gone (cloud deletes, resets, earlier
+				// partial uploads). Force a full bootstrap so the account ends up
+				// holding exactly what this profile now holds locally.
+				const profile = this.profiles.find((entry) => entry.id === activePid);
+				if (profile)
+					await this.clearAccountControlPlane(identityFromSyncKey(profile.syncKey).accountId);
 			}
 		} catch (err) {
 			console.error('[sync] could not check for stranded pre-upgrade data:', err);
@@ -1121,6 +1128,20 @@ export class SyncStore {
 		void saveProfile(updated).catch((err) =>
 			console.error('[sync] could not store the synced profile name:', err)
 		);
+	}
+
+	/**
+	 * Drop this account's sync control plane so the next sync re-uploads every
+	 * record and pulls from cursor 0. Recovery for drifted or incomplete relay
+	 * copies; local data is never touched.
+	 */
+	async resetSyncControlPlane(): Promise<boolean> {
+		if (!this.account) return false;
+		await this.clearAccountControlPlane(this.account.accountId);
+		this.lastError = null;
+		this.lastSync = 0;
+		this.saveStatus();
+		return true;
 	}
 
 	async logout(): Promise<void> {
