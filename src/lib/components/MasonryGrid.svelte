@@ -7,12 +7,15 @@
 		notes,
 		onOpen,
 		class: className = '',
-		children
+		children,
+		leading
 	}: {
 		notes: Note[];
 		onOpen: (id: string) => void;
 		class?: string;
 		children?: Snippet<[Note]>;
+		/** Extra content packed as the first item of the first column (e.g. the reminders calendar). */
+		leading?: Snippet;
 	} = $props();
 
 	let colCount = $state(2);
@@ -50,6 +53,7 @@
 	const columns = $derived.by(() => {
 		const cols: Note[][] = Array.from({ length: colCount }, () => []);
 		const heights: number[] = Array(colCount).fill(0);
+		if (leading) heights[0] += 320;
 		for (const note of notes) {
 			let minIdx = 0;
 			for (let i = 1; i < colCount; i++) {
@@ -88,6 +92,9 @@
 <div bind:this={gridEl} class="masonry-balanced {className}" style="--masonry-cols: {colCount}">
 	{#each columns as col, i (i)}
 		<div class="masonry-balanced-col">
+			{#if i === 0 && leading}
+				<div>{@render leading()}</div>
+			{/if}
 			{#each col as note (note.id)}
 				<div data-note-height={note.id}>
 					{#if children}
