@@ -678,12 +678,22 @@
 	function taskShellClass(line: Line): string {
 		if (!focusedGroupIds.has(line.id)) return '';
 		return [
-			'-mx-2 bg-black/[0.035] px-2 dark:bg-white/[0.06]',
+			'bg-black/[0.035] dark:bg-white/[0.06]',
 			line.id === focusedRootId ? 'mt-0.5 rounded-t-lg pt-1' : '',
 			line.id === focusedGroupLastId ? 'mb-0.5 rounded-b-lg pb-1' : ''
 		]
 			.filter(Boolean)
 			.join(' ');
+	}
+
+	function rowStyle(line: Line): string | undefined {
+		const focused = focusedGroupIds.has(line.id);
+		if (line.indent === 0 && !focused) return undefined;
+		const parts = [`padding-left:calc(${line.indent * 1.25}rem${focused ? ' + 0.5rem' : ''})`];
+		if (focused) {
+			parts.push('margin-left:-0.5rem', 'margin-right:-0.5rem', 'padding-right:0.5rem');
+		}
+		return parts.join(';');
 	}
 </script>
 
@@ -722,7 +732,7 @@
 			class="flex min-w-0 flex-wrap items-start gap-x-2 py-0.5 {line.isCheck
 				? taskShellClass(line)
 				: ''}"
-			style={line.indent > 0 ? `padding-left: ${line.indent * 1.25}rem` : undefined}
+			style={rowStyle(line)}
 		>
 			{#if line.isCheck}
 				<button
