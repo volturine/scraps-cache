@@ -1,5 +1,6 @@
 import { tickAppClock } from '$lib/appClock.svelte';
 import { getFiredReminderKeys, markFiredReminderKey } from '$lib/db/idb';
+import { syncStore } from './sync.svelte';
 import {
 	nextReminderAt,
 	notificationPermission,
@@ -173,7 +174,7 @@ export class ReminderStore {
 
 	private async hydrateFired(): Promise<void> {
 		try {
-			const stored = await getFiredReminderKeys();
+			const stored = await getFiredReminderKeys(syncStore.activePid);
 			this.fired = new Set([...this.fired, ...stored]);
 		} catch {
 			/* IndexedDB may be unavailable in private browsing or tests. */
@@ -183,7 +184,7 @@ export class ReminderStore {
 	private markFired(key: string): void {
 		if (this.fired.has(key)) return;
 		this.fired.add(key);
-		void markFiredReminderKey(key).catch(() => undefined);
+		void markFiredReminderKey(syncStore.activePid, key).catch(() => undefined);
 	}
 
 	private onSwMessage = (event: MessageEvent) => {

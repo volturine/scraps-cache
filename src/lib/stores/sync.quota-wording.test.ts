@@ -1,3 +1,4 @@
+const PID = 'device-local';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note, NoteImage } from '$lib/types';
 import { createSyncIdentity, decryptSyncPayload } from '$lib/syncPairing';
@@ -91,12 +92,12 @@ describe('quota isolation independent of server error wording', () => {
 				data: { cursor: 1 + request.envelopes.length, writesAccepted: true }
 			} satisfies RequestResult;
 		});
-		await idb.markSyncOutbox(['note:note-1', 'attachment:ok', 'attachment:huge']);
+		await idb.markSyncOutbox(PID, ['note:note-1', 'attachment:ok', 'attachment:huge']);
 
 		const result = await store.sync([local], [], {}, {}, [], {}, false, false, async (s) => s);
 
 		expect(result.success, result.error).toBe(true);
 		expect(store.lastError).toMatch(/limit|quota/);
-		expect(await idb.getSyncOutboxKeys()).toEqual(['attachment:huge']);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual(['attachment:huge']);
 	});
 });

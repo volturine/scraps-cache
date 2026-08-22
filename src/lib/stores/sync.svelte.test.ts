@@ -1,3 +1,4 @@
+const PID = 'device-local';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note, NoteImage } from '$lib/types';
 import {
@@ -146,7 +147,7 @@ async function seedControl(
 	if (state.cursor != null) await idb.setSyncState(keys.cursor, state.cursor);
 	if (state.baseline) await idb.setSyncState(keys.baseline, state.baseline);
 	if (state.recordIds) await idb.setSyncState(keys.recordIds, state.recordIds);
-	if (state.outbox?.length) await idb.markSyncOutbox(state.outbox);
+	if (state.outbox?.length) await idb.markSyncOutbox(PID, state.outbox);
 }
 
 describe('client sync state machine', () => {
@@ -164,10 +165,10 @@ describe('client sync state machine', () => {
 		await expect(store.queueOutbox(['note:note-1'])).rejects.toThrow(
 			'IndexedDB transaction aborted'
 		);
-		expect(await idb.getSyncOutboxKeys()).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual([]);
 
 		await store.queueOutbox(['note:note-1']);
-		expect(await idb.getSyncOutboxKeys()).toEqual(['note:note-1']);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual(['note:note-1']);
 	});
 
 	it('durably applies a downloaded page before committing its cursor', async () => {
@@ -182,12 +183,12 @@ describe('client sync state machine', () => {
 
 		const result = await store.sync([], [], {}, {}, [], {}, false, true, async (snapshot) => {
 			expect(await idb.getSyncState(keys.cursor)).toBeUndefined();
-			for (const item of snapshot.notes) await idb.putNote(item);
+			for (const item of snapshot.notes) await idb.putNote(PID, item);
 			return snapshot;
 		});
 
 		expect(result.success, result.error).toBe(true);
-		expect((await idb.getAllNotesMetadata()).map(({ id }) => id)).toEqual(['note-1']);
+		expect((await idb.getAllNotesMetadata(PID)).map(({ id }) => id)).toEqual(['note-1']);
 		expect(await idb.getSyncState(keys.cursor)).toBe(1);
 	});
 
@@ -209,7 +210,7 @@ describe('client sync state machine', () => {
 		expect(await idb.getSyncState(keys.cursor)).toBeUndefined();
 		expect(await idb.getSyncState(keys.baseline)).toBeUndefined();
 		expect(await idb.getSyncState(keys.recordIds)).toBeUndefined();
-		expect(await idb.getAllNotesMetadata()).toEqual([]);
+		expect(await idb.getAllNotesMetadata(PID)).toEqual([]);
 	});
 
 	it('drains every page before applying or committing, including cross-page attachments', async () => {
@@ -303,7 +304,7 @@ describe('client sync state machine', () => {
 			}
 			return { success: true, data: emptyData({ cursor: 2 }) };
 		});
-		await idb.markSyncOutbox([`note:note-1`]);
+		await idb.markSyncOutbox(PID, [`note:note-1`]);
 
 		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 
@@ -360,7 +361,7 @@ describe('client sync state machine', () => {
 		expect(requests[1].envelopes[0].expectedId).toBe('old-id');
 		expect(requests[2].envelopes[0].expectedId).toBe('current-id');
 		expect(requests[2].envelopes[0].id).not.toBe(requests[1].envelopes[0].id);
-		expect(await idb.getSyncOutboxKeys()).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual([]);
 	});
 
 	it('recovers from an accepted upload whose response was lost without uploading it twice', async () => {
@@ -384,16 +385,16 @@ describe('client sync state machine', () => {
 			}
 			return { success: true, data: emptyData({ cursor: 1 }) };
 		});
-		await idb.markSyncOutbox([`note:note-1`]);
+		await idb.markSyncOutbox(PID, [`note:note-1`]);
 
 		const failed = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 		expect(failed).toMatchObject({ success: false, error: 'Sync timed out' });
-		expect(await idb.getSyncOutboxKeys()).toEqual(['note:note-1']);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual(['note:note-1']);
 
 		const retried = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 		expect(retried.success, retried.error).toBe(true);
 		expect(requests.filter((request) => request.envelopes.length > 0)).toHaveLength(1);
-		expect(await idb.getSyncOutboxKeys()).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual([]);
 		expect(await idb.getSyncState(syncControlKeys(account.accountId).recordIds)).toEqual({
 			'note:note-1': accepted!.id
 		});
@@ -609,7 +610,7 @@ describe('client sync state machine', () => {
 		});
 		const local = note('note-1', { title: 'local replacement' });
 		const poisonedSlot = await sha256(`${account.syncKey}\u0000note:note-1`);
-		await idb.markSyncOutbox(['note:note-1']);
+		await idb.markSyncOutbox(PID, ['note:note-1']);
 
 		const pull = await store.sync([local], [], {}, {}, [], {}, false, true, passthrough);
 		expect(pull.success, pull.error).toBe(true);
@@ -792,7 +793,7 @@ describe('client sync state machine', () => {
 		expect(uploaded).toContain('note');
 		expect(uploaded).toContain('attachment:ok');
 		expect(store.lastError).toMatch(/quota/);
-		expect(await idb.getSyncOutboxKeys()).toEqual(['attachment:huge']);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual(['attachment:huge']);
 	});
 
 	it('returns to batched uploads after an oversized record is isolated', async () => {

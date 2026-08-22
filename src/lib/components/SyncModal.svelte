@@ -3,9 +3,13 @@
 	import { fade, fly } from 'svelte/transition';
 	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
+	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { buildProfileNotesExport } from '$lib/profiles';
+	import { estimateProfileBytes, pruneOrphanImageBlobs } from '$lib/db/idb';
 	import { unregisterReminderDevice } from '$lib/reminderWake';
-	import { Cloud, X } from '@lucide/svelte';
+	import { downloadJSON } from '$lib/utils';
+	import { Cloud, Download, Pencil, Trash2, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose }: { onClose: () => void } = $props();
@@ -23,6 +27,58 @@
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let deleteConfirm = $state(false);
+	let newName = $state('');
+	let editingId = $state<string | null>(null);
+	let editName = $state('');
+	let removingId = $state<string | null>(null);
+	let forceResyncConfirm = $state(false);
+
+	// A running sync must finish before a dataset handover can start.
+	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
+
+	// Approximate on-device footprint per saved key, refreshed whenever the
+	// modal is shown or its keyring changes. Orphaned blobs are reclaimed first
+	// so the number reflects data that still belongs to each profile.
+	let sizes = $state<Record<string, number>>({});
+	$effect(() => {
+		const ids = syncStore.profiles.map((profile) => profile.id);
+		void Promise.all(
+			ids.map(async (id) => {
+				await pruneOrphanImageBlobs(id).catch(() => undefined);
+				return [id, await estimateProfileBytes(id).catch(() => 0)] as const;
+			})
+		).then((entries) => {
+			sizes = Object.fromEntries(entries);
+		});
+	});
+
+	async function exportProfile(id: string) {
+		error = '';
+		try {
+			const name = syncStore.profiles.find((profile) => profile.id === id)?.name ?? 'profile';
+			const backup = await buildProfileNotesExport(id);
+			if (!backup) {
+				info = 'That sync key has no notes stored on this device yet.';
+				return;
+			}
+			downloadJSON(
+				backup,
+				`scraps-cache-${name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-${new Date()
+					.toISOString()
+					.slice(0, 10)}.scraps-cache-backup`
+			);
+		} catch {
+			error = 'Could not export that sync key\u2019s notes.';
+		}
+	}
+
+	function sizeLabel(id: string): string {
+		const bytes = sizes[id];
+		if (!bytes) return '';
+		return bytes < 1024 * 1024
+			? `${Math.max(1, Math.round(bytes / 1024))} KB`
+			: `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -53,7 +109,9 @@
 		loading = true;
 		error = '';
 		info = '';
-		const result = await syncStore.register();
+		const name = newName;
+		newName = '';
+		const result = await profileCoordinator.create(name);
 		loading = false;
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not create sync');
@@ -106,10 +164,27 @@
 				mode = 'linked';
 				info = 'Key sent. This device can go offline.';
 				error = '';
-			} else {
+				return;
+			}
+			loading = true;
+			const adopted = await profileCoordinator.receiveLinkedKey(result.receivedSyncKey ?? '');
+			loading = false;
+			if (adopted.error || !result.receivedSyncKey) {
+				mode = 'link';
+				error = friendlyError(
+					adopted.error ?? 'Invalid encrypted sync key',
+					'Could not set up the received sync key'
+				);
+				return;
+			}
+			if (adopted.outcome === 'choice') {
 				mode = 'choice';
 				error = '';
 				info = '';
+			} else {
+				mode = 'linked';
+				info = 'Paired. Downloading synced notes…';
+				error = '';
 			}
 			return;
 		}
@@ -157,7 +232,7 @@
 				error = '';
 				return;
 			}
-			if (!merge) syncStore.logout();
+			await syncStore.logout();
 			error = friendlyError(
 				syncStore.lastError || notesStore.lastPersistError,
 				'Could not finish setup'
@@ -169,6 +244,47 @@
 			loading = false;
 			syncing = false;
 		}
+	}
+
+	function startRename(id: string, current: string) {
+		editingId = id;
+		editName = current;
+		removingId = null;
+	}
+
+	function cancelEdit() {
+		editingId = null;
+		editName = '';
+	}
+
+	async function saveRename() {
+		const id = editingId;
+		if (!id || !editName.trim()) return;
+		await syncStore.renameProfile(id, editName);
+		cancelEdit();
+	}
+
+	async function switchProfile(id: string) {
+		if (profileCoordinator.switching) return;
+		error = '';
+		info = '';
+		loading = true;
+		const result = await profileCoordinator.switchTo(id);
+		loading = false;
+		if (!result.success) {
+			error = friendlyError(result.error, 'Could not switch sync key');
+			return;
+		}
+		mode = 'linked';
+		const name = syncStore.activeProfile?.name ?? 'sync key';
+		info = `Switched to ${name}. Syncing…`;
+	}
+
+	async function removeProfile(id: string) {
+		if (profileCoordinator.switching) return;
+		error = '';
+		const removed = await syncStore.removeProfile(id);
+		if (!removed) error = 'Could not remove that sync key.';
 	}
 
 	function formatBytes(bytes: number): string {
@@ -193,7 +309,7 @@
 
 	function unlinkDevice() {
 		const account = syncStore.account;
-		syncStore.logout();
+		void syncStore.logout();
 		mode = 'menu';
 		error = '';
 		info = '';
@@ -235,6 +351,24 @@
 			copyFlash = false;
 			copyFlashTimer = null;
 		}, 1500);
+	}
+
+	async function forceFullResync() {
+		if (loading) return;
+		loading = true;
+		error = '';
+		forceResyncConfirm = false;
+		try {
+			if (!(await syncStore.resetSyncControlPlane())) throw new Error('not linked');
+			info = 'Rebuilding the relay copy…';
+			const ok = await notesStore.syncWithCloudManual();
+			info = ok ? 'Relay copy rebuilt.' : '';
+			if (!ok) error = friendlyError(syncStore.lastError, 'Full resync did not finish');
+		} catch {
+			error = 'Could not start a full resync.';
+		} finally {
+			loading = false;
+		}
 	}
 
 	async function deleteCloudData() {
@@ -297,7 +431,11 @@
 				class="flex items-center gap-2 text-lg font-medium text-[var(--scraps-cache-text)]"
 			>
 				<Cloud class="h-5 w-5" aria-hidden="true" />
-				Sync
+				{#if syncStore.isLoggedIn && syncStore.activeProfile}
+					<span class="max-w-[16rem] truncate">{syncStore.activeProfile.name}</span>
+				{:else}
+					Sync
+				{/if}
 			</h2>
 			<button type="button" onclick={close} class="icon-btn h-8 w-8" aria-label="Close">
 				<X class="h-4 w-4" aria-hidden="true" />
@@ -351,9 +489,19 @@
 					class="scraps-cache-button scraps-cache-button-secondary w-full px-3 py-2.5 text-sm"
 					>Connect another device</button
 				>
+				<button
+					type="button"
+					onclick={() => {
+						error = '';
+						info = '';
+						mode = 'menu';
+					}}
+					class="w-full rounded-lg border border-[var(--scraps-cache-border)] px-3 py-2.5 text-sm touch-manipulation"
+					>Switch sync key</button
+				>
 				{#if syncStore.usage}
 					<div class="text-center text-xs text-[var(--scraps-cache-text-muted)]">
-						{formatBytes(syncStore.usage.ciphertextBytes)} stored for this account
+						{formatBytes(syncStore.usage.ciphertextBytes)} encrypted on the relay
 					</div>
 				{/if}
 				<button
@@ -396,15 +544,193 @@
 						>Delete cloud data</button
 					>
 				{/if}
+				{#if forceResyncConfirm}
+					<div
+						class="rounded-[var(--scraps-cache-radius-md)] border border-[var(--scraps-cache-border)] p-3"
+					>
+						<p class="text-xs leading-relaxed text-[var(--scraps-cache-text-muted)]">
+							Re-upload every record and re-download from scratch? Use this if the relay copy looks
+							incomplete. Notes on this device are not touched.
+						</p>
+						<div class="mt-2 flex gap-2">
+							<button
+								type="button"
+								onclick={() => {
+									forceResyncConfirm = false;
+								}}
+								disabled={loading}
+								class="flex-1 rounded border border-[var(--scraps-cache-border)] px-2 py-1.5 text-xs"
+								>Cancel</button
+							>
+							<button
+								type="button"
+								onclick={() => void forceFullResync()}
+								disabled={loading}
+								class="flex-1 rounded border border-[var(--scraps-cache-border)] px-2 py-1.5 text-xs font-medium"
+								>{loading ? 'Working…' : 'Full resync'}</button
+							>
+						</div>
+					</div>
+				{:else}
+					<button
+						type="button"
+						onclick={() => {
+							forceResyncConfirm = true;
+						}}
+						class="w-full text-xs text-[var(--scraps-cache-text-muted)] touch-manipulation"
+						>Force full resync</button
+					>
+				{/if}
 			</div>
 		{:else if mode === 'menu'}
 			<div class="space-y-3">
+				{#if syncStore.profiles.length}
+					<p class="text-xs font-medium tracking-wide text-[var(--scraps-cache-text-muted)]">
+						Saved sync keys on this device
+					</p>
+					<div class="space-y-1.5">
+						{#each syncStore.profiles as profile (profile.id)}
+							{#if editingId === profile.id}
+								<div
+									class="flex items-center gap-2 rounded-lg border border-[var(--scraps-cache-border)] px-2 py-1.5"
+								>
+									<input
+										class="scraps-cache-input min-w-0 flex-1 px-2 py-1 text-sm"
+										bind:value={editName}
+										maxlength="60"
+										aria-label="Sync key name"
+										onkeydown={(event) => {
+											if (event.key === 'Enter') void saveRename();
+											if (event.key === 'Escape') cancelEdit();
+										}}
+									/>
+									<button
+										type="button"
+										onclick={() => void saveRename()}
+										class="shrink-0 text-xs font-medium text-[var(--scraps-cache-primary)]"
+										>Save</button
+									>
+									<button
+										type="button"
+										onclick={cancelEdit}
+										class="shrink-0 text-xs text-[var(--scraps-cache-text-muted)]">Cancel</button
+									>
+								</div>
+							{:else if removingId === profile.id}
+								<div
+									class="scraps-cache-status-danger rounded-lg border border-[var(--scraps-cache-danger)] px-3 py-2"
+								>
+									<p class="text-xs leading-relaxed">
+										Remove “{profile.name}” and its stashed notes from this device? Its synced cloud
+										data stays.
+									</p>
+									<div class="mt-2 flex gap-2">
+										<button
+											type="button"
+											onclick={() => {
+												removingId = null;
+											}}
+											class="flex-1 rounded border border-[var(--scraps-cache-border)] px-2 py-1 text-xs"
+											>Keep</button
+										>
+										<button
+											type="button"
+											onclick={() => {
+												removingId = null;
+												void removeProfile(profile.id);
+											}}
+											class="scraps-cache-button scraps-cache-button-destructive-solid flex-1 px-2 py-1 text-xs font-medium"
+											>Remove</button
+										>
+									</div>
+								</div>
+							{:else}
+								<div
+									class="flex items-center gap-2 rounded-lg border border-[var(--scraps-cache-border)] px-3 py-2"
+								>
+									{#if profile.id === syncStore.activeProfile?.id}
+										<button
+											type="button"
+											class="min-w-0 flex-1 text-left"
+											onclick={() => {
+												mode = 'linked';
+												error = '';
+												info = '';
+											}}
+										>
+											<span class="block truncate text-sm">{profile.name}</span>
+											{#if sizeLabel(profile.id)}
+												<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
+													>{sizeLabel(profile.id)} on this device</span
+												>
+											{/if}
+											<span class="block text-xs font-medium text-[var(--scraps-cache-success)]"
+												>Active — tap to manage</span
+											>
+										</button>
+									{:else}
+										<span class="min-w-0 flex-1">
+											<span class="block truncate text-sm">{profile.name}</span>
+											{#if sizeLabel(profile.id)}
+												<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
+													>{sizeLabel(profile.id)} on this device</span
+												>
+											{/if}
+										</span>
+										<button
+											type="button"
+											onclick={() => void switchProfile(profile.id)}
+											disabled={handoverBlocked}
+											title={notesStore.syncing ? 'Wait for the current sync to finish' : undefined}
+											class="shrink-0 rounded-md border border-[var(--scraps-cache-border)] px-2 py-1 text-xs font-medium touch-manipulation"
+										>
+											{profileCoordinator.switching ? '…' : 'Switch'}
+										</button>
+									{/if}
+									<button
+										type="button"
+										onclick={() => void exportProfile(profile.id)}
+										class="icon-btn h-7 w-7 shrink-0"
+										aria-label="Export notes of {profile.name}"
+									>
+										<Download class="h-3.5 w-3.5" aria-hidden="true" />
+									</button>
+									<button
+										type="button"
+										onclick={() => startRename(profile.id, profile.name)}
+										class="icon-btn h-7 w-7 shrink-0"
+										aria-label="Rename {profile.name}"
+									>
+										<Pencil class="h-3.5 w-3.5" aria-hidden="true" />
+									</button>
+									{#if profile.id !== syncStore.activeProfile?.id}
+										<button
+											type="button"
+											onclick={() => {
+												removingId = profile.id;
+												cancelEdit();
+											}}
+											class="icon-btn h-7 w-7 shrink-0"
+											aria-label="Remove {profile.name}"
+										>
+											<Trash2 class="h-3.5 w-3.5" aria-hidden="true" />
+										</button>
+									{/if}
+								</div>
+							{/if}
+						{/each}
+					</div>
+				{/if}
 				<p class="text-sm text-[var(--scraps-cache-text-muted)]">
 					Create one private sync key, then connect your own devices by starting the connection on
-					both within 60 seconds.
+					both within 60 seconds. Each key keeps its own notes on this device.
+					{#if handoverBlocked}<span class="block">
+							Switching sync keys is paused until the current sync finishes.</span
+						>{/if}
 				</p>
 				<button
 					type="button"
+					disabled={handoverBlocked}
 					onclick={() => {
 						mode = 'register';
 						error = '';
@@ -430,6 +756,14 @@
 					Creates a private account on this device. Other devices join with a one-time code, not a
 					lifetime password.
 				</p>
+				<input
+					bind:value={newName}
+					placeholder="Name this sync key (optional)"
+					maxlength="60"
+					class="scraps-cache-input w-full px-3 py-2 text-sm"
+					aria-label="Sync key name"
+					onkeydown={(event) => event.key === 'Enter' && void create()}
+				/>
 				{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}<button
 					type="button"
 					onclick={() => void create()}
