@@ -1,3 +1,8 @@
+<script lang="ts" module>
+	/** Day filter state: a single day (from === to) or an inclusive range. `null` to = picking the end day. */
+	export type ReminderDayFilter = { from: string; to: string | null };
+</script>
+
 <script lang="ts">
 	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import type { Note } from '$lib/types';
@@ -5,24 +10,29 @@
 
 	let {
 		notes,
-		selected = $bindable(null)
+		selected = $bindable<ReminderDayFilter | null>(null)
 	}: {
 		notes: Note[];
-		selected?: string | null;
+		selected?: ReminderDayFilter | null;
 	} = $props();
 
 	const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+	const LONG_PRESS_MS = 450;
 
 	const openedAt = new Date();
 	let today = $state(openedAt);
 	let viewYear = $state(openedAt.getFullYear());
 	let viewMonth = $state(openedAt.getMonth());
 
+	let pressTimer: ReturnType<typeof setTimeout> | null = null;
+	let longPressed = false;
+
 	const monthLabel = $derived(
 		new Date(viewYear, viewMonth, 1).toLocaleDateString([], { month: 'long', year: 'numeric' })
 	);
 	const leadingBlanks = $derived((new Date(viewYear, viewMonth, 1).getDay() + 6) % 7);
 	const daysInMonth = $derived(new Date(viewYear, viewMonth + 1, 0).getDate());
+	const pickingEnd = $derived(selected !== null && selected.to === null);
 	const reminderDays = $derived.by(() => {
 		const counts = new Map<string, number>();
 		for (const note of notes) {
@@ -37,21 +47,72 @@
 		return `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 	}
 
+	function isInRange(key: string): boolean {
+		if (!selected || selected.to === null) return false;
+		return key >= selected.from && key <= selected.to;
+	}
+
+	function isEndpoint(key: string): boolean {
+		if (!selected) return false;
+		return key === selected.from || key === selected.to;
+	}
+
 	function shiftMonth(delta: number) {
 		const next = new Date(viewYear, viewMonth + delta, 1);
 		viewYear = next.getFullYear();
 		viewMonth = next.getMonth();
 	}
 
-	function backToToday() {
+	function goToday() {
 		today = new Date();
 		viewYear = today.getFullYear();
 		viewMonth = today.getMonth();
 	}
 
-	function toggleDay(day: number) {
+	function startPress(day: number) {
+		longPressed = false;
+		cancelPress();
+		pressTimer = setTimeout(() => {
+			pressTimer = null;
+			longPressed = true;
+			selected = { from: keyFor(day), to: null };
+		}, LONG_PRESS_MS);
+	}
+
+	function cancelPress() {
+		if (pressTimer !== null) {
+			clearTimeout(pressTimer);
+			pressTimer = null;
+		}
+	}
+
+	function handleClick(day: number) {
+		cancelPress();
+		if (longPressed) {
+			longPressed = false;
+			return;
+		}
 		const key = keyFor(day);
-		selected = selected === key ? null : key;
+		if (selected && selected.to === null) {
+			selected =
+				key < selected.from ? { from: key, to: selected.from } : { from: selected.from, to: key };
+			return;
+		}
+		if (selected && selected.from === key && selected.to === key) {
+			selected = null;
+			return;
+		}
+		selected = { from: key, to: key };
+	}
+
+	function filterToday() {
+		const key = dayKey(today.getTime());
+		if (selected && selected.to !== null && key >= selected.from && key <= selected.to) {
+			selected = null;
+			return;
+		}
+		goToday();
+		selected = { from: key, to: key };
 	}
 </script>
 
@@ -67,18 +128,7 @@
 		>
 			<ChevronLeft size={16} />
 		</button>
-		<div class="flex items-center gap-2">
-			<span class="text-sm font-semibold">{monthLabel}</span>
-			{#if viewYear !== today.getFullYear() || viewMonth !== today.getMonth()}
-				<button
-					type="button"
-					class="rounded-full px-2 py-0.5 text-xs text-[var(--scraps-cache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
-					onclick={backToToday}
-				>
-					Today
-				</button>
-			{/if}
-		</div>
+		<span class="text-sm font-semibold">{monthLabel}</span>
 		<button
 			type="button"
 			class="rounded-full p-1.5 text-[var(--scraps-cache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
@@ -109,22 +159,30 @@
 				viewYear === today.getFullYear() &&
 				viewMonth === today.getMonth() &&
 				day === today.getDate()}
+			{@const endpoint = isEndpoint(key)}
 			<button
 				type="button"
 				class="relative mx-auto flex h-8 w-8 flex-col items-center justify-center rounded-full
-					{selected === key
+					{endpoint
 					? 'bg-[var(--scraps-cache-accent)] text-[var(--scraps-cache-accent-foreground)]'
-					: isToday
-						? 'font-bold ring-1 ring-[var(--scraps-cache-border)]'
-						: 'hover:bg-black/5 dark:hover:bg-white/10'}"
-				aria-pressed={selected === key}
+					: isInRange(key)
+						? 'bg-[color-mix(in_srgb,var(--scraps-cache-accent)_18%,transparent)]'
+						: isToday
+							? 'font-bold ring-1 ring-[var(--scraps-cache-border)]'
+							: 'hover:bg-black/5 dark:hover:bg-white/10'}"
+				aria-pressed={endpoint}
 				aria-label="{monthLabel} {day}{count ? `, ${count} reminder${count === 1 ? '' : 's'}` : ''}"
-				onclick={() => toggleDay(day)}
+				onpointerdown={() => startPress(day)}
+				onpointerup={cancelPress}
+				onpointerleave={cancelPress}
+				onpointercancel={cancelPress}
+				oncontextmenu={(e) => e.preventDefault()}
+				onclick={() => handleClick(day)}
 			>
 				<span>{day}</span>
 				{#if count > 0}
 					<span
-						class="absolute bottom-1 h-1 w-1 rounded-full {selected === key
+						class="absolute bottom-1 h-1 w-1 rounded-full {endpoint
 							? 'bg-[var(--scraps-cache-accent-foreground)]'
 							: 'bg-[var(--scraps-cache-accent)]'}"
 					></span>
@@ -133,18 +191,32 @@
 		{/each}
 	</div>
 
-	{#if selected}
-		<div
-			class="mt-2 flex items-center justify-between border-t border-[var(--scraps-cache-border)] pt-2 text-xs text-[var(--scraps-cache-text-muted)]"
+	<div
+		class="mt-2 flex h-7 items-center justify-between border-t border-[var(--scraps-cache-border)] pt-1 text-xs"
+	>
+		<button
+			type="button"
+			class="rounded-full px-2 py-0.5 font-medium text-[var(--scraps-cache-text-muted)] hover:bg-black/5 hover:text-[var(--scraps-cache-text)] dark:hover:bg-white/10"
+			onclick={filterToday}
 		>
-			<span>Filtered to one day</span>
-			<button
-				type="button"
-				class="hover:text-[var(--scraps-cache-text)]"
-				onclick={() => (selected = null)}
-			>
-				Clear
-			</button>
-		</div>
-	{/if}
+			Today
+		</button>
+		<span class="flex-1 truncate px-2 text-center text-[var(--scraps-cache-text-muted)]">
+			{#if pickingEnd}
+				Pick an end day
+			{:else if selected && selected.from !== selected.to}
+				Range filter active
+			{:else if selected}
+				Day filter active
+			{/if}
+		</span>
+		<button
+			type="button"
+			class="rounded-full px-2 py-0.5 text-[var(--scraps-cache-text-muted)] hover:bg-black/5 hover:text-[var(--scraps-cache-text)] disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-white/10"
+			disabled={!selected}
+			onclick={() => (selected = null)}
+		>
+			Clear
+		</button>
+	</div>
 </div>

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import NotesFeed from '$lib/components/NotesFeed.svelte';
-	import SectionHeader from '$lib/components/SectionHeader.svelte';
-	import ReminderCalendar from '$lib/components/ReminderCalendar.svelte';
+	import ReminderCalendar, {
+		type ReminderDayFilter
+	} from '$lib/components/ReminderCalendar.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { useEditorActions } from '$lib/editorContext';
@@ -12,16 +13,21 @@
 
 	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
-	let selectedDay = $state<string | null>(null);
+	let selectedDay = $state<ReminderDayFilter | null>(null);
 
 	const searched = $derived(
 		uiStore.search ? notesStore.search(uiStore.search, reminders) : reminders
 	);
-	const visible = $derived(
-		selectedDay
-			? searched.filter((n) => n.reminder != null && dayKey(n.reminder) === selectedDay)
-			: searched
-	);
+	const visible = $derived.by(() => {
+		const sel = selectedDay;
+		if (!sel) return searched;
+		const to = sel.to ?? sel.from;
+		return searched.filter((n) => {
+			if (n.reminder == null) return false;
+			const key = dayKey(n.reminder);
+			return key >= sel.from && key <= to;
+		});
+	});
 </script>
 
 <div class="pt-4 pb-8">
@@ -41,7 +47,6 @@
 				: 'Create a note, then add a reminder when you need to return to it.'}
 		/>
 	{:else}
-		<SectionHeader label="Reminders" count={visible.length} />
 		<NotesFeed notes={visible} onOpen={openEditor} />
 	{/if}
 </div>
