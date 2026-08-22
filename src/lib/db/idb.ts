@@ -5,15 +5,54 @@ import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
 import type { LinkPreview } from '$lib/linkPreview';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
+import { PROFILE_MIRROR_KEYS } from '$lib/noteStorage';
 
 const DB_NAME = 'google-keep-clone';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const NOTES_STORE = 'notes';
 const LABELS_STORE = 'labels';
 const IMAGES_STORE = 'note-images';
 const LINK_PREVIEWS_STORE = 'link-previews';
 const SYNC_STATE_STORE = 'sync-state';
 const SYNC_OUTBOX_STORE = 'sync-outbox';
+export const PROFILES_STORE = 'profiles';
+export const PROFILE_STASH_STORE = 'profile-stash';
+
+/** One saved sync key ("profile") on this device. The active one owns the live dataset. */
+export interface StoredProfile {
+	id: string;
+	name: string;
+	syncKey: string;
+	createdAt: number;
+}
+
+/**
+ * Everything a profile owns on this device while it is not the active profile:
+ * notes (lean rows), labels, attachment blobs, delete manifests, boards,
+ * reminder dedup keys, and pending upload markers.
+ */
+export interface DeviceDataset {
+	notes: Note[];
+	labels: Label[];
+	imageBlobs: { key: string; mime: string; bytes: Uint8Array }[];
+	noteTombstones: Record<string, number>;
+	labelTombstones: Record<string, number>;
+	boardTombstones: Record<string, number>;
+	boards: unknown;
+	firedReminderKeys: string[];
+	outboxKeys: string[];
+}
+
+export interface ProfileStashRecord extends DeviceDataset {
+	pid: string;
+	savedAt: number;
+}
+
+/** Stash parts adopted in memory by their owning stores after a restore. */
+export type ProfileExtras = Pick<
+	DeviceDataset,
+	'noteTombstones' | 'labelTombstones' | 'boardTombstones' | 'boards' | 'firedReminderKeys'
+>;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 const noteChains = new Map<string, Promise<void>>();
@@ -62,6 +101,12 @@ function getDB(): Promise<IDBPDatabase> {
 				}
 				if (!db.objectStoreNames.contains(SYNC_OUTBOX_STORE)) {
 					db.createObjectStore(SYNC_OUTBOX_STORE);
+				}
+				if (!db.objectStoreNames.contains(PROFILES_STORE)) {
+					db.createObjectStore(PROFILES_STORE, { keyPath: 'id' });
+				}
+				if (!db.objectStoreNames.contains(PROFILE_STASH_STORE)) {
+					db.createObjectStore(PROFILE_STASH_STORE, { keyPath: 'pid' });
 				}
 			}
 		});
@@ -529,6 +574,7 @@ export async function setSyncState<T>(key: string, value: T): Promise<void> {
 }
 
 const FIRED_REMINDERS_KEY = 'gkc-fired-reminders';
+export { FIRED_REMINDERS_KEY };
 
 export async function getFiredReminderKeys(): Promise<string[]> {
 	const stored = await getSyncState<unknown>(FIRED_REMINDERS_KEY);
@@ -685,5 +731,168 @@ export async function commitSyncControl(
 			await tx.done.catch(() => undefined);
 			throw error;
 		}
+	});
+}
+
+// --- Profiles (saved sync keys) and per-profile dataset stashes ------------
+
+function isStoredProfile(value: unknown): value is StoredProfile {
+	if (!value || typeof value !== 'object') return false;
+	const row = value as Partial<StoredProfile>;
+	return (
+		typeof row.id === 'string' &&
+		row.id.length > 0 &&
+		typeof row.name === 'string' &&
+		typeof row.syncKey === 'string' &&
+		row.syncKey.length > 0 &&
+		Number.isFinite(row.createdAt)
+	);
+}
+
+export async function listStoredProfiles(): Promise<StoredProfile[]> {
+	const db = await getDB();
+	return (await db.getAll(PROFILES_STORE)).filter(isStoredProfile);
+}
+
+export async function putStoredProfile(profile: StoredProfile): Promise<void> {
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		await db.put(PROFILES_STORE, { ...profile });
+	});
+}
+
+/** Removes the keyring entry together with its stashed dataset. */
+export async function deleteStoredProfile(id: string): Promise<void> {
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction([PROFILES_STORE, PROFILE_STASH_STORE], 'readwrite');
+		tx.objectStore(PROFILES_STORE).delete(id);
+		tx.objectStore(PROFILE_STASH_STORE).delete(id);
+		await tx.done;
+	});
+}
+
+export async function getStashedDataset(profileId: string): Promise<ProfileStashRecord | null> {
+	const db = await getDB();
+	return ((await db.get(PROFILE_STASH_STORE, profileId)) as ProfileStashRecord | undefined) ?? null;
+}
+
+export async function putStashedDataset(record: ProfileStashRecord): Promise<void> {
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		await db.put(PROFILE_STASH_STORE, record);
+	});
+}
+
+export async function deleteStashedDataset(profileId: string): Promise<void> {
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		await db.delete(PROFILE_STASH_STORE, profileId);
+	});
+}
+
+/**
+ * Read the live device dataset for stashing before a profile switch. Note rows
+ * are lean (attachment bytes live in IMAGES_STORE) and are captured as-is.
+ */
+export async function captureLiveCore(): Promise<{
+	notes: Note[];
+	labels: Label[];
+	imageBlobs: DeviceDataset['imageBlobs'];
+	outboxKeys: string[];
+}> {
+	const db = await getDB();
+	const [noteRows, labelRows, imageKeys, imageRows] = await Promise.all([
+		db.getAll(NOTES_STORE) as Promise<Note[]>,
+		db.getAll(LABELS_STORE) as Promise<Label[]>,
+		db.getAllKeys(IMAGES_STORE),
+		db.getAll(IMAGES_STORE)
+	]);
+	const imageBlobs = imageKeys.flatMap((key, index) => {
+		const row = imageRows[index] as { mime?: unknown; bytes?: unknown } | undefined;
+		const bytes = bytesFromStored(row?.bytes);
+		if (!row || !bytes) return [];
+		return [
+			{
+				key: String(key),
+				mime: typeof row.mime === 'string' ? row.mime : 'application/octet-stream',
+				bytes
+			}
+		];
+	});
+	return {
+		notes: noteRows.map(plainNote),
+		labels: labelRows.map((label) => ({ ...label })),
+		imageBlobs,
+		outboxKeys: await getSyncOutboxKeys()
+	};
+}
+
+/**
+ * Exclusive replacement of the live notes/images/labels/outbox with a target
+ * dataset. Generation-gated so note writes queued before the switch cannot
+ * commit afterwards. Stale localStorage mirrors are dropped here so a crash
+ * right after the swap cannot merge them into the incoming profile; their
+ * owning stores rewrite them once they adopt the new dataset in memory.
+ */
+export function replaceLiveCore(
+	dataset: Pick<DeviceDataset, 'notes' | 'labels' | 'imageBlobs' | 'outboxKeys'>
+): Promise<void> {
+	const generation = ++writeGeneration;
+	return enqueueDeviceWrite(async () => {
+		if (generation !== writeGeneration) return;
+		for (const key of PROFILE_MIRROR_KEYS) {
+			try {
+				localStorage.removeItem(key);
+			} catch {
+				/* best effort */
+			}
+		}
+		const db = await getDB();
+		const clear = db.transaction(
+			[NOTES_STORE, IMAGES_STORE, LABELS_STORE, SYNC_OUTBOX_STORE],
+			'readwrite'
+		);
+		clear.objectStore(NOTES_STORE).clear();
+		clear.objectStore(IMAGES_STORE).clear();
+		clear.objectStore(LABELS_STORE).clear();
+		clear.objectStore(SYNC_OUTBOX_STORE).clear();
+		await clear.done;
+		let firstError: unknown = null;
+		for (const blob of dataset.imageBlobs) {
+			try {
+				await db.put(IMAGES_STORE, { mime: blob.mime, bytes: blob.bytes }, blob.key);
+			} catch (error) {
+				// Keep writing so one oversized photo cannot leave the device half-restored.
+				firstError ??= error;
+			}
+		}
+		for (const note of dataset.notes) {
+			try {
+				await putNoteSnapshot(plainNote(note));
+			} catch (error) {
+				firstError ??= error;
+			}
+		}
+		const labelWrite = db.transaction(LABELS_STORE, 'readwrite');
+		for (const label of dataset.labels) {
+			labelWrite.store.put({
+				id: String(label.id),
+				name: String(label.name),
+				createdAt: Number(label.createdAt) || 0,
+				updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+			});
+		}
+		await labelWrite.done;
+		// Inline outbox re-marking: markSyncOutbox would enqueue onto this very
+		// write chain and deadlock against its own caller.
+		if (dataset.outboxKeys.length) {
+			const outboxTx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+			const generation = await nextOutboxGeneration(outboxTx);
+			const outbox = outboxTx.objectStore(SYNC_OUTBOX_STORE);
+			for (const key of dataset.outboxKeys) await outbox.put(generation, key);
+			await outboxTx.done;
+		}
+		if (firstError) throw firstError;
 	});
 }

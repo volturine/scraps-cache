@@ -1,5 +1,6 @@
 // Rune-based notes & labels store. Persists to IndexedDB via $effect.
 import type { Note, Label, NoteColor, NoteField } from '$lib/types';
+import type { KanbanBoard } from '$lib/kanban';
 import {
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
@@ -15,7 +16,8 @@ import {
 	replaceAllDeviceData,
 	getSyncOutboxKeys,
 	clearSyncOutbox,
-	pruneOrphanImageBlobs
+	pruneOrphanImageBlobs,
+	type ProfileExtras
 } from '$lib/db/idb';
 import {
 	mergeLabelLists,
@@ -41,11 +43,13 @@ import {
 	hydrateTombstones,
 	readLabelTombstones,
 	readTombstones,
+	resetTombstoneCaches,
 	writeLabelTombstones,
 	writeTombstones
 } from '$lib/syncTombstones';
 import { stripFullImageBytes } from '$lib/noteImages';
 import { makeImageThumbDataUrl } from '$lib/imageThumb';
+import { repairInterruptedProfileSwitch } from '$lib/profiles';
 import { replacementFitsStorage } from '$lib/storageCapacity';
 import { formatStorageError } from '$lib/imageBlob';
 import type { NoteImage } from '$lib/types';
@@ -54,6 +58,9 @@ import { stableStringify } from '$lib/syncHash';
 
 /** Minimum gap between opportunistic auto syncs; manual syncs are never throttled. */
 const AUTO_SYNC_MIN_INTERVAL_MS = 30_000;
+
+/** Web lock serializing sync flights and profile dataset swaps. */
+export const SYNC_LOCK = 'scraps-cache-sync';
 
 function durableNoteSignature(note: Note): string {
 	return stableStringify({
@@ -135,6 +142,10 @@ export class NotesStore {
 
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
+		await syncStore.ensureProfilesLoaded();
+		await repairInterruptedProfileSwitch(syncStore.activeProfile).catch((err) =>
+			this.recordPersistenceError('Could not restore profile data', err)
+		);
 		if (this.loaded) {
 			await this.rehydrateFromIDB();
 			return;
@@ -688,6 +699,41 @@ export class NotesStore {
 		}
 	}
 
+	/**
+	 * Swap in-memory data after a profile switch. The IDB core (notes, images,
+	 * labels, outbox) and durable extras were already replaced by the caller;
+	 * this reloads them and drops every pending write belonging to the
+	 * previous profile.
+	 */
+	async adoptDeviceDataset(extras: ProfileExtras | null): Promise<void> {
+		for (const timer of this.noteRetryTimers.values()) clearTimeout(timer);
+		this.noteRetryTimers.clear();
+		this.noteRetryAttempts.clear();
+		this.attachmentLoads.clear();
+		this.syncFollowupRequested = false;
+		this.dirty = false;
+		resetTombstoneCaches();
+		this.deletedNoteIds = { ...(extras?.noteTombstones ?? {}) };
+		this.deletedLabelIds = { ...(extras?.labelTombstones ?? {}) };
+		try {
+			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
+			this.notes = withoutTombstoned(dbNotes, this.deletedNoteIds).sort(
+				(a, b) => b.updatedAt - a.updatedAt
+			);
+			this.labels = withoutTombstoned(dbLabels, this.deletedLabelIds).sort((a, b) =>
+				a.name.localeCompare(b.name)
+			);
+			kanbanStore.replaceWithCloud(
+				Array.isArray(extras?.boards) ? (extras!.boards as KanbanBoard[]) : [],
+				extras?.boardTombstones ?? {}
+			);
+			this.mirrorToLS();
+			this.lastPersistError = null;
+		} catch (err) {
+			this.recordPersistenceError('Could not load profile data', err);
+		}
+	}
+
 	// Reload all three layers. Mirror is only a fast-boot cache; IDB always participates so
 	// image blobs are rehydrated even when a mirror exists.
 	async hardResync() {
@@ -1142,7 +1188,7 @@ export class NotesStore {
 	private async withSyncLock<T>(run: () => Promise<T>): Promise<T> {
 		const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
 		if (!locks?.request) return run();
-		return locks.request('scraps-cache-sync', run);
+		return locks.request(SYNC_LOCK, run);
 	}
 
 	// Core sync. Local IDB remains authoritative; photo bytes move in small fractions.

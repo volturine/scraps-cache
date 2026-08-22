@@ -3,9 +3,10 @@
 	import { fade, fly } from 'svelte/transition';
 	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
+	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { unregisterReminderDevice } from '$lib/reminderWake';
-	import { Cloud, X } from '@lucide/svelte';
+	import { Cloud, Pencil, Trash2, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose }: { onClose: () => void } = $props();
@@ -23,6 +24,10 @@
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let deleteConfirm = $state(false);
+	let newName = $state('');
+	let editingId = $state<string | null>(null);
+	let editName = $state('');
+	let removingId = $state<string | null>(null);
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -53,7 +58,9 @@
 		loading = true;
 		error = '';
 		info = '';
-		const result = await syncStore.register();
+		const name = newName;
+		newName = '';
+		const result = await profileCoordinator.create(name);
 		loading = false;
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not create sync');
@@ -106,10 +113,27 @@
 				mode = 'linked';
 				info = 'Key sent. This device can go offline.';
 				error = '';
-			} else {
+				return;
+			}
+			loading = true;
+			const adopted = await profileCoordinator.receiveLinkedKey(result.receivedSyncKey ?? '');
+			loading = false;
+			if (adopted.error || !result.receivedSyncKey) {
+				mode = 'link';
+				error = friendlyError(
+					adopted.error ?? 'Invalid encrypted sync key',
+					'Could not set up the received sync key'
+				);
+				return;
+			}
+			if (adopted.outcome === 'choice') {
 				mode = 'choice';
 				error = '';
 				info = '';
+			} else {
+				mode = 'linked';
+				info = 'Paired. Downloading synced notes…';
+				error = '';
 			}
 			return;
 		}
@@ -157,7 +181,7 @@
 				error = '';
 				return;
 			}
-			if (!merge) syncStore.logout();
+			await syncStore.logout();
 			error = friendlyError(
 				syncStore.lastError || notesStore.lastPersistError,
 				'Could not finish setup'
@@ -169,6 +193,47 @@
 			loading = false;
 			syncing = false;
 		}
+	}
+
+	function startRename(id: string, current: string) {
+		editingId = id;
+		editName = current;
+		removingId = null;
+	}
+
+	function cancelEdit() {
+		editingId = null;
+		editName = '';
+	}
+
+	async function saveRename() {
+		const id = editingId;
+		if (!id || !editName.trim()) return;
+		await syncStore.renameProfile(id, editName);
+		cancelEdit();
+	}
+
+	async function switchProfile(id: string) {
+		if (profileCoordinator.switching) return;
+		error = '';
+		info = '';
+		loading = true;
+		const result = await profileCoordinator.switchTo(id);
+		loading = false;
+		if (!result.success) {
+			error = friendlyError(result.error, 'Could not switch sync key');
+			return;
+		}
+		mode = 'linked';
+		const name = syncStore.activeProfile?.name ?? 'sync key';
+		info = `Switched to ${name}. Syncing…`;
+	}
+
+	async function removeProfile(id: string) {
+		if (profileCoordinator.switching) return;
+		error = '';
+		const removed = await syncStore.removeProfile(id);
+		if (!removed) error = 'Could not remove that sync key.';
 	}
 
 	function formatBytes(bytes: number): string {
@@ -193,7 +258,7 @@
 
 	function unlinkDevice() {
 		const account = syncStore.account;
-		syncStore.logout();
+		void syncStore.logout();
 		mode = 'menu';
 		error = '';
 		info = '';
@@ -306,6 +371,51 @@
 
 		{#if mode === 'linked' && syncStore.account}
 			<div class="space-y-4">
+				{#if syncStore.activeProfile}
+					{#if editingId === syncStore.activeProfile.id}
+						<div
+							class="flex items-center gap-2 rounded-lg border border-[var(--scraps-cache-border)] px-2 py-1.5"
+						>
+							<input
+								class="scraps-cache-input min-w-0 flex-1 px-2 py-1 text-sm"
+								bind:value={editName}
+								maxlength="60"
+								aria-label="Sync key name"
+								onkeydown={(event) => {
+									if (event.key === 'Enter') void saveRename();
+									if (event.key === 'Escape') cancelEdit();
+								}}
+							/>
+							<button
+								type="button"
+								onclick={() => void saveRename()}
+								class="shrink-0 text-xs font-medium text-[var(--scraps-cache-primary)]">Save</button
+							>
+							<button
+								type="button"
+								onclick={cancelEdit}
+								class="shrink-0 text-xs text-[var(--scraps-cache-text-muted)]">Cancel</button
+							>
+						</div>
+					{:else if profileCoordinator.switching}
+						<p class="text-sm text-[var(--scraps-cache-text-muted)]">Switching sync key…</p>
+					{:else}
+						<div class="flex items-center gap-2">
+							<span class="min-w-0 flex-1 truncate text-sm font-medium"
+								>{syncStore.activeProfile.name}</span
+							>
+							<button
+								type="button"
+								onclick={() =>
+									startRename(syncStore.activeProfile!.id, syncStore.activeProfile!.name)}
+								class="icon-btn h-7 w-7 shrink-0"
+								aria-label="Rename {syncStore.activeProfile.name}"
+							>
+								<Pencil class="h-3.5 w-3.5" aria-hidden="true" />
+							</button>
+						</div>
+					{/if}
+				{/if}
 				<p class="text-sm text-[var(--scraps-cache-text-muted)]">
 					This device is linked. Connect another device with a one-time code that expires in 60
 					seconds.
@@ -399,9 +509,114 @@
 			</div>
 		{:else if mode === 'menu'}
 			<div class="space-y-3">
+				{#if syncStore.profiles.length}
+					<p class="text-xs font-medium tracking-wide text-[var(--scraps-cache-text-muted)]">
+						Saved sync keys on this device
+					</p>
+					<div class="space-y-1.5">
+						{#each syncStore.profiles as profile (profile.id)}
+							{#if editingId === profile.id}
+								<div
+									class="flex items-center gap-2 rounded-lg border border-[var(--scraps-cache-border)] px-2 py-1.5"
+								>
+									<input
+										class="scraps-cache-input min-w-0 flex-1 px-2 py-1 text-sm"
+										bind:value={editName}
+										maxlength="60"
+										aria-label="Sync key name"
+										onkeydown={(event) => {
+											if (event.key === 'Enter') void saveRename();
+											if (event.key === 'Escape') cancelEdit();
+										}}
+									/>
+									<button
+										type="button"
+										onclick={() => void saveRename()}
+										class="shrink-0 text-xs font-medium text-[var(--scraps-cache-primary)]"
+										>Save</button
+									>
+									<button
+										type="button"
+										onclick={cancelEdit}
+										class="shrink-0 text-xs text-[var(--scraps-cache-text-muted)]">Cancel</button
+									>
+								</div>
+							{:else if removingId === profile.id}
+								<div
+									class="scraps-cache-status-danger rounded-lg border border-[var(--scraps-cache-danger)] px-3 py-2"
+								>
+									<p class="text-xs leading-relaxed">
+										Remove “{profile.name}” and its stashed notes from this device? Its synced cloud
+										data stays.
+									</p>
+									<div class="mt-2 flex gap-2">
+										<button
+											type="button"
+											onclick={() => {
+												removingId = null;
+											}}
+											class="flex-1 rounded border border-[var(--scraps-cache-border)] px-2 py-1 text-xs"
+											>Keep</button
+										>
+										<button
+											type="button"
+											onclick={() => {
+												removingId = null;
+												void removeProfile(profile.id);
+											}}
+											class="scraps-cache-button scraps-cache-button-destructive-solid flex-1 px-2 py-1 text-xs font-medium"
+											>Remove</button
+										>
+									</div>
+								</div>
+							{:else}
+								<div
+									class="flex items-center gap-2 rounded-lg border border-[var(--scraps-cache-border)] px-3 py-2"
+								>
+									<span class="min-w-0 flex-1 truncate text-sm">{profile.name}</span>
+									{#if profile.id === syncStore.activeProfile?.id}
+										<span class="text-xs font-medium text-[var(--scraps-cache-success)]"
+											>Active</span
+										>
+									{:else}
+										<button
+											type="button"
+											onclick={() => void switchProfile(profile.id)}
+											disabled={loading || syncing || profileCoordinator.switching}
+											class="shrink-0 rounded-md border border-[var(--scraps-cache-border)] px-2 py-1 text-xs font-medium touch-manipulation"
+										>
+											{profileCoordinator.switching ? '…' : 'Switch'}
+										</button>
+									{/if}
+									<button
+										type="button"
+										onclick={() => startRename(profile.id, profile.name)}
+										class="icon-btn h-7 w-7 shrink-0"
+										aria-label="Rename {profile.name}"
+									>
+										<Pencil class="h-3.5 w-3.5" aria-hidden="true" />
+									</button>
+									{#if profile.id !== syncStore.activeProfile?.id}
+										<button
+											type="button"
+											onclick={() => {
+												removingId = profile.id;
+												cancelEdit();
+											}}
+											class="icon-btn h-7 w-7 shrink-0"
+											aria-label="Remove {profile.name}"
+										>
+											<Trash2 class="h-3.5 w-3.5" aria-hidden="true" />
+										</button>
+									{/if}
+								</div>
+							{/if}
+						{/each}
+					</div>
+				{/if}
 				<p class="text-sm text-[var(--scraps-cache-text-muted)]">
 					Create one private sync key, then connect your own devices by starting the connection on
-					both within 60 seconds.
+					both within 60 seconds. Each key keeps its own notes on this device.
 				</p>
 				<button
 					type="button"
@@ -430,6 +645,14 @@
 					Creates a private account on this device. Other devices join with a one-time code, not a
 					lifetime password.
 				</p>
+				<input
+					bind:value={newName}
+					placeholder="Name this sync key (optional)"
+					maxlength="60"
+					class="scraps-cache-input w-full px-3 py-2 text-sm"
+					aria-label="Sync key name"
+					onkeydown={(event) => event.key === 'Enter' && void create()}
+				/>
 				{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}<button
 					type="button"
 					onclick={() => void create()}

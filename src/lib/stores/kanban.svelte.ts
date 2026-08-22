@@ -12,11 +12,16 @@ import {
 	saveBoardsToDevice,
 	writeBoardTombstones
 } from '$lib/syncTombstones';
+import {
+	KANBAN_ACTIVE_BOARD_LS_KEY,
+	KANBAN_BOARDS_LS_KEY,
+	KANBAN_BOARD_TOMBSTONES_LS_KEY
+} from '$lib/noteStorage';
 import { uid } from '$lib/utils';
 
-const BOARDS_KEY = 'gkc-kanban-boards-v1';
-const ACTIVE_BOARD_KEY = 'gkc-kanban-active-board-v1';
-const BOARD_TOMBSTONES_KEY = 'gkc-kanban-board-tombstones-v1';
+const BOARDS_KEY = KANBAN_BOARDS_LS_KEY;
+const ACTIVE_BOARD_KEY = KANBAN_ACTIVE_BOARD_LS_KEY;
+const BOARD_TOMBSTONES_KEY = KANBAN_BOARD_TOMBSTONES_LS_KEY;
 
 type StoredBoard = {
 	id?: unknown;
