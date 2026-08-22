@@ -36,11 +36,11 @@
 	// A running sync must finish before a dataset handover can start.
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 
-	// Approximate on-device footprint per saved key, refreshed whenever the
-	// modal is shown or its keyring changes. Orphaned blobs are reclaimed first
-	// so the number reflects data that still belongs to each profile.
+	// Approximate on-device footprint per saved key. Recomputed after each
+	// completed sync so the number never goes stale mid-session.
 	let sizes = $state<Record<string, number>>({});
 	$effect(() => {
+		void syncStore.lastSync;
 		const ids = syncStore.profiles.map((profile) => profile.id);
 		void Promise.all(
 			ids.map(async (id) => {
@@ -661,7 +661,8 @@
 											<span class="block truncate text-sm">{profile.name}</span>
 											{#if sizeLabel(profile.id)}
 												<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
-													>{sizeLabel(profile.id)} on this device</span
+													>>{sizeLabel(profile.id)} stored locally</span
+												>
 												>
 											{/if}
 											<span class="block text-xs font-medium text-[var(--scraps-cache-success)]"
@@ -673,7 +674,8 @@
 											<span class="block truncate text-sm">{profile.name}</span>
 											{#if sizeLabel(profile.id)}
 												<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
-													>{sizeLabel(profile.id)} on this device</span
+													>>{sizeLabel(profile.id)} stored locally</span
+												>
 												>
 											{/if}
 										</span>

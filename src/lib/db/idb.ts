@@ -870,17 +870,19 @@ export async function estimateProfileBytes(pid: string): Promise<number> {
 		db.getAll(IMAGES_STORE, profileRange(pid))
 	]);
 	let total = 0;
-	for (const row of notes) {
-		total += JSON.stringify(row).length;
-		const noteRow = row as Note;
-		for (const image of noteRow.images ?? []) {
-			total += (image.thumbUrl?.length ?? 0) + 64;
-		}
-	}
 	for (const row of labels) total += JSON.stringify(row).length;
 	for (const row of images) {
 		const bytes = bytesFromStored((row as { bytes?: unknown }).bytes);
 		total += (bytes?.length ?? 0) + 32;
+	}
+	for (const row of notes) {
+		const noteRow = row as Note;
+		// Lean rows keep thumbnails inline; full photo bytes live above.
+		const withoutThumbs = {
+			...noteRow,
+			images: (noteRow.images ?? []).map(({ thumbUrl: _t, ...image }) => image)
+		};
+		total += JSON.stringify(withoutThumbs).length;
 	}
 	return total;
 }
