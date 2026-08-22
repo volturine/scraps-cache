@@ -1,3 +1,4 @@
+const PID = 'device-local';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('$lib/imageThumb', async (importOriginal) => {
@@ -23,9 +24,9 @@ import {
 } from '$lib/db/idb';
 import * as idb from '$lib/db/idb';
 import { openDB } from 'idb';
-import { loadBoardsFromDevice } from '$lib/syncTombstones';
+import { loadBoardsFromDevice, NOTE_IDB } from '$lib/syncTombstones';
 import * as syncTombstones from '$lib/syncTombstones';
-import { writeNotesMirror } from '$lib/noteStorage';
+import { scopedStateKey } from '$lib/db/idb';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
 import type { Note } from '$lib/types';
@@ -135,32 +136,12 @@ describe('notes store sync apply', () => {
 
 		expect(await notesStore.syncWithCloudManual()).toBe(true);
 		expect(notesStore.lastPersistError).toBeNull();
-		expect((await getAllNotesMetadata()).map(({ id, title }) => ({ id, title }))).toEqual([
+		expect((await getAllNotesMetadata(PID)).map(({ id, title }) => ({ id, title }))).toEqual([
 			{ id: 'note-1', title: 'pulled from relay' }
 		]);
 		expect(await getSyncState(keys.cursor)).toBe(1);
-		const boards = await loadBoardsFromDevice<unknown>(null);
+		const boards = await loadBoardsFromDevice<unknown>(PID, null);
 		expect(Array.isArray(boards) && boards.length > 0).toBe(true);
-	});
-
-	it('replays a mirrored note that never reached IndexedDB', async () => {
-		const kept = remoteNote('kept');
-		kept.title = 'already on disk';
-		const lost = remoteNote('lost');
-		lost.title = 'only in the mirror';
-		lost.updatedAt = 2;
-		await putNote(kept);
-		writeNotesMirror([kept, lost]);
-		notesStore.notes = [];
-		notesStore.labels = [];
-		notesStore.loaded = false;
-		notesStore.deletedNoteIds = {};
-		notesStore.deletedLabelIds = {};
-
-		await notesStore.init();
-
-		expect((await getAllNotesMetadata()).map(({ id }) => id).sort()).toEqual(['kept', 'lost']);
-		expect(await getSyncOutboxKeys()).toContain('note:lost');
 	});
 
 	it('does not re-enter the web lock during a relay-reset bootstrap', async () => {
@@ -229,7 +210,7 @@ describe('notes store sync apply', () => {
 
 	it('writes the delete tombstone even when the IndexedDB delete fails', async () => {
 		const doomed = remoteNote('gone');
-		await putNote(doomed);
+		await putNote(PID, doomed);
 		notesStore.notes = [doomed];
 		vi.spyOn(idb, 'deleteNote').mockRejectedValueOnce(new Error('IndexedDB delete failed'));
 		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -238,10 +219,10 @@ describe('notes store sync apply', () => {
 		error.mockRestore();
 
 		expect(notesStore.deletedNoteIds.gone).toBeGreaterThan(0);
-		expect(await getSyncState('gkc-idb-note-tombstones')).toMatchObject({
+		expect(await getSyncState(scopedStateKey(NOTE_IDB, PID))).toMatchObject({
 			gone: expect.any(Number)
 		});
-		expect((await getAllNotesMetadata()).map(({ id }) => id)).toContain('gone');
+		expect((await getAllNotesMetadata(PID)).map(({ id }) => id)).toContain('gone');
 	});
 
 	it('keeps trashed notes in memory when the tombstone write fails', async () => {
@@ -263,32 +244,41 @@ describe('notes store sync apply', () => {
 	});
 
 	it('reattaches photo blobs after a crash between blob write and note commit', async () => {
-		await getAllNotesMetadata();
+		await getAllNotesMetadata(PID);
 		closeDeviceDatabase();
 		const db = await openDB(DEVICE_DB_NAME);
-		await db.put('note-images', { mime: 'image/png', bytes: Uint8Array.from([65]) }, 'lost::pic');
+		await db.put(
+			'profile-images',
+			{ mime: 'image/png', bytes: Uint8Array.from([65]) },
+			`${PID}::lost::pic`
+		);
+		await db.put(
+			'profile-notes',
+			{
+				...remoteNote('lost'),
+				images: [
+					{
+						id: 'pic',
+						mime: 'image/png',
+						dataUrl: '',
+						createdAt: 1,
+						contentHash: 'hash-pic'
+					}
+				]
+			},
+			`${PID}::lost`
+		);
 		db.close();
 		closeDeviceDatabase();
 
-		const lost = remoteNote('lost');
-		lost.images = [
-			{
-				id: 'pic',
-				mime: 'image/png',
-				dataUrl: '',
-				createdAt: 1,
-				contentHash: 'hash-pic'
-			}
-		];
-		writeNotesMirror([lost]);
 		notesStore.notes = [];
 		notesStore.loaded = false;
 
 		await notesStore.init();
 
-		const stored = (await getAllNotesMetadata()).find((item) => item.id === 'lost');
+		const stored = (await getAllNotesMetadata(PID)).find((item) => item.id === 'lost');
 		expect(stored).toBeDefined();
-		const hydrated = await hydrateNoteAttachments(stored!);
+		const hydrated = await hydrateNoteAttachments(PID, stored!);
 		expect(hydrated.images?.[0]?.dataUrl?.startsWith('data:image/png')).toBe(true);
 	});
 
@@ -309,9 +299,9 @@ describe('notes store sync apply', () => {
 			}
 		];
 		const keys = syncControlKeys(account.accountId);
-		await clearAllNotes();
-		await clearAllLabels();
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearAllNotes(PID);
+		await clearAllLabels(PID);
+		await clearSyncOutbox(PID, await getSyncOutboxKeys(PID));
 		await deleteSyncState(keys.cursor);
 		await deleteSyncState(keys.baseline);
 		await deleteSyncState(keys.recordIds);
@@ -389,9 +379,9 @@ describe('notes store sync apply', () => {
 		});
 
 		expect(await notesStore.syncWithCloudManual()).toBe(true);
-		const stored = (await getAllNotesMetadata()).find((item) => item.id === 'note-1');
+		const stored = (await getAllNotesMetadata(PID)).find((item) => item.id === 'note-1');
 		expect(stored).toBeDefined();
-		const hydrated = await hydrateNoteAttachments(stored!);
+		const hydrated = await hydrateNoteAttachments(PID, stored!);
 		expect(hydrated.images?.[0]?.dataUrl).toBe(image.dataUrl);
 	});
 
@@ -400,7 +390,7 @@ describe('notes store sync apply', () => {
 		syncStore.account = account;
 		const local = remoteNote('local-only');
 		local.title = 'should be replaced';
-		await putNote(local);
+		await putNote(PID, local);
 		notesStore.notes = [local];
 		const keys = syncControlKeys(account.accountId);
 		await setSyncState(keys.cursor, 9);
@@ -468,7 +458,7 @@ describe('notes store sync apply', () => {
 
 		expect(await notesStore.replaceWithCloudManual()).toBe(true);
 		expect(notesStore.notes.map((item) => item.id)).toEqual(['cloud-1']);
-		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['cloud-1']);
+		expect((await getAllNotesMetadata(PID)).map(({ id }) => id)).toEqual(['cloud-1']);
 	});
 
 	it('pairing merge keeps both notes when this device and the account share an id', async () => {
@@ -477,7 +467,7 @@ describe('notes store sync apply', () => {
 		const local = remoteNote('shared');
 		local.title = 'mine';
 		local.updatedAt = 20;
-		await putNote(local);
+		await putNote(PID, local);
 		notesStore.notes = [local];
 		const cloud = remoteNote('shared');
 		cloud.title = 'theirs';

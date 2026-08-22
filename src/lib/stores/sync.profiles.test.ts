@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSyncIdentity, identityFromSyncKey } from '$lib/syncPairing';
-import { getAllNotesMetadata, getStashedDataset, putNote, putStashedDataset } from '$lib/db/idb';
+import { createSyncIdentity, identityFromSyncKey, decryptSyncPayload } from '$lib/syncPairing';
+import { getAllNotesMetadata, getSyncOutboxKeys, markSyncOutbox, putNote } from '$lib/db/idb';
 import { loadProfiles, saveProfile } from '$lib/profiles';
 import type { StoredProfile } from '$lib/profiles';
 import type { Note } from '$lib/types';
@@ -35,6 +35,8 @@ describe('sync key keyring', () => {
 		localStorage.clear();
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
+		syncStore.account = null;
+		syncStore.profiles = [];
 	});
 
 	it('adopts an install that predates profiles as its first entry', async () => {
@@ -50,14 +52,13 @@ describe('sync key keyring', () => {
 		expect(store.profiles).toHaveLength(1);
 		expect(store.profiles[0].syncKey).toBe(identity.syncKey);
 		expect(store.activeProfile?.id).toBe(store.profiles[0].id);
+		expect(store.activePid).toBe(store.profiles[0].id);
 	});
 
 	it('registers a new key as a saved profile without switching the active account', async () => {
 		const identity = createSyncIdentity();
-		localStorage.setItem(
-			'gkc-sync-account',
-			JSON.stringify({ syncKey: identity.syncKey, pairingCode: '' })
-		);
+		const main = keyringEntry(identity.syncKey, 'Main', 1);
+		await saveProfile(main);
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async () => ({ ok: true, json: async () => ({}) }))
@@ -69,11 +70,11 @@ describe('sync key keyring', () => {
 
 		expect(result.success).toBe(true);
 		expect(result.profile?.name).toBe('Work');
-		expect((await loadProfiles()).map(({ name }) => name).sort()).toEqual(['Sync key', 'Work']);
+		expect((await loadProfiles()).map(({ name }) => name).sort()).toEqual(['Main', 'Work']);
 		expect(store.account?.syncKey).toBe(identity.syncKey);
 	});
 
-	it('activates a saved profile and mirrors it for fast boot', async () => {
+	it('activates a profile by pointing the window at its namespace', async () => {
 		const store = new SyncStore();
 		await store.ensureProfilesLoaded();
 		const profile = keyringEntry(createSyncIdentity().syncKey, 'Side', 2);
@@ -83,48 +84,8 @@ describe('sync key keyring', () => {
 
 		expect(store.account?.syncKey).toBe(profile.syncKey);
 		expect(store.activeProfile?.id).toBe(profile.id);
-		expect(JSON.parse(localStorage.getItem('gkc-sync-account') ?? '{}').syncKey).toBe(
-			profile.syncKey
-		);
-	});
-
-	it('renames a saved profile locally only', async () => {
-		const store = new SyncStore();
-		await store.ensureProfilesLoaded();
-		const profile = keyringEntry(createSyncIdentity().syncKey, 'Side', 1);
-		await store.addKeyringEntry(profile);
-
-		const renamed = await store.renameProfile(profile.id, '  Personal  ');
-
-		expect(renamed?.name).toBe('Personal');
-		expect((await loadProfiles())[0]?.name).toBe('Personal');
-	});
-
-	it('refuses to remove the active profile but removes inactive ones with their stash', async () => {
-		const active = keyringEntry(createSyncIdentity().syncKey, 'Main', 1);
-		const other = keyringEntry(createSyncIdentity().syncKey, 'Other', 2);
-		await saveProfile(active);
-		await saveProfile(other);
-		syncStore.profiles = [active, other];
-		syncStore.account = identityFromSyncKey(active.syncKey);
-		await putStashedDataset({
-			pid: other.id,
-			savedAt: 1,
-			notes: [note('n')],
-			labels: [],
-			imageBlobs: [],
-			noteTombstones: {},
-			labelTombstones: {},
-			boardTombstones: {},
-			boards: [],
-			firedReminderKeys: [],
-			outboxKeys: []
-		});
-
-		expect(await syncStore.removeProfile(active.id)).toBe(false);
-		expect(await syncStore.removeProfile(other.id)).toBe(true);
-		expect(await getStashedDataset(other.id)).toBeNull();
-		expect(await loadProfiles()).toEqual([active]);
+		expect(store.activePid).toBe(profile.id);
+		expect(localStorage.getItem('gkc-last-active-profile')).toBe(profile.id);
 	});
 
 	it('logout removes the keyring entry of the signed-out key', async () => {
@@ -132,17 +93,19 @@ describe('sync key keyring', () => {
 		const kept = keyringEntry(createSyncIdentity().syncKey, 'Kept', 2);
 		await saveProfile(active);
 		await saveProfile(kept);
-		syncStore.profiles = [active, kept];
-		syncStore.account = identityFromSyncKey(active.syncKey);
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+		store.profiles = [active, kept];
+		store.account = identityFromSyncKey(active.syncKey);
 
-		await syncStore.logout();
+		await store.logout();
 
-		expect(syncStore.account).toBeNull();
+		expect(store.account).toBeNull();
 		expect((await loadProfiles()).map(({ id }) => id)).toEqual([kept.id]);
 	});
 });
 
-describe('profile switching', () => {
+describe('profile switching (namespaced)', () => {
 	beforeEach(() => {
 		localStorage.clear();
 		vi.restoreAllMocks();
@@ -151,36 +114,37 @@ describe('profile switching', () => {
 		syncStore.profiles = [];
 	});
 
-	it('stashes the outgoing dataset, reinstates the target one, and switches back intact', async () => {
+	it('swaps namespaces without copying data and keeps both datasets intact', async () => {
 		const first = keyringEntry(createSyncIdentity().syncKey, 'First', 1);
 		const second = keyringEntry(createSyncIdentity().syncKey, 'Second', 2);
 		syncStore.profiles = [first, second];
 		syncStore.account = identityFromSyncKey(first.syncKey);
-		await putNote(note('first-note'));
-		await putStashedDataset({
-			pid: second.id,
-			savedAt: 1,
-			notes: [note('second-note')],
-			labels: [],
-			imageBlobs: [],
-			noteTombstones: {},
-			labelTombstones: {},
-			boardTombstones: {},
-			boards: [],
-			firedReminderKeys: [],
-			outboxKeys: []
-		});
+		await putNote(first.id, note('first-note'));
+		await putNote(second.id, note('second-note'));
 
 		const switched = await profileCoordinator.switchTo(second.id);
 		expect(switched.success, switched.error).toBe(true);
 		expect(syncStore.activeProfile?.id).toBe(second.id);
-		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['second-note']);
-		expect(await getStashedDataset(second.id)).toBeNull();
+		expect((await getAllNotesMetadata(second.id)).map(({ id }) => id)).toEqual(['second-note']);
+		expect((await getAllNotesMetadata(first.id)).map(({ id }) => id)).toEqual(['first-note']);
 
 		const back = await profileCoordinator.switchTo(first.id);
 		expect(back.success, back.error).toBe(true);
-		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['first-note']);
-		expect(await getStashedDataset(first.id)).toBeNull();
+		expect(notesStore.notes.map(({ id }) => id)).toEqual(['first-note']);
+	});
+
+	it('pending uploads stay parked in their own namespace until that profile returns', async () => {
+		const first = keyringEntry(createSyncIdentity().syncKey, 'First', 1);
+		const second = keyringEntry(createSyncIdentity().syncKey, 'Second', 2);
+		syncStore.profiles = [first, second];
+		syncStore.account = identityFromSyncKey(first.syncKey);
+		await markSyncOutbox(first.id, ['note:first-note']);
+
+		await profileCoordinator.switchTo(second.id);
+		expect(await getSyncOutboxKeys(second.id)).toEqual([]);
+
+		await profileCoordinator.switchTo(first.id);
+		expect(await getSyncOutboxKeys(first.id)).toContain('note:first-note');
 	});
 
 	it('refuses to switch while a sync flight is running and allows it once finished', async () => {
@@ -188,7 +152,7 @@ describe('profile switching', () => {
 		const second = keyringEntry(createSyncIdentity().syncKey, 'Second', 2);
 		syncStore.profiles = [first, second];
 		syncStore.account = identityFromSyncKey(first.syncKey);
-		await putNote(note('first-note'));
+		await putNote(first.id, note('first-note'));
 
 		const fakeFlight = Promise.resolve(true);
 		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = fakeFlight;
@@ -198,25 +162,12 @@ describe('profile switching', () => {
 		expect(blocked.error).toMatch(/sync/i);
 
 		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
-		await putStashedDataset({
-			pid: second.id,
-			savedAt: 1,
-			notes: [note('second-note')],
-			labels: [],
-			imageBlobs: [],
-			noteTombstones: {},
-			labelTombstones: {},
-			boardTombstones: {},
-			boards: [],
-			firedReminderKeys: [],
-			outboxKeys: []
-		});
 		const switched = await profileCoordinator.switchTo(second.id);
 		expect(switched.success, switched.error).toBe(true);
 		expect(syncStore.activeProfile?.id).toBe(second.id);
 	});
 
-	it('starts a freshly created key with no notes while the previous dataset stays parked', async () => {
+	it('starts a freshly created key with no notes while the previous dataset stays in place', async () => {
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async () => ({ ok: true, json: async () => ({}) }))
@@ -224,15 +175,13 @@ describe('profile switching', () => {
 		const existing = keyringEntry(createSyncIdentity().syncKey, 'First', 1);
 		syncStore.profiles = [existing];
 		syncStore.account = identityFromSyncKey(existing.syncKey);
-		await putNote(note('kept-note'));
+		await putNote(existing.id, note('kept-note'));
 
 		const result = await profileCoordinator.create('Fresh');
 		expect(result.success, result.error).toBe(true);
 		expect(syncStore.activeProfile?.name).toBe('Fresh');
-		expect(await getAllNotesMetadata()).toEqual([]);
-		expect((await getStashedDataset(existing.id))?.notes.map(({ id }) => id)).toEqual([
-			'kept-note'
-		]);
+		expect(await getAllNotesMetadata(syncStore.activePid)).toEqual([]);
+		expect((await getAllNotesMetadata(existing.id)).map(({ id }) => id)).toEqual(['kept-note']);
 	});
 
 	it('keeps local notes when creating the very first key so they upload to it', async () => {
@@ -241,11 +190,105 @@ describe('profile switching', () => {
 			vi.fn(async () => ({ ok: true, json: async () => ({}) }))
 		);
 		localStorage.clear();
-		await putNote(note('existing-note'));
+		await putNote('device-local', note('existing-note'));
 
 		const result = await profileCoordinator.create('Main');
 		expect(result.success, result.error).toBe(true);
 		expect(syncStore.activeProfile?.name).toBe('Main');
-		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['existing-note']);
+		expect((await getAllNotesMetadata(syncStore.activePid)).map(({ id }) => id)).toEqual([
+			'existing-note'
+		]);
+	});
+});
+
+describe('synced profile name', () => {
+	it('uploads a renamed profile as an encrypted record and adopts incoming names', async () => {
+		const identity = createSyncIdentity();
+		const profile = keyringEntry(identity.syncKey, 'Original', 1);
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+		await store.addKeyringEntry(profile);
+		store.account = identityFromSyncKey(profile.syncKey);
+
+		type Request = { envelopes: Array<{ ciphertext: string }> };
+		const requests: Request[] = [];
+		vi.spyOn(
+			store as unknown as {
+				sendSyncRequest(path: string, payload: string): Promise<unknown>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async (_path, payload) => {
+			requests.push(JSON.parse(payload) as Request);
+			return {
+				success: true,
+				data: { cursor: requests.length, envelopes: [], hasMore: false, writesAccepted: true }
+			};
+		});
+
+		await store.renameProfile(profile.id, 'Renamed locally');
+		await store.waitForOutboxWrites();
+		const uploaded = await store.sync(
+			[],
+			[],
+			{},
+			{},
+			[],
+			{},
+			false,
+			false,
+			async (snapshot) => snapshot
+		);
+		expect(uploaded.success, uploaded.error).toBe(true);
+
+		const metaEnvelope = requests
+			.flatMap((request) => request.envelopes)
+			.map(
+				(envelope) =>
+					decryptSyncPayload(identity.syncKey, envelope.ciphertext) as {
+						kind?: string;
+						value?: { name?: string };
+					}
+			)
+			.find((payload) => payload.kind === 'profile-meta');
+		expect(metaEnvelope?.value?.name).toBe('Renamed locally');
+
+		// An incoming encrypted name record updates the local label.
+		const peerKey = createSyncIdentity();
+		void peerKey;
+		const incomingName = 'Renamed elsewhere';
+		const ciphertext = (await import('$lib/syncPairing')).encryptSyncPayload(identity.syncKey, {
+			kind: 'profile-meta',
+			value: { name: incomingName }
+		});
+		vi.spyOn(
+			store as unknown as {
+				sendSyncRequest(path: string, payload: string): Promise<unknown>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async (_path, payload) => {
+			const request = JSON.parse(payload) as { cursor: number };
+			return {
+				success: true,
+				data: {
+					cursor: request.cursor + 1,
+					envelopes: [{ id: 'meta-1', slot: 's'.repeat(64), seq: 1, ciphertext }],
+					hasMore: false,
+					writesAccepted: true
+				}
+			};
+		});
+		const pulled = await store.sync(
+			[],
+			[],
+			{},
+			{},
+			[],
+			{},
+			false,
+			true,
+			async (snapshot) => snapshot
+		);
+		expect(pulled.success, pulled.error).toBe(true);
+		expect(store.profiles.find((entry) => entry.id === profile.id)?.name).toBe(incomingName);
 	});
 });

@@ -1,3 +1,4 @@
+const PID = 'device-local';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	clearSyncOutbox,
@@ -37,21 +38,22 @@ describe('outbox generations under a backward clock jump', () => {
 	});
 
 	it('keeps a marker stamped after the sync snapshot when the clock jumps backward', async () => {
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(PID, await getSyncOutboxKeys(PID));
 
 		// Sync starts: capture the generation snapshot like the engine does.
 		const snapshotGeneration = await getOutboxGeneration();
 
 		// Clock jumps backward before the mid-sync edit lands.
 		vi.spyOn(Date, 'now').mockReturnValue(Math.max(0, snapshotGeneration - 1_000_000));
-		await putNote(note('edited mid-sync'), ['note:clock-note']);
-		expect(await getSyncOutboxKeys()).toEqual(['note:clock-note']);
+		await putNote(PID, note('edited mid-sync'), ['note:clock-note']);
+		expect(await getSyncOutboxKeys(PID)).toEqual(['note:clock-note']);
 
 		await commitSyncControl(
+			PID,
 			[['test-cursor', 1]],
 			[{ keys: ['note:clock-note'], through: snapshotGeneration }]
 		);
 
-		expect(await getSyncOutboxKeys()).toEqual(['note:clock-note']);
+		expect(await getSyncOutboxKeys(PID)).toEqual(['note:clock-note']);
 	});
 });

@@ -28,9 +28,13 @@ export type SyncRecordPayload =
 	| { kind: 'board'; value: KanbanBoard }
 	| { kind: 'note-tombstone'; id: string; deletedAt: number }
 	| { kind: 'label-tombstone'; id: string; deletedAt: number }
-	| { kind: 'board-tombstone'; id: string; deletedAt: number };
+	| { kind: 'board-tombstone'; id: string; deletedAt: number }
+	/** The profile's local display name; exactly one per account, key `profile-meta`. */
+	| { kind: 'profile-meta'; value: { name: string } };
 
 export type SyncRecord = { key: string; payload: SyncRecordPayload; fingerprint: string };
+
+export const PROFILE_META_RECORD_KEY = 'profile-meta';
 
 export function syncRecordKey(payload: SyncRecordPayload): string {
 	switch (payload.kind) {
@@ -48,6 +52,8 @@ export function syncRecordKey(payload: SyncRecordPayload): string {
 			return `label-tombstone:${payload.id}`;
 		case 'board-tombstone':
 			return `board-tombstone:${payload.id}`;
+		case 'profile-meta':
+			return PROFILE_META_RECORD_KEY;
 	}
 }
 
@@ -305,6 +311,10 @@ export function isSyncRecordPayload(value: unknown): value is SyncRecordPayload 
 	if (value.kind === 'board') {
 		const board = value.value as { name?: unknown; columns?: unknown };
 		return versioned(value.value) && typeof board.name === 'string' && Array.isArray(board.columns);
+	}
+	if (value.kind === 'profile-meta') {
+		const meta = value.value as { name?: unknown };
+		return object(meta) && typeof meta.name === 'string';
 	}
 	const tombstone = value as { id?: unknown; deletedAt?: unknown };
 	return (

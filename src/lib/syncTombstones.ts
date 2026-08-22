@@ -1,9 +1,8 @@
-// Durable delete manifests in IndexedDB. Permanent delete wins until the
-// tombstone is cleared. localStorage is only a first-paint cache during hydrate.
-import { getSyncState, setSyncState } from '$lib/db/idb';
+// Durable delete manifests and board state in IndexedDB, namespaced per profile.
+// The module caches hold exactly one profile's data at a time; switching
+// profiles resets them.
+import { getSyncState, scopedStateKey, setSyncState } from '$lib/db/idb';
 
-export const NOTE_LS = 'gkc-note-tombstones';
-export const LABEL_LS = 'gkc-label-tombstones';
 export const NOTE_IDB = 'gkc-idb-note-tombstones';
 export const LABEL_IDB = 'gkc-idb-label-tombstones';
 export const BOARD_IDB = 'gkc-idb-board-tombstones';
@@ -16,98 +15,100 @@ function sanitize(value: unknown): Tombstones {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
 	return Object.fromEntries(
 		Object.entries(value as Record<string, unknown>).flatMap(([id, at]) =>
-			typeof id === 'string' && Number(at) > 0 ? [[id, Number(at)]] : []
+			typeof id === 'string' && Number(at) > 0 ? [[id, Number(at)] as const] : []
 		)
 	);
-}
-
-function readLegacy(key: string): Tombstones {
-	if (typeof localStorage === 'undefined') return {};
-	try {
-		return sanitize(JSON.parse(localStorage.getItem(key) || '{}'));
-	} catch (err) {
-		console.error('[sync] could not read delete tombstones:', err);
-		return {};
-	}
 }
 
 let noteCache: Tombstones | null = null;
 let labelCache: Tombstones | null = null;
 let boardCache: Tombstones | null = null;
+/** Which profile's data the caches hold; guards against stale reads after a switch. */
+let cachePid: string | null = null;
 
 export function resetTombstoneCaches(): void {
 	noteCache = null;
 	labelCache = null;
 	boardCache = null;
+	cachePid = null;
 }
 
-export function readTombstones(): Tombstones {
-	return { ...(noteCache ?? readLegacy(NOTE_LS)) };
+function cachesHold(pid: string): boolean {
+	return cachePid === pid && noteCache !== null && labelCache !== null && boardCache !== null;
 }
 
-export function readLabelTombstones(): Tombstones {
-	return { ...(labelCache ?? readLegacy(LABEL_LS)) };
+async function ensureHydrated(pid: string): Promise<void> {
+	if (cachesHold(pid)) return;
+	const [idbNotes, idbLabels, idbBoards] = await Promise.all([
+		getSyncState<unknown>(scopedStateKey(NOTE_IDB, pid)),
+		getSyncState<unknown>(scopedStateKey(LABEL_IDB, pid)),
+		getSyncState<unknown>(scopedStateKey(BOARDS_IDB, pid))
+	]);
+	noteCache = sanitize(idbNotes);
+	labelCache = sanitize(idbLabels);
+	boardCache = sanitize(idbBoards);
+	cachePid = pid;
 }
 
-export function readBoardTombstones(): Tombstones {
+async function persistCaches(pid: string): Promise<void> {
+	await Promise.all([
+		setSyncState(scopedStateKey(NOTE_IDB, pid), noteCache ?? {}),
+		setSyncState(scopedStateKey(LABEL_IDB, pid), labelCache ?? {}),
+		setSyncState(scopedStateKey(BOARD_IDB, pid), boardCache ?? {}),
+		setSyncState(scopedStateKey(MIGRATED_IDB, pid), true)
+	]);
+}
+
+export function readNoteTombstoneCache(): Tombstones {
+	return { ...(noteCache ?? {}) };
+}
+
+export function readLabelTombstoneCache(): Tombstones {
+	return { ...(labelCache ?? {}) };
+}
+
+export function readBoardTombstoneCache(): Tombstones {
 	return { ...(boardCache ?? {}) };
 }
 
-export async function writeTombstones(tombstones: Tombstones): Promise<void> {
+export async function writeTombstones(pid: string, tombstones: Tombstones): Promise<void> {
 	noteCache = sanitize(tombstones);
-	await setSyncState(NOTE_IDB, noteCache);
-	if (typeof localStorage !== 'undefined') localStorage.removeItem(NOTE_LS);
+	cachePid = pid;
+	await setSyncState(scopedStateKey(NOTE_IDB, pid), noteCache);
 }
 
-export async function writeLabelTombstones(tombstones: Tombstones): Promise<void> {
+export async function writeLabelTombstones(pid: string, tombstones: Tombstones): Promise<void> {
 	labelCache = sanitize(tombstones);
-	await setSyncState(LABEL_IDB, labelCache);
-	if (typeof localStorage !== 'undefined') localStorage.removeItem(LABEL_LS);
+	cachePid = pid;
+	await setSyncState(scopedStateKey(LABEL_IDB, pid), labelCache);
 }
 
-export async function writeBoardTombstones(tombstones: Tombstones): Promise<void> {
+export async function writeBoardTombstones(pid: string, tombstones: Tombstones): Promise<void> {
 	boardCache = sanitize(tombstones);
-	await setSyncState(BOARD_IDB, boardCache);
+	cachePid = pid;
+	await setSyncState(scopedStateKey(BOARD_IDB, pid), boardCache);
 }
 
-export async function hydrateTombstones(): Promise<{
-	notes: Tombstones;
-	labels: Tombstones;
-	boards: Tombstones;
-}> {
-	const [migrated, idbNotes, idbLabels, idbBoards] = await Promise.all([
-		getSyncState<unknown>(MIGRATED_IDB),
-		getSyncState<unknown>(NOTE_IDB),
-		getSyncState<unknown>(LABEL_IDB),
-		getSyncState<unknown>(BOARD_IDB)
-	]);
-	// An empty IDB map is legitimate (all tombstones cleared); only fall back to
-	// localStorage when this device never migrated in the first place.
-	noteCache = sanitize(idbNotes);
-	if (migrated !== true && !Object.keys(noteCache).length) noteCache = readLegacy(NOTE_LS);
-	labelCache = sanitize(idbLabels);
-	if (migrated !== true && !Object.keys(labelCache).length) labelCache = readLegacy(LABEL_LS);
-	boardCache = sanitize(idbBoards);
-	await Promise.all([
-		setSyncState(NOTE_IDB, noteCache),
-		setSyncState(LABEL_IDB, labelCache),
-		setSyncState(BOARD_IDB, boardCache),
-		setSyncState(MIGRATED_IDB, true)
-	]);
-	if (typeof localStorage !== 'undefined') {
-		localStorage.removeItem(NOTE_LS);
-		localStorage.removeItem(LABEL_LS);
-	}
-	return { notes: { ...noteCache }, labels: { ...labelCache }, boards: { ...boardCache } };
+/** Load a profile's manifests and boards into the module caches. */
+export async function hydrateTombstones(
+	pid: string
+): Promise<{ notes: Tombstones; labels: Tombstones; boards: Tombstones }> {
+	await ensureHydrated(pid);
+	await persistCaches(pid);
+	return {
+		notes: { ...(noteCache ?? {}) },
+		labels: { ...(labelCache ?? {}) },
+		boards: { ...(boardCache ?? {}) }
+	};
 }
 
-export async function loadBoardsFromDevice<T>(fallback: T): Promise<T> {
-	const stored = await getSyncState<T>(BOARDS_IDB);
+export async function loadBoardsFromDevice<T>(pid: string, fallback: T): Promise<T> {
+	const stored = await getSyncState<T>(scopedStateKey(BOARDS_IDB, pid));
 	return stored ?? fallback;
 }
 
-export async function saveBoardsToDevice<T>(boards: T): Promise<void> {
+export async function saveBoardsToDevice(pid: string, boards: unknown): Promise<void> {
 	// `$state` board proxies throw DataCloneError in IndexedDB; JSON is already how
-	// localStorage snapshots them.
-	await setSyncState(BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? [])));
+	// boards were serialized historically.
+	await setSyncState(scopedStateKey(BOARDS_IDB, pid), JSON.parse(JSON.stringify(boards ?? [])));
 }

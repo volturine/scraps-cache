@@ -1,3 +1,4 @@
+const PID = 'device-local';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearSyncOutbox, getSyncOutboxKeys, markSyncOutbox } from '$lib/db/idb';
 import { syncStore } from './sync.svelte';
@@ -5,7 +6,7 @@ import { notesStore } from './notes.svelte';
 
 describe('syncing when a note closes', () => {
 	beforeEach(async () => {
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(PID, await getSyncOutboxKeys(PID));
 		syncStore.account = {
 			syncKey: 'test-key',
 			accountId: 'test-account',
@@ -17,7 +18,7 @@ describe('syncing when a note closes', () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		syncStore.account = null;
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(PID, await getSyncOutboxKeys(PID));
 	});
 
 	it('skips the cloud request when there are no pending records', async () => {
@@ -28,7 +29,7 @@ describe('syncing when a note closes', () => {
 	});
 
 	it('flushes the debounce immediately when a record is pending', async () => {
-		await markSyncOutbox(['note:note-1']);
+		await markSyncOutbox(PID, ['note:note-1']);
 		const flush = vi.spyOn(notesStore, 'flushSync').mockResolvedValue(true);
 
 		expect(await notesStore.syncPendingChanges()).toBe(true);
@@ -37,7 +38,7 @@ describe('syncing when a note closes', () => {
 	});
 
 	it('asks the cloud request to spin the icon', async () => {
-		await markSyncOutbox(['note:note-1']);
+		await markSyncOutbox(PID, ['note:note-1']);
 		vi.spyOn(syncStore, 'needsCurrentStateBootstrap').mockResolvedValue(false);
 		const sync = vi.spyOn(syncStore, 'sync').mockResolvedValue({
 			success: true,

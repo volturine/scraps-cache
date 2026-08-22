@@ -12,28 +12,17 @@ import {
 	saveBoardsToDevice,
 	writeBoardTombstones
 } from '$lib/syncTombstones';
-import {
-	KANBAN_ACTIVE_BOARD_LS_KEY,
-	KANBAN_BOARDS_LS_KEY,
-	KANBAN_BOARD_TOMBSTONES_LS_KEY
-} from '$lib/noteStorage';
 import { uid } from '$lib/utils';
-
-const BOARDS_KEY = KANBAN_BOARDS_LS_KEY;
-const ACTIVE_BOARD_KEY = KANBAN_ACTIVE_BOARD_LS_KEY;
-const BOARD_TOMBSTONES_KEY = KANBAN_BOARD_TOMBSTONES_LS_KEY;
-
-type StoredBoard = {
-	id?: unknown;
-	name?: unknown;
-	columns?: unknown;
-	backlogFilter?: unknown;
-	updatedAt?: unknown;
-};
 
 function normalizeBoard(value: unknown): KanbanBoard | null {
 	if (!value || typeof value !== 'object') return null;
-	const board = value as StoredBoard;
+	const board = value as {
+		id?: unknown;
+		name?: unknown;
+		columns?: unknown;
+		backlogFilter?: unknown;
+		updatedAt?: unknown;
+	};
 	if (
 		typeof board.id !== 'string' ||
 		typeof board.name !== 'string' ||
@@ -81,66 +70,38 @@ function normalizeBoards(value: unknown): KanbanBoard[] {
 		: [];
 }
 
-function readBoards(): KanbanBoard[] {
-	if (typeof localStorage === 'undefined') return [createKanbanBoard()];
-	try {
-		const boards = normalizeBoards(JSON.parse(localStorage.getItem(BOARDS_KEY) || '[]'));
-		return boards.length ? boards : [createKanbanBoard()];
-	} catch {
-		return [createKanbanBoard()];
-	}
-}
-
-function readTombstones(): Record<string, number> {
-	if (typeof localStorage === 'undefined') return {};
-	try {
-		const value: unknown = JSON.parse(localStorage.getItem(BOARD_TOMBSTONES_KEY) || '{}');
-		if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-		return Object.fromEntries(
-			Object.entries(value).flatMap(([id, updatedAt]) =>
-				typeof id === 'string' && Number(updatedAt) > 0 ? [[id, Number(updatedAt)]] : []
-			)
-		);
-	} catch {
-		return {};
-	}
-}
-
 export class KanbanStore {
-	boards = $state<KanbanBoard[]>(readBoards());
+	boards = $state<KanbanBoard[]>([createKanbanBoard()]);
 	activeBoardId = $state<string>('');
-	boardTombstones = $state<Record<string, number>>(readTombstones());
+	boardTombstones = $state<Record<string, number>>({});
 	private pendingDeviceWrites: Promise<void> = Promise.resolve();
 
 	constructor() {
-		if (typeof localStorage !== 'undefined') {
-			const storedId = localStorage.getItem(ACTIVE_BOARD_KEY);
-			this.activeBoardId = this.boards.some((board) => board.id === storedId)
-				? storedId!
-				: this.boards[0].id;
-		} else {
-			this.activeBoardId = this.boards[0].id;
-		}
+		this.activeBoardId = this.boards[0].id;
 
 		$effect.root(() => {
 			$effect(() => {
-				if (typeof localStorage === 'undefined') return;
-				localStorage.setItem(BOARDS_KEY, JSON.stringify(this.boards));
-				localStorage.setItem(ACTIVE_BOARD_KEY, this.activeBoardId);
-				localStorage.setItem(BOARD_TOMBSTONES_KEY, JSON.stringify(this.boardTombstones));
-				const write = this.pendingDeviceWrites.then(() => this.persistSyncState());
+				// Touch the reactive fields so board edits re-persist their namespace.
+				void this.boards;
+				void this.boardTombstones;
+				const write = this.pendingDeviceWrites.then(() =>
+					this.persistSyncState(syncStore.activePid)
+				);
 				this.pendingDeviceWrites = write.catch(() => undefined);
 			});
 		});
 	}
 
-	async hydrateFromDevice(remoteTombstones: Record<string, number> = {}): Promise<void> {
-		const fromLs = this.boardsForSync();
-		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(undefined);
+	async hydrateFromDevice(
+		pid: string,
+		remoteTombstones: Record<string, number> = {}
+	): Promise<void> {
+		const fromMemory = this.boardsForSync();
+		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(pid, undefined);
 		const fromIdb = Array.isArray(stored) ? stored : [];
 		const tombstones = { ...this.boardTombstones, ...remoteTombstones };
 		this.boardTombstones = tombstones;
-		this.boards = mergeKanbanBoards(fromLs, fromIdb, tombstones);
+		this.boards = mergeKanbanBoards(fromMemory, fromIdb, tombstones);
 		if (!this.boards.length) {
 			this.boards = [createKanbanBoard()];
 		}
@@ -152,7 +113,7 @@ export class KanbanStore {
 			return !current || current.updatedAt < board.updatedAt;
 		});
 		if (recovered.length) {
-			await this.persistSyncState();
+			await this.persistSyncState(pid);
 			this.requestSync(recovered.map((board) => `board:${board.id}`));
 		}
 	}
@@ -190,10 +151,10 @@ export class KanbanStore {
 			this.activeBoardId = this.boards[0].id;
 	}
 
-	async persistSyncState(): Promise<void> {
+	async persistSyncState(pid: string): Promise<void> {
 		await Promise.all([
-			saveBoardsToDevice(this.boardsForSync()),
-			writeBoardTombstones(this.boardTombstonesForSync())
+			saveBoardsToDevice(pid, this.boardsForSync()),
+			writeBoardTombstones(pid, this.boardTombstonesForSync())
 		]);
 	}
 

@@ -43,19 +43,25 @@ import {
 	getOutboxGeneration,
 	getSyncOutboxKeys,
 	getSyncState,
-	markSyncOutbox
+	markSyncOutbox,
+	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
 import {
+	getLastActiveProfileId,
 	loadProfiles,
 	nextProfileName,
+	pickBootProfile,
 	profileForSyncKey,
 	removeProfileRecord,
 	saveProfile,
+	setLastActiveProfileId,
 	type StoredProfile
 } from '$lib/profiles';
 
-const LS_SYNC_KEY = 'gkc-sync-account';
-const LS_SYNC_STATUS_KEY = 'gkc-sync-status';
+const LS_SYNC_STATUS_PREFIX = 'gkc-sync-status';
+const LS_LEGACY_ACCOUNT_KEY = 'gkc-sync-account';
+/** Encrypted profile-name record; the name follows its sync key across devices. */
+export const PROFILE_META_KEY = 'profile-meta';
 
 export interface SyncAccount {
 	syncKey: string;
@@ -156,18 +162,6 @@ export class SyncStore {
 
 	constructor() {
 		if (typeof localStorage === 'undefined') return;
-		try {
-			const rawAccount = localStorage.getItem(LS_SYNC_KEY);
-			if (rawAccount) {
-				const parsed: unknown = JSON.parse(rawAccount);
-				if (isSyncAccount(parsed)) this.account = identityFromSyncKey(parsed.syncKey);
-				else localStorage.removeItem(LS_SYNC_KEY);
-			}
-			const rawStatus = localStorage.getItem(LS_SYNC_STATUS_KEY);
-			if (rawStatus) this.lastSync = Number((JSON.parse(rawStatus) as SyncStatus).lastSync) || 0;
-		} catch (err) {
-			console.error('[sync] could not restore local status:', err);
-		}
 		void this.ensureProfilesLoaded();
 	}
 
@@ -181,25 +175,47 @@ export class SyncStore {
 			: null;
 	}
 
+	/** Namespace this window reads and writes right now. */
+	get activePid(): string {
+		return this.activeProfile?.id ?? LOCAL_PROFILE_ID;
+	}
+
 	/**
-	 * Load the keyring. Installs that predate profiles get their single sync key
-	 * adopted as the first entry, so nothing about their setup changes.
+	 * Per-window boot: restore the keyring, adopt installs that predate
+	 * profiles, and activate the last-used profile. Windows opened later start
+	 * on the same default profile but can switch independently.
 	 */
 	ensureProfilesLoaded(): Promise<void> {
 		this.profilesReady ??= (async () => {
 			try {
 				let profiles = await loadProfiles();
-				if (!profiles.length && this.account) {
-					const adopted: StoredProfile = {
-						id: randomOpaqueId(),
-						name: nextProfileName(profiles),
-						syncKey: this.account.syncKey,
-						createdAt: Date.now()
-					};
-					await saveProfile(adopted);
-					profiles = [adopted];
+				const rawLegacy = localStorage.getItem(LS_LEGACY_ACCOUNT_KEY);
+				try {
+					const parsed: unknown = rawLegacy ? JSON.parse(rawLegacy) : null;
+					if (isSyncAccount(parsed) && !profiles.some((p) => p.syncKey === parsed.syncKey)) {
+						const adopted: StoredProfile = {
+							id: randomOpaqueId(),
+							name: nextProfileName(profiles),
+							syncKey: parsed.syncKey,
+							createdAt: Date.now()
+						};
+						await saveProfile(adopted);
+						profiles = [...profiles, adopted];
+					}
+				} catch {
+					/* unreadable legacy mirror is ignored */
 				}
-				this.profiles = profiles;
+				this.profiles = profiles.sort((a, b) => a.createdAt - b.createdAt);
+				if (this.profiles.length) localStorage.removeItem(LS_LEGACY_ACCOUNT_KEY);
+
+				const pointerId = getLastActiveProfileId();
+				const pointed =
+					pointerId != null
+						? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
+						: null;
+				const chosen = pointed ?? pickBootProfile(this.profiles);
+				if (chosen) this.activateProfile(chosen);
+				else this.restoreStatus(LOCAL_PROFILE_ID);
 			} catch (err) {
 				console.error('[sync] could not load saved profiles:', err);
 			}
@@ -222,10 +238,14 @@ export class SyncStore {
 		await saveProfile(updated).catch((err) =>
 			console.error('[sync] could not rename profile:', err)
 		);
+		// The name travels inside its own account's encrypted records so every
+		// device holding this key converges on it.
+		if (this.activeProfile?.id === id)
+			void this.queueOutbox([PROFILE_META_KEY]).catch(() => undefined);
 		return updated;
 	}
 
-	/** Remove a non-active keyring entry together with its stashed dataset. */
+	/** Remove a non-active keyring entry together with its namespaced dataset. */
 	async removeProfile(id: string): Promise<boolean> {
 		if (this.activeProfile?.id === id) return false;
 		if (!this.profiles.some((entry) => entry.id === id)) return false;
@@ -247,8 +267,9 @@ export class SyncStore {
 
 	async queueOutbox(keys: Iterable<string> = []): Promise<void> {
 		const pendingKeys = [...new Set(keys)];
+		const pid = this.activePid;
 		const write = this.pendingOutboxWrites.then(async () => {
-			await markSyncOutbox(pendingKeys);
+			await markSyncOutbox(pid, pendingKeys);
 		});
 		this.pendingOutboxWrites = write.catch(() => undefined);
 		await write;
@@ -259,20 +280,23 @@ export class SyncStore {
 		await this.pendingOutboxWrites;
 	}
 
-	private saveAccount(): void {
+	private restoreStatus(pid: string): void {
 		if (typeof localStorage === 'undefined') return;
 		try {
-			if (this.account) localStorage.setItem(LS_SYNC_KEY, JSON.stringify(this.account));
-			else localStorage.removeItem(LS_SYNC_KEY);
-		} catch (err) {
-			console.error('[sync] could not save account:', err);
+			const raw = localStorage.getItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`);
+			this.lastSync = raw ? Number((JSON.parse(raw) as SyncStatus).lastSync) || 0 : 0;
+		} catch {
+			this.lastSync = 0;
 		}
 	}
 
 	private saveStatus(): void {
 		if (typeof localStorage === 'undefined') return;
 		try {
-			localStorage.setItem(LS_SYNC_STATUS_KEY, JSON.stringify({ lastSync: this.lastSync }));
+			localStorage.setItem(
+				`${LS_SYNC_STATUS_PREFIX}:${this.activePid}`,
+				JSON.stringify({ lastSync: this.lastSync })
+			);
 		} catch (err) {
 			console.error('[sync] could not save status:', err);
 		}
@@ -280,8 +304,8 @@ export class SyncStore {
 
 	/**
 	 * Create a new sync key on the relay and save it as a keyring entry.
-	 * Activation is the caller's job: any current profile's dataset must be
-	 * stashed first so this device's live data lands in the right profile.
+	 * Activation is the caller's job: the coordinator decides whether local
+	 * no-account data is adopted into it and reloads the dataset.
 	 */
 	async register(
 		name?: string
@@ -312,15 +336,18 @@ export class SyncStore {
 		}
 	}
 
-	/** Make a saved sync key the active account. Caller owns the dataset swap. */
+	/**
+	 * Point this window at a saved sync key. Datasets are namespaced, so this
+	 * only flips in-memory identity plus the last-active pointer; the caller
+	 * reloads memory from the target namespace.
+	 */
 	activateProfile(profile: StoredProfile): void {
 		this.account = identityFromSyncKey(profile.syncKey);
 		this.lastError = null;
 		this.progress = null;
 		this.usage = null;
-		this.lastSync = 0;
-		this.saveStatus();
-		this.saveAccount();
+		setLastActiveProfileId(profile.id);
+		this.restoreStatus(profile.id);
 	}
 
 	async startDeviceLink(
@@ -507,6 +534,7 @@ export class SyncStore {
 	): Promise<SyncResult> {
 		if (!this.account) return { success: false, error: 'Not linked' };
 		const account = this.account;
+		const pid = this.activePid;
 		const syncCancelled = (): boolean => this.account !== account;
 		if (indicate) this.onSyncStart?.();
 		try {
@@ -537,7 +565,7 @@ export class SyncStore {
 				(await getSyncState<Record<string, string>>(keys.recordIds).catch(() => undefined)) ?? {};
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
 			const outboxSnapshotAt = await getOutboxGeneration();
-			let outboxKeys = new Set(await getSyncOutboxKeys().catch(() => []));
+			let outboxKeys = new Set(await getSyncOutboxKeys(pid).catch(() => []));
 			let cursor = Number((await getSyncState<number>(keys.cursor).catch(() => undefined)) || 0);
 			if (firstFullUpload && cursor > 0) cursor = 0;
 
@@ -583,6 +611,25 @@ export class SyncStore {
 					mergedBoardTombstones,
 					uploadKeys
 				);
+				// The profile name rides its own account's encrypted records so every
+				// device holding this sync key converges on one local label.
+				const metaUploadDue =
+					!pullOnly &&
+					downloadsDrained &&
+					outboxKeys.has(PROFILE_META_KEY) &&
+					!quotaBlockedKeys.has(PROFILE_META_KEY) &&
+					(uploadKeys === undefined || uploadKeys.has(PROFILE_META_KEY));
+				if (metaUploadDue) {
+					const metaPayload = {
+						kind: 'profile-meta' as const,
+						value: { name: this.activeProfile?.name ?? '' }
+					};
+					currentRecords.push({
+						key: PROFILE_META_KEY,
+						fingerprint: await sha256(metaPayload),
+						payload: metaPayload
+					});
+				}
 				const changed =
 					pullOnly || !downloadsDrained ? [] : changedRecords(currentRecords, baseline);
 				const nonAttachments = changed.filter(
@@ -624,6 +671,8 @@ export class SyncStore {
 					mergedBoards,
 					tombstoneMaps
 				);
+				if (recordIds[PROFILE_META_KEY] || sentRecordIds.has(PROFILE_META_KEY) || metaUploadDue)
+					currentKeys.add(PROFILE_META_KEY);
 				// Slot tokens are keyed hashes of record keys, so an unreadable envelope can
 				// still be identified locally. Adopting its id lets a later upload replace
 				// it or a delete reclaim it instead of stranding the slot on the relay;
@@ -647,7 +696,7 @@ export class SyncStore {
 					tombstones: tombstoneMaps,
 					pullOnly,
 					catchUpComplete: downloadsDrained
-				});
+				}).filter((key) => key !== PROFILE_META_KEY);
 				const deleteSlots = await Promise.all(
 					deletableKeys.map(async (key) => ({
 						id: recordIds[key],
@@ -677,7 +726,7 @@ export class SyncStore {
 					else {
 						const blockedKey = outgoing[0].key;
 						quotaBlockedKeys.add(blockedKey);
-						await markSyncOutbox([blockedKey]);
+						await markSyncOutbox(pid, [blockedKey]);
 						outboxKeys.add(blockedKey);
 						quotaSingleUpload = false;
 					}
@@ -751,6 +800,10 @@ export class SyncStore {
 							mergedBoardTombstones = mergeTombstoneMaps(mergedBoardTombstones, {
 								[record.id]: record.deletedAt
 							});
+							break;
+						case 'profile-meta':
+							if (typeof (record as { value?: { name?: unknown } }).value?.name === 'string')
+								this.applySyncedProfileName((record as { value: { name: string } }).value.name);
 							break;
 					}
 				};
@@ -885,18 +938,23 @@ export class SyncStore {
 					uploaded: uploadedFingerprints,
 					remote: remoteFingerprints,
 					merged: fingerprintMapFrom(mergedRecords),
-					currentKeys: currentRecordKeys(
-						mergedNotes,
-						mergedLabels,
-						mergedBoards,
-						appliedTombstoneMaps
-					),
+					currentKeys: (() => {
+						const keys = currentRecordKeys(
+							mergedNotes,
+							mergedLabels,
+							mergedBoards,
+							appliedTombstoneMaps
+						);
+						if (recordIds[PROFILE_META_KEY] || sentRecordIds.has(PROFILE_META_KEY) || metaUploadDue)
+							keys.add(PROFILE_META_KEY);
+						return keys;
+					})(),
 					referencedAttachments: referencedAttachmentIds(mergedNotes, mergedTombstones)
 				});
 				baseline = reconciled.baseline;
 				for (const key of reconciled.ackKeys) acknowledgedOutbox.add(key);
 				if (reconciled.dirtyKeys.length) {
-					const generation = await markSyncOutbox(reconciled.dirtyKeys);
+					const generation = await markSyncOutbox(pid, reconciled.dirtyKeys);
 					for (const key of reconciled.dirtyKeys) {
 						outboxKeys.add(key);
 						internallyMarkedOutbox.set(key, generation);
@@ -914,6 +972,7 @@ export class SyncStore {
 					}
 					if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 					await commitSyncControl(
+						pid,
 						[
 							[keys.cursor, cursor],
 							[keys.baseline, baseline],
@@ -1025,6 +1084,18 @@ export class SyncStore {
 		]);
 	}
 
+	/** Adopt a name received from this account's encrypted profile record. */
+	private applySyncedProfileName(name: string): void {
+		const trimmed = name.trim().slice(0, 60);
+		const profile = this.activeProfile;
+		if (!profile || !trimmed || profile.name === trimmed) return;
+		const updated = { ...profile, name: trimmed };
+		this.profiles = this.profiles.map((entry) => (entry.id === profile.id ? updated : entry));
+		void saveProfile(updated).catch((err) =>
+			console.error('[sync] could not store the synced profile name:', err)
+		);
+	}
+
 	async logout(): Promise<void> {
 		const accountId = this.account?.accountId;
 		const profile = this.activeProfile;
@@ -1032,7 +1103,7 @@ export class SyncStore {
 		this.lastError = null;
 		this.progress = null;
 		this.usage = null;
-		this.saveAccount();
+		setLastActiveProfileId(null);
 		if (accountId) void this.clearAccountControlPlane(accountId);
 		if (profile) {
 			await removeProfileRecord(profile.id).catch((err) =>
