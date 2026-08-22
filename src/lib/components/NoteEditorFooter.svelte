@@ -34,6 +34,7 @@
 		images = $bindable<NoteImage[]>([]),
 		body = $bindable(''),
 		noteId = null as string | null,
+		hasLabels = false,
 		showCopy = false,
 		showArchive = false,
 		showDelete = false,
@@ -51,6 +52,7 @@
 		images?: NoteImage[];
 		body?: string;
 		noteId?: string | null;
+		hasLabels?: boolean;
 		showCopy?: boolean;
 		showArchive?: boolean;
 		showDelete?: boolean;
@@ -411,7 +413,7 @@
 			onclick={openTags}
 			aria-label="Labels"
 		>
-			<Tag class="h-5 w-5" aria-hidden="true" />
+			<Tag class="h-5 w-5" fill={hasLabels ? 'currentColor' : 'none'} aria-hidden="true" />
 		</button>
 	</div>
 
