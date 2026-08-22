@@ -1,3 +1,4 @@
+const PID = 'device-local';
 import { describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
 import {
@@ -40,7 +41,7 @@ function note(id: string, images: NoteImage[]): Note {
 async function storedImageKeys(): Promise<string[]> {
 	const db = await openDB(DEVICE_DB_NAME);
 	try {
-		return (await db.getAllKeys('note-images')).map(String).sort();
+		return (await db.getAllKeys('profile-images')).map(String).sort();
 	} finally {
 		db.close();
 	}
@@ -57,37 +58,41 @@ describe('orphaned image blob reclamation', () => {
 			image('kept', 'data:image/png;base64,QQ=='),
 			image('gone', 'data:image/png;base64,Qg==')
 		]);
-		await putNote(original);
-		expect(await storedImageKeys()).toEqual(['n1::gone', 'n1::kept']);
+		await putNote(PID, original);
+		expect(await storedImageKeys()).toEqual([`${PID}::n1::gone`, `${PID}::n1::kept`]);
 
 		// Crash-recovery style replay: byte-less metadata listing only 'kept'.
-		await putNote({
+		await putNote(PID, {
 			...original,
 			title: 'replayed from mirror',
 			images: [image('kept', '')]
 		});
 		// The write itself must not drop bytes it cannot verify (crash safety).
-		expect(await storedImageKeys()).toEqual(['n1::gone', 'n1::kept']);
+		expect(await storedImageKeys()).toEqual([`${PID}::n1::gone`, `${PID}::n1::kept`]);
 
-		await pruneOrphanImageBlobs();
+		await pruneOrphanImageBlobs(PID);
 
-		expect(await storedImageKeys()).toEqual(['n1::kept']);
-		const stored = (await getAllNotesMetadata()).find((item) => item.id === 'n1');
+		expect(await storedImageKeys()).toEqual([`${PID}::n1::kept`]);
+		const stored = (await getAllNotesMetadata(PID)).find((item) => item.id === 'n1');
 		expect(stored?.images?.map(({ id }) => id)).toEqual(['kept']);
-		const hydrated = await hydrateNoteAttachments(stored!);
+		const hydrated = await hydrateNoteAttachments(PID, stored!);
 		expect(hydrated.images?.[0]?.dataUrl?.startsWith('data:image/png')).toBe(true);
 	});
 
 	it('keeps blobs that are still referenced after recovery reattaches them', async () => {
-		await getAllNotesMetadata();
+		await getAllNotesMetadata(PID);
 		const db = await openDB(DEVICE_DB_NAME);
-		await db.put('note-images', { mime: 'image/png', bytes: Uint8Array.from([65]) }, 'lost::pic');
+		await db.put(
+			'profile-images',
+			{ mime: 'image/png', bytes: Uint8Array.from([65]) },
+			`::lost::pic`
+		);
 		db.close();
 
 		const lost = note('lost', [image('pic', '')]);
-		await putNote(lost);
-		await pruneOrphanImageBlobs();
+		await putNote(PID, lost);
+		await pruneOrphanImageBlobs(PID);
 
-		expect(await storedImageKeys()).toEqual(['lost::pic']);
+		expect(await storedImageKeys()).toEqual([`::lost::pic`]);
 	});
 });

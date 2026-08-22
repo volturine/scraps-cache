@@ -1,34 +1,28 @@
-// Profile keyring: saved sync keys ("profiles") and their stashed local datasets.
-// Exactly one profile is active; its dataset lives in the live stores, every
-// inactive profile's dataset is parked in the PROFILE_STASH_STORE.
+// Profile keyring: saved sync keys ("profiles"). Each profile owns a
+// namespaced dataset directly in the shared object stores, so switching is a
+// pointer change plus an in-memory reload — no data copying.
 import {
-	captureLiveCore,
 	deleteStoredProfile,
-	getSyncState,
 	listStoredProfiles,
-	putStashedDataset,
 	putStoredProfile,
-	getStashedDataset,
-	deleteStashedDataset,
-	replaceLiveCore,
-	setFiredReminderKeys,
-	FIRED_REMINDERS_KEY,
-	type DeviceDataset,
-	type ProfileExtras,
-	type StoredProfile
+	LOCAL_PROFILE_ID,
+	copyProfileNamespace,
+	getAllNotesMetadata,
+	getAllLabels,
+	getSyncState,
+	hydrateNoteAttachments,
+	scopedStateKey
 } from '$lib/db/idb';
-import {
-	BOARDS_IDB,
-	BOARD_IDB,
-	LABEL_IDB,
-	NOTE_IDB,
-	saveBoardsToDevice,
-	writeBoardTombstones,
-	writeLabelTombstones,
-	writeTombstones
-} from '$lib/syncTombstones';
+import { BOARDS_IDB, BOARD_IDB, LABEL_IDB, NOTE_IDB } from '$lib/syncTombstones';
+import type { KanbanBoard } from '$lib/kanban';
+import type { Note } from '$lib/types';
+import type { ScrapsCacheBackup } from '$lib/backup';
 
-export type { StoredProfile };
+export type { StoredProfile } from '$lib/db/idb';
+import type { StoredProfile } from '$lib/db/idb';
+
+const LS_LAST_ACTIVE = 'gkc-last-active-profile';
+const LS_LEGACY_ACCOUNT = 'gkc-sync-account';
 
 export async function loadProfiles(): Promise<StoredProfile[]> {
 	const profiles = await listStoredProfiles();
@@ -39,98 +33,9 @@ export async function saveProfile(profile: StoredProfile): Promise<void> {
 	await putStoredProfile(profile);
 }
 
-/** Removes the keyring entry together with its stashed dataset. */
+/** Removes the keyring entry together with its entire namespaced dataset. */
 export async function removeProfileRecord(id: string): Promise<void> {
 	await deleteStoredProfile(id);
-}
-
-function tombstoneMap(value: unknown): Record<string, number> {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-	return Object.fromEntries(
-		Object.entries(value as Record<string, unknown>).flatMap(([id, at]) =>
-			typeof id === 'string' && Number(at) > 0 ? [[id, Number(at)] as const] : []
-		)
-	);
-}
-
-/** Read the full live dataset (core rows plus tombstones/boards/reminders). */
-export async function captureDeviceDataset(): Promise<DeviceDataset> {
-	const [core, noteTombstones, labelTombstones, boardTombstones, boards, firedReminderKeys] =
-		await Promise.all([
-			captureLiveCore(),
-			getSyncState<unknown>(NOTE_IDB),
-			getSyncState<unknown>(LABEL_IDB),
-			getSyncState<unknown>(BOARD_IDB),
-			getSyncState<unknown>(BOARDS_IDB),
-			getSyncState<unknown>(FIRED_REMINDERS_KEY)
-		]);
-	return {
-		...core,
-		noteTombstones: tombstoneMap(noteTombstones),
-		labelTombstones: tombstoneMap(labelTombstones),
-		boardTombstones: tombstoneMap(boardTombstones),
-		boards,
-		firedReminderKeys: Array.isArray(firedReminderKeys)
-			? firedReminderKeys.filter((key): key is string => typeof key === 'string')
-			: []
-	};
-}
-
-/** Park the current live dataset under its profile id. */
-export async function stashProfileDataset(profileId: string): Promise<void> {
-	await putStashedDataset({
-		pid: profileId,
-		savedAt: Date.now(),
-		...(await captureDeviceDataset())
-	});
-}
-
-/**
- * Restore a stashed dataset into the live stores: core rows land in IDB and
- * the extras (tombstones, boards, reminder keys) are persisted through their
- * owning modules. Returns the extras for in-memory adoption; null when this
- * device holds no stash for the profile. The stash itself survives until
- * `dropStashedDataset` — callers drop it only after activating the profile,
- * so a crash mid-switch is always repairable from one of the two stashes.
- */
-export async function restoreProfileDataset(profileId: string): Promise<ProfileExtras | null> {
-	const stash = await getStashedDataset(profileId);
-	if (!stash) return null;
-	const { pid: _pid, savedAt: _savedAt, notes, labels, imageBlobs, outboxKeys, ...extras } = stash;
-	await replaceLiveCore({ notes, labels, imageBlobs, outboxKeys });
-	await persistExtras(extras);
-	return extras;
-}
-
-/** Clear the live dataset (fresh profile) so nothing of the previous one remains. */
-export async function resetDeviceDataset(): Promise<void> {
-	await replaceLiveCore({ notes: [], labels: [], imageBlobs: [], outboxKeys: [] });
-	await persistExtras({
-		noteTombstones: {},
-		labelTombstones: {},
-		boardTombstones: {},
-		boards: [],
-		firedReminderKeys: []
-	});
-}
-
-async function persistExtras(extras: ProfileExtras): Promise<void> {
-	const boards = Array.isArray(extras.boards) ? JSON.parse(JSON.stringify(extras.boards)) : [];
-	await Promise.all([
-		writeTombstones(tombstoneMap(extras.noteTombstones)),
-		writeLabelTombstones(tombstoneMap(extras.labelTombstones)),
-		writeBoardTombstones(tombstoneMap(extras.boardTombstones)),
-		saveBoardsToDevice(boards),
-		setFiredReminderKeys(
-			Array.isArray(extras.firedReminderKeys)
-				? extras.firedReminderKeys.filter((key): key is string => typeof key === 'string')
-				: []
-		)
-	]);
-}
-
-export async function dropStashedDataset(profileId: string): Promise<void> {
-	await deleteStashedDataset(profileId);
 }
 
 /** The keyring entry matching an active sync key, if any. */
@@ -145,15 +50,97 @@ export function nextProfileName(existing: readonly { name: string }[]): string {
 	return existing.length === 0 ? 'Sync key' : `Sync key ${existing.length + 1}`;
 }
 
+// --- Active-profile pointer -------------------------------------------------
+// Per-origin default for newly opened windows; each window keeps its own
+// active profile in memory once booted.
+
+export function getLastActiveProfileId(): string | null {
+	if (typeof localStorage === 'undefined') return null;
+	try {
+		return localStorage.getItem(LS_LAST_ACTIVE);
+	} catch {
+		return null;
+	}
+}
+
+export function setLastActiveProfileId(id: string | null): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		if (id) localStorage.setItem(LS_LAST_ACTIVE, id);
+		else localStorage.removeItem(LS_LAST_ACTIVE);
+	} catch (err) {
+		console.error('[profiles] could not save the last active profile:', err);
+	}
+}
+
 /**
- * A crash mid-switch leaves the previous profile's stash parked while the live
- * stores may already hold another dataset. Replaying that stash makes boot
- * self-healing; when it happens after activation the replay overwrites the
- * same data and is a no-op in practice.
+ * Boot selection: the last active pointer when it still exists in the keyring,
+ * else the legacy single-account mirror's entry, else the only entry, else
+ * none (the window runs on the local no-key namespace until one is created).
  */
-export async function repairInterruptedProfileSwitch(active: StoredProfile | null): Promise<void> {
-	if (!active) return;
-	if (!(await getStashedDataset(active.id))) return;
-	await restoreProfileDataset(active.id);
-	await dropStashedDataset(active.id);
+export function pickBootProfile(profiles: StoredProfile[]): StoredProfile | null {
+	if (!profiles.length) return null;
+	const pointer = getLastActiveProfileId();
+	if (pointer) {
+		const pointed = profiles.find((profile) => profile.id === pointer);
+		if (pointed) return pointed;
+	}
+	let wantedSyncKey: string | null = null;
+	try {
+		const raw =
+			typeof localStorage !== 'undefined' ? localStorage.getItem(LS_LEGACY_ACCOUNT) : null;
+		const parsed = raw ? (JSON.parse(raw) as { syncKey?: unknown }) : null;
+		if (parsed && typeof parsed.syncKey === 'string') wantedSyncKey = parsed.syncKey;
+	} catch {
+		/* unreadable mirror falls through */
+	}
+	if (wantedSyncKey) {
+		const match = profileForSyncKey(profiles, wantedSyncKey);
+		if (match) return match;
+	}
+	return profiles[0];
+}
+
+/** The namespace this window works on while no sync key exists yet. */
+export const LOCAL_PID = LOCAL_PROFILE_ID;
+
+/**
+ * Give a freshly created first key ownership of any local no-account data so
+ * registering does not look like data loss. Later keys start empty by design.
+ */
+export function adoptLocalDatasetInto(pid: string): Promise<void> {
+	return copyProfileNamespace(LOCAL_PID, pid);
+}
+
+// --- Per-profile exports ----------------------------------------------------
+
+/**
+ * Build a standard notes backup file from any profile's namespace without
+ * activating it. Never carries sync identity: importing lands as plain notes.
+ */
+export async function buildProfileNotesExport(pid: string): Promise<ScrapsCacheBackup | null> {
+	const noteRows = await getAllNotesMetadata(pid);
+	if (!noteRows.length && !(await getAllLabels(pid)).length) return null;
+	const notes: Note[] = [];
+	for (const row of noteRows) notes.push(await hydrateNoteAttachments(pid, row));
+	const [labels, boards, tombstones, labelTombstones, boardTombstones] = await Promise.all([
+		getAllLabels(pid),
+		getSyncState<KanbanBoard[]>(scopedStateKey(BOARDS_IDB, pid)),
+		getSyncState<Record<string, number>>(scopedStateKey(NOTE_IDB, pid)),
+		getSyncState<Record<string, number>>(scopedStateKey(LABEL_IDB, pid)),
+		getSyncState<Record<string, number>>(scopedStateKey(BOARD_IDB, pid))
+	]);
+	return {
+		version: 4,
+		exportedAt: Date.now(),
+		notes,
+		labels,
+		boards: Array.isArray(boards) ? boards : [],
+		activeBoardId: '',
+		tombstones: tombstones ?? {},
+		labelTombstones: labelTombstones ?? {},
+		boardTombstones: boardTombstones ?? {},
+		ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes' },
+		linkPreviews: []
+	};
 }

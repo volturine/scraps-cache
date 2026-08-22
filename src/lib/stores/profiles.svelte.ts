@@ -1,17 +1,13 @@
-// Profile switching orchestration. A switch is a dataset handover between two
-// saved sync keys: the outgoing dataset is stashed, the incoming one (if this
-// device has it) is reinstated, then the account is activated and the app
-// pulls that key's cloud deltas. Runs under the sync web lock so no sync
-// flight can interleave with the storage swap.
+// Profile switching orchestration. Datasets are namespaced per profile, so a
+// switch is: drain pending writes, flip this window's identity, reload memory
+// from the target namespace, then pull that key's cloud deltas. Runs under the
+// sync web lock so no sync flight can interleave with the handover.
 import { syncStore } from './sync.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import {
-	dropStashedDataset,
+	adoptLocalDatasetInto,
 	nextProfileName,
 	profileForSyncKey,
-	resetDeviceDataset,
-	restoreProfileDataset,
-	stashProfileDataset,
 	type StoredProfile
 } from '$lib/profiles';
 import { randomOpaqueId } from '$lib/syncPairing';
@@ -28,16 +24,26 @@ export class ProfileCoordinator {
 
 	private guard(blockOnSync = true): string | null {
 		if (this.switching) return 'Another profile change is still running';
-		// A running sync must finish before its dataset can be stashed; the web
-		// lock below is only a safety net against races, not a waiting room.
-		// Pairing grants are exempt: they are one-time and expire in 60 seconds,
-		// so waiting out the flight beats losing the key.
+		// A running sync must finish before its dataset can be handed over; the
+		// web lock below is only a safety net against races, not a waiting room.
 		if (blockOnSync && notesStore.syncing)
 			return 'Sync is still running. Try again when it finishes.';
 		return null;
 	}
 
-	/** Create a brand-new sync key and make it the active profile. */
+	private async activate(
+		target: StoredProfile,
+		options: { adoptLocal?: boolean } = {}
+	): Promise<void> {
+		if (options.adoptLocal && !syncStore.activeProfile) {
+			await adoptLocalDatasetInto(target.id);
+		}
+		syncStore.activateProfile(target);
+		await notesStore.reloadForProfile();
+		void notesStore.syncWithCloudManual();
+	}
+
+	/** Create a brand-new sync key and make it this window's active profile. */
 	async create(name?: string): Promise<{ success: boolean; error?: string }> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
@@ -48,16 +54,9 @@ export class ProfileCoordinator {
 				const result = await syncStore.register(name);
 				if (!result.success || !result.profile)
 					return { success: false, error: result.error ?? 'Registration failed' };
-				// First-ever registration keeps the current local notes (they upload
-				// with the empty baseline); adding a key parks them with its profile.
-				const previous = syncStore.activeProfile;
-				if (previous) {
-					await stashProfileDataset(previous.id);
-					await resetDeviceDataset();
-				}
-				syncStore.activateProfile(result.profile);
-				if (previous) await notesStore.adoptDeviceDataset(null);
-				void notesStore.syncWithCloudManual();
+				// The very first key on a device adopts local no-account data so
+				// registering never looks like data loss; later keys start empty.
+				await this.activate(result.profile, { adoptLocal: !syncStore.activeProfile });
 				return { success: true };
 			});
 		} catch (err) {
@@ -70,7 +69,7 @@ export class ProfileCoordinator {
 		}
 	}
 
-	/** Swap the live dataset for another saved sync key's. */
+	/** Point this window at another saved sync key's namespace. */
 	async switchTo(profileId: string): Promise<{ success: boolean; error?: string }> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
@@ -81,13 +80,7 @@ export class ProfileCoordinator {
 				if (!target) return { success: false, error: 'That sync key is no longer on this device' };
 				if (target.id === syncStore.activeProfile?.id) return { success: true };
 				await syncStore.waitForOutboxWrites();
-				if (syncStore.activeProfile) await stashProfileDataset(syncStore.activeProfile.id);
-				const extras = await restoreProfileDataset(target.id);
-				if (!extras) await resetDeviceDataset();
-				syncStore.activateProfile(target);
-				await notesStore.adoptDeviceDataset(extras);
-				await dropStashedDataset(target.id);
-				void notesStore.syncWithCloudManual();
+				await this.activate(target);
 				return { success: true };
 			});
 		} catch (err) {
@@ -103,8 +96,8 @@ export class ProfileCoordinator {
 	/**
 	 * Activate a sync key received via device pairing.
 	 * Returns 'choice' when this is the first key on the device so the modal
-	 * can ask whether to merge or discard local notes; otherwise the previous
-	 * profile's dataset is stashed and the paired key's cloud data is pulled.
+	 * can ask whether to merge or discard local notes; otherwise the paired
+	 * key's own namespace is activated and its cloud data is pulled.
 	 */
 	async receiveLinkedKey(
 		syncKey: string
@@ -126,15 +119,15 @@ export class ProfileCoordinator {
 					await syncStore.addKeyringEntry(profile);
 				}
 				if (!syncStore.activeProfile || syncStore.activeProfile.id === profile.id) {
+					// First key on this device: take ownership of any local no-account
+					// data up front, then let the modal ask merge vs discard.
+					if (!syncStore.activeProfile) await adoptLocalDatasetInto(profile.id);
 					syncStore.activateProfile(profile);
+					await notesStore.reloadForProfile();
 					return { outcome: 'choice' };
 				}
-				await stashProfileDataset(syncStore.activeProfile.id);
-				const extras = await restoreProfileDataset(profile.id);
-				if (!extras) await resetDeviceDataset();
 				syncStore.activateProfile(profile);
-				await notesStore.adoptDeviceDataset(extras);
-				await dropStashedDataset(profile.id);
+				await notesStore.reloadForProfile();
 				void notesStore.replaceWithCloudManual();
 				return { outcome: 'linked' };
 			});

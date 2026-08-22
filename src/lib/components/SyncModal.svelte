@@ -5,8 +5,11 @@
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { buildProfileNotesExport } from '$lib/profiles';
+	import { estimateProfileBytes } from '$lib/db/idb';
 	import { unregisterReminderDevice } from '$lib/reminderWake';
-	import { Cloud, Pencil, Trash2, X } from '@lucide/svelte';
+	import { downloadJSON } from '$lib/utils';
+	import { Cloud, Download, Pencil, Trash2, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose }: { onClose: () => void } = $props();
@@ -31,6 +34,46 @@
 
 	// A running sync must finish before a dataset handover can start.
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
+
+	// Approximate on-device footprint per saved key, refreshed whenever the
+	// modal is shown or its keyring changes.
+	let sizes = $state<Record<string, number>>({});
+	$effect(() => {
+		const ids = syncStore.profiles.map((profile) => profile.id);
+		void Promise.all(
+			ids.map(async (id) => [id, await estimateProfileBytes(id).catch(() => 0)] as const)
+		).then((entries) => {
+			sizes = Object.fromEntries(entries);
+		});
+	});
+
+	async function exportProfile(id: string) {
+		error = '';
+		try {
+			const name = syncStore.profiles.find((profile) => profile.id === id)?.name ?? 'profile';
+			const backup = await buildProfileNotesExport(id);
+			if (!backup) {
+				info = 'That sync key has no notes stored on this device yet.';
+				return;
+			}
+			downloadJSON(
+				backup,
+				`scraps-cache-${name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-${new Date()
+					.toISOString()
+					.slice(0, 10)}.scraps-cache-backup`
+			);
+		} catch {
+			error = 'Could not export that sync key\u2019s notes.';
+		}
+	}
+
+	function sizeLabel(id: string): string {
+		const bytes = sizes[id];
+		if (!bytes) return '';
+		return bytes < 1024 * 1024
+			? `${Math.max(1, Math.round(bytes / 1024))} KB`
+			: `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -576,7 +619,14 @@
 								<div
 									class="flex items-center gap-2 rounded-lg border border-[var(--scraps-cache-border)] px-3 py-2"
 								>
-									<span class="min-w-0 flex-1 truncate text-sm">{profile.name}</span>
+									<span class="min-w-0 flex-1">
+										<span class="block truncate text-sm">{profile.name}</span>
+										{#if sizeLabel(profile.id)}
+											<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
+												>{sizeLabel(profile.id)} on this device</span
+											>
+										{/if}
+									</span>
 									{#if profile.id === syncStore.activeProfile?.id}
 										<span class="text-xs font-medium text-[var(--scraps-cache-success)]"
 											>Active</span
@@ -592,6 +642,14 @@
 											{profileCoordinator.switching ? '…' : 'Switch'}
 										</button>
 									{/if}
+									<button
+										type="button"
+										onclick={() => void exportProfile(profile.id)}
+										class="icon-btn h-7 w-7 shrink-0"
+										aria-label="Export notes of {profile.name}"
+									>
+										<Download class="h-3.5 w-3.5" aria-hidden="true" />
+									</button>
 									<button
 										type="button"
 										onclick={() => startRename(profile.id, profile.name)}

@@ -1,3 +1,4 @@
+const PID = 'device-local';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -110,7 +111,7 @@ function wire(
 }
 
 async function applyToDevice(snapshot: SyncSnapshot): Promise<SyncSnapshot> {
-	for (const item of snapshot.notes) await putNote(item);
+	for (const item of snapshot.notes) await putNote(PID, item);
 	return snapshot;
 }
 
@@ -144,7 +145,7 @@ describe('client sync against the sqlite relay', () => {
 			deleteSlots: Array<{ id: string; slot: string }>;
 		}> = [];
 		wire(deviceA, relay, requestsA);
-		await putNote(local, [`note:${local.id}`, `attachment:${image.id}`]);
+		await putNote(PID, local, [`note:${local.id}`, `attachment:${image.id}`]);
 		const uploaded = await deviceA.sync([local], [], {}, {}, [], {}, false, false, applyToDevice);
 		expect(uploaded.success, uploaded.error).toBe(true);
 
@@ -159,9 +160,9 @@ describe('client sync against the sqlite relay', () => {
 		const pulled = await deviceB.sync([], [], {}, {}, [], {}, false, false, applyToDevice);
 		expect(pulled.success, pulled.error).toBe(true);
 
-		const stored = (await getAllNotesMetadata()).find((item) => item.id === 'note-1');
+		const stored = (await getAllNotesMetadata(PID)).find((item) => item.id === 'note-1');
 		expect(stored).toBeDefined();
-		const hydrated = await hydrateNoteAttachments(stored!);
+		const hydrated = await hydrateNoteAttachments(PID, stored!);
 		expect(hydrated.images?.[0]?.dataUrl).toBe(image.dataUrl);
 	});
 
@@ -183,7 +184,7 @@ describe('client sync against the sqlite relay', () => {
 			deleteSlots: Array<{ id: string; slot: string }>;
 		}> = [];
 		wire(client, relay, requests as never);
-		await putNote(original, [`note:${original.id}`, `attachment:${oldImage.id}`]);
+		await putNote(PID, original, [`note:${original.id}`, `attachment:${oldImage.id}`]);
 		expect(
 			(await client.sync([original], [], {}, {}, [], {}, false, false, applyToDevice)).success
 		).toBe(true);
@@ -202,7 +203,7 @@ describe('client sync against the sqlite relay', () => {
 		const replaced = noteWithPhoto(newImage);
 		replaced.updatedAt = 2;
 		replaced.fieldTimes = { ...original.fieldTimes, images: 2, title: 1 };
-		await putNote(replaced, [`note:${replaced.id}`, `attachment:${newImage.id}`]);
+		await putNote(PID, replaced, [`note:${replaced.id}`, `attachment:${newImage.id}`]);
 		let replacementStored = false;
 		vi.spyOn(
 			client as unknown as {
