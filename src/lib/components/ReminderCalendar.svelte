@@ -92,7 +92,7 @@
 	<div
 		class="grid grid-cols-7 text-center text-xs font-medium text-[var(--scraps-cache-text-muted)]"
 	>
-		{#each WEEKDAYS as label (label)}
+		{#each WEEKDAYS as label, i (i)}
 			<span>{label}</span>
 		{/each}
 	</div>
