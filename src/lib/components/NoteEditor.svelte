@@ -516,6 +516,7 @@
 						bind:images
 						bind:body
 						noteId={note.id}
+						hasLabels={(note.labels?.length ?? 0) > 0}
 						showCopy={true}
 						showArchive={true}
 						showDelete={true}
