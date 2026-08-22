@@ -117,7 +117,7 @@
 </script>
 
 <div
-	class="select-none rounded-2xl border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3 py-3"
+	class="w-full max-w-[22rem] select-none rounded-2xl border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3 py-3"
 >
 	<div class="mb-2 flex items-center justify-between">
 		<button
@@ -192,7 +192,7 @@
 	</div>
 
 	<div
-		class="mt-2 flex h-7 items-center justify-between border-t border-[var(--scraps-cache-border)] pt-1 text-xs"
+		class="mt-2 flex items-center justify-between gap-2 border-t border-[var(--scraps-cache-border)] pt-3 text-xs"
 	>
 		<div class="flex flex-1 items-center">
 			<button
