@@ -88,6 +88,21 @@ describe('sync key keyring', () => {
 		expect(localStorage.getItem('gkc-last-active-profile')).toBe(profile.id);
 	});
 
+	it('rescues notes stranded in the local namespace by a pre-namespacing upgrade', async () => {
+		const stranded = keyringEntry(createSyncIdentity().syncKey, 'Upgraded', 1);
+		await saveProfile(stranded);
+		localStorage.setItem('gkc-last-active-profile', stranded.id);
+		await putNote('device-local', note('pre-upgrade-note'));
+
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+
+		expect(store.activeProfile?.id).toBe(stranded.id);
+		expect((await getAllNotesMetadata(stranded.id)).map(({ id }) => id)).toEqual([
+			'pre-upgrade-note'
+		]);
+	});
+
 	it('logout removes the keyring entry of the signed-out key', async () => {
 		const active = keyringEntry(createSyncIdentity().syncKey, 'Main', 1);
 		const kept = keyringEntry(createSyncIdentity().syncKey, 'Kept', 2);
