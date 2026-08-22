@@ -183,6 +183,39 @@ describe('profile switching', () => {
 		expect(await getStashedDataset(first.id)).toBeNull();
 	});
 
+	it('refuses to switch while a sync flight is running and allows it once finished', async () => {
+		const first = keyringEntry(createSyncIdentity().syncKey, 'First', 1);
+		const second = keyringEntry(createSyncIdentity().syncKey, 'Second', 2);
+		syncStore.profiles = [first, second];
+		syncStore.account = identityFromSyncKey(first.syncKey);
+		await putNote(note('first-note'));
+
+		const fakeFlight = Promise.resolve(true);
+		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = fakeFlight;
+		expect(notesStore.syncing).toBe(true);
+		const blocked = await profileCoordinator.switchTo(second.id);
+		expect(blocked.success).toBe(false);
+		expect(blocked.error).toMatch(/sync/i);
+
+		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+		await putStashedDataset({
+			pid: second.id,
+			savedAt: 1,
+			notes: [note('second-note')],
+			labels: [],
+			imageBlobs: [],
+			noteTombstones: {},
+			labelTombstones: {},
+			boardTombstones: {},
+			boards: [],
+			firedReminderKeys: [],
+			outboxKeys: []
+		});
+		const switched = await profileCoordinator.switchTo(second.id);
+		expect(switched.success, switched.error).toBe(true);
+		expect(syncStore.activeProfile?.id).toBe(second.id);
+	});
+
 	it('starts a freshly created key with no notes while the previous dataset stays parked', async () => {
 		vi.stubGlobal(
 			'fetch',

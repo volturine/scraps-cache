@@ -1185,6 +1185,11 @@ export class NotesStore {
 		return this.syncFlight;
 	}
 
+	/** True while a sync flight (auto or manual) is running. */
+	get syncing(): boolean {
+		return this.syncFlight !== null;
+	}
+
 	private async withSyncLock<T>(run: () => Promise<T>): Promise<T> {
 		const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
 		if (!locks?.request) return run();
