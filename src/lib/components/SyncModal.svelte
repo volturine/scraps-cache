@@ -408,7 +408,11 @@
 				class="flex items-center gap-2 text-lg font-medium text-[var(--scraps-cache-text)]"
 			>
 				<Cloud class="h-5 w-5" aria-hidden="true" />
-				Sync
+				{#if syncStore.isLoggedIn && syncStore.activeProfile}
+					<span class="max-w-[16rem] truncate">{syncStore.activeProfile.name}</span>
+				{:else}
+					Sync
+				{/if}
 			</h2>
 			<button type="button" onclick={close} class="icon-btn h-8 w-8" aria-label="Close">
 				<X class="h-4 w-4" aria-hidden="true" />
@@ -417,51 +421,6 @@
 
 		{#if mode === 'linked' && syncStore.account}
 			<div class="space-y-4">
-				{#if syncStore.activeProfile}
-					{#if editingId === syncStore.activeProfile.id}
-						<div
-							class="flex items-center gap-2 rounded-lg border border-[var(--scraps-cache-border)] px-2 py-1.5"
-						>
-							<input
-								class="scraps-cache-input min-w-0 flex-1 px-2 py-1 text-sm"
-								bind:value={editName}
-								maxlength="60"
-								aria-label="Sync key name"
-								onkeydown={(event) => {
-									if (event.key === 'Enter') void saveRename();
-									if (event.key === 'Escape') cancelEdit();
-								}}
-							/>
-							<button
-								type="button"
-								onclick={() => void saveRename()}
-								class="shrink-0 text-xs font-medium text-[var(--scraps-cache-primary)]">Save</button
-							>
-							<button
-								type="button"
-								onclick={cancelEdit}
-								class="shrink-0 text-xs text-[var(--scraps-cache-text-muted)]">Cancel</button
-							>
-						</div>
-					{:else if profileCoordinator.switching}
-						<p class="text-sm text-[var(--scraps-cache-text-muted)]">Switching sync key…</p>
-					{:else}
-						<div class="flex items-center gap-2">
-							<span class="min-w-0 flex-1 truncate text-sm font-medium"
-								>{syncStore.activeProfile.name}</span
-							>
-							<button
-								type="button"
-								onclick={() =>
-									startRename(syncStore.activeProfile!.id, syncStore.activeProfile!.name)}
-								class="icon-btn h-7 w-7 shrink-0"
-								aria-label="Rename {syncStore.activeProfile.name}"
-							>
-								<Pencil class="h-3.5 w-3.5" aria-hidden="true" />
-							</button>
-						</div>
-					{/if}
-				{/if}
 				<p class="text-sm text-[var(--scraps-cache-text-muted)]">
 					This device is linked. Connect another device with a one-time code that expires in 60
 					seconds.
@@ -519,7 +478,7 @@
 				>
 				{#if syncStore.usage}
 					<div class="text-center text-xs text-[var(--scraps-cache-text-muted)]">
-						{formatBytes(syncStore.usage.ciphertextBytes)} stored for this account
+						{formatBytes(syncStore.usage.ciphertextBytes)} encrypted on the relay
 					</div>
 				{/if}
 				<button
