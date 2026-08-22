@@ -18,9 +18,38 @@ describe('checklist indent / sub-tasks', () => {
 		expect(parseCheckLine(line)).toEqual({ indent: 2, checked: true, text: 'nested' });
 	});
 
-	it('preserves indent when toggling', () => {
+	it('preserves indent when toggling and completes the parent', () => {
 		const body = ['[ ] a', '  [ ] b'].join('\n');
-		expect(toggleLineAt(body, 1)).toBe(['[ ] a', '  [x] b'].join('\n'));
-		expect(toggleLineAt(toggleLineAt(body, 1), 1)).toBe(body);
+		expect(toggleLineAt(body, 1)).toBe(['[x] a', '  [x] b'].join('\n'));
+	});
+});
+
+describe('checklist toggle propagation', () => {
+	const body = ['[ ] parent', '  [ ] a', '  [ ] b', '[ ] other'].join('\n');
+
+	it('completes all sub-tasks when the main task is completed', () => {
+		expect(toggleLineAt(body, 0)).toBe(
+			['[x] parent', '  [x] a', '  [x] b', '[ ] other'].join('\n')
+		);
+	});
+
+	it('completes the main task when all sub-tasks are completed', () => {
+		let next = body;
+		next = toggleLineAt(next, 1);
+		expect(next).toBe(['[ ] parent', '  [x] a', '  [ ] b', '[ ] other'].join('\n'));
+		next = toggleLineAt(next, 2);
+		expect(next).toBe(['[x] parent', '  [x] a', '  [x] b', '[ ] other'].join('\n'));
+	});
+
+	it('leaves sub-task state untouched when completing a task with no sub-tasks', () => {
+		expect(toggleLineAt(body, 3)).toBe(
+			['[ ] parent', '  [ ] a', '  [ ] b', '[x] other'].join('\n')
+		);
+	});
+
+	it('does not complete the parent while any sub-task is unchecked', () => {
+		const partial = ['[ ] parent', '  [x] a', '  [ ] b', '  [ ] c'].join('\n');
+		const next = toggleLineAt(partial, 2);
+		expect(next).toBe(['[ ] parent', '  [x] a', '  [x] b', '  [ ] c'].join('\n'));
 	});
 });
