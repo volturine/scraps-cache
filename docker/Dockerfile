@@ -8,16 +8,8 @@ COPY package.json package-lock.json svelte.config.js tsconfig.json vite.config.t
 RUN npm ci --ignore-scripts
 
 COPY . .
-ARG TARGETARCH
 RUN npm run build \
-	&& npm prune --omit=dev \
-	&& cd node_modules/better-sqlite3 \
-	&& rm -rf deps src binding.gyp \
-	&& case "$TARGETARCH" in \
-		amd64) sqlite_arch=x64 ;; \
-		*) sqlite_arch="$TARGETARCH" ;; \
-	esac \
-	&& find prebuilds -maxdepth 1 -mindepth 1 ! -name "linuxmusl-${sqlite_arch}.node" -exec rm -rf {} +
+	&& npm prune --omit=dev
 
 FROM alpine:3.24 AS runtime
 
