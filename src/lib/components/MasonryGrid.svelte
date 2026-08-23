@@ -53,7 +53,6 @@
 	const columns = $derived.by(() => {
 		const cols: Note[][] = Array.from({ length: colCount }, () => []);
 		const heights: number[] = Array(colCount).fill(0);
-		if (leading) heights[0] += 320;
 		for (const note of notes) {
 			let minIdx = 0;
 			for (let i = 1; i < colCount; i++) {
@@ -89,21 +88,23 @@
 	});
 </script>
 
-<div bind:this={gridEl} class="masonry-balanced {className}" style="--masonry-cols: {colCount}">
-	{#each columns as col, i (i)}
-		<div class="masonry-balanced-col">
-			{#if i === 0 && leading}
-				<div>{@render leading()}</div>
-			{/if}
-			{#each col as note (note.id)}
-				<div data-note-height={note.id}>
-					{#if children}
-						{@render children(note)}
-					{:else}
-						<NoteCard {note} {onOpen} />
-					{/if}
-				</div>
-			{/each}
-		</div>
-	{/each}
+<div bind:this={gridEl} class="masonry-wrap {className}" style="--masonry-cols: {colCount}">
+	{#if leading}
+		<div class="masonry-lead">{@render leading()}</div>
+	{/if}
+	<div class="masonry-balanced">
+		{#each columns as col, i (i)}
+			<div class="masonry-balanced-col">
+				{#each col as note (note.id)}
+					<div data-note-height={note.id}>
+						{#if children}
+							{@render children(note)}
+						{:else}
+							<NoteCard {note} {onOpen} />
+						{/if}
+					</div>
+				{/each}
+			</div>
+		{/each}
+	</div>
 </div>

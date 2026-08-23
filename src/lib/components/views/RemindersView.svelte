@@ -50,7 +50,7 @@
 			{/snippet}
 		</NotesFeed>
 	{:else}
-		<div class={notesShellClass()}>
+		<div class={uiStore.layout === 'list' ? notesShellClass() : 'max-w-[22rem]'}>
 			<ReminderCalendar notes={reminders} bind:selected={selectedDay} />
 		</div>
 		<div class="mt-4">
