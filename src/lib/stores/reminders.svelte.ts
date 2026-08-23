@@ -1,5 +1,5 @@
 import { tickAppClock } from '$lib/appClock.svelte';
-import { getFiredReminderKeys, markFiredReminderKey } from '$lib/db/idb';
+import { claimFiredReminderKey, getFiredReminderKeys } from '$lib/db/idb';
 import {
 	nextReminderAt,
 	notificationPermission,
@@ -15,6 +15,28 @@ import {
 import { publishReminderWakes, registerReminderDevice } from '$lib/reminderWake';
 
 const MAX_TIMER_MS = 60_000;
+const FIRED_REMINDERS_MIRROR_KEY = 'gkc-fired-reminders-mirror';
+
+function readFiredReminderMirror(): string[] {
+	if (typeof localStorage === 'undefined') return [];
+	try {
+		const stored: unknown = JSON.parse(localStorage.getItem(FIRED_REMINDERS_MIRROR_KEY) ?? '[]');
+		return Array.isArray(stored)
+			? stored.filter((item): item is string => typeof item === 'string')
+			: [];
+	} catch {
+		return [];
+	}
+}
+
+function writeFiredReminderMirror(keys: Iterable<string>): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		localStorage.setItem(FIRED_REMINDERS_MIRROR_KEY, JSON.stringify([...keys]));
+	} catch {
+		/* IndexedDB remains the durable fallback when localStorage is unavailable. */
+	}
+}
 
 export class ReminderStore {
 	alerts = $state<ReminderAlert[]>([]);
@@ -123,11 +145,11 @@ export class ReminderStore {
 		this.openNote(noteId);
 	}
 
-	private addFallbackAlert(alert: ReminderAlert): void {
+	private async addFallbackAlert(alert: ReminderAlert, alreadyClaimed = false): Promise<void> {
+		if (!alreadyClaimed && !(await this.claimFired(alert.wakeId))) return;
 		if (!this.alerts.some((item) => item.wakeId === alert.wakeId)) {
 			this.alerts = [...this.alerts, alert];
 		}
-		this.markFired(alert.wakeId);
 	}
 
 	private scan(): void {
@@ -145,14 +167,17 @@ export class ReminderStore {
 				title: reminderPreview(note)
 			};
 			if (notificationPermission() !== 'granted') {
-				this.addFallbackAlert(alert);
+				void this.addFallbackAlert(alert);
 				continue;
 			}
-			void showReminderNotification(alert, () => this.open(note.id)).then((shown) => {
-				if (shown) this.markFired(wakeId);
-				else this.addFallbackAlert(alert);
-			});
+			void this.showSystemNotification(alert);
 		}
+	}
+
+	private async showSystemNotification(alert: ReminderAlert): Promise<void> {
+		if (!(await this.claimFired(alert.wakeId))) return;
+		const shown = await showReminderNotification(alert, () => this.open(alert.noteId));
+		if (!shown) await this.addFallbackAlert(alert, true);
 	}
 
 	private arm(): void {
@@ -172,18 +197,30 @@ export class ReminderStore {
 	}
 
 	private async hydrateFired(): Promise<void> {
+		this.fired = new Set([...this.fired, ...readFiredReminderMirror()]);
 		try {
 			const stored = await getFiredReminderKeys();
 			this.fired = new Set([...this.fired, ...stored]);
 		} catch {
 			/* IndexedDB may be unavailable in private browsing or tests. */
 		}
+		writeFiredReminderMirror(this.fired);
+	}
+
+	private async claimFired(key: string): Promise<boolean> {
+		if (this.fired.has(key)) return false;
+		this.fired.add(key);
+		writeFiredReminderMirror(this.fired);
+		try {
+			return await claimFiredReminderKey(key);
+		} catch {
+			// Keep once-per-session behavior when IndexedDB is unavailable.
+			return true;
+		}
 	}
 
 	private markFired(key: string): void {
-		if (this.fired.has(key)) return;
-		this.fired.add(key);
-		void markFiredReminderKey(key).catch(() => undefined);
+		void this.claimFired(key);
 	}
 
 	private onSwMessage = (event: MessageEvent) => {
