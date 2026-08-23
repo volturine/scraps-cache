@@ -420,19 +420,9 @@ body {
 	box-sizing: border-box;
 }
 
-/* Fixed-width lead item (e.g. reminders calendar) with note columns beside it. */
+/* Lead item (e.g. reminders calendar) floats over the first columns. */
 .masonry-wrap {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: flex-start;
-	gap: 10px;
-	width: 100%;
-}
-
-.masonry-lead {
-	flex: 0 0 auto;
-	width: 22rem;
-	max-width: 100%;
+	position: relative;
 }
 
 /* Keep the calendar's type size stable regardless of container/device (iOS font boosting). */

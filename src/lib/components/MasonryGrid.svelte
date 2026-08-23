@@ -58,9 +58,23 @@
 	let measuredHeights = $state(new Map<string, number>());
 	let gridEl = $state<HTMLDivElement | null>(null);
 
+	const GAP = 10;
+	const LEAD_WIDTH = 352;
+	const LEAD_HEIGHT = 340;
+
+	/** How many columns the lead item spans to reach its natural width. */
+	const leadSpan = $derived.by(() => {
+		if (!leading || !containerWidth) return 0;
+		const colWidth = (containerWidth - GAP * (colCount - 1)) / colCount;
+		return Math.min(colCount, Math.max(1, Math.ceil((LEAD_WIDTH + GAP) / (colWidth + GAP))));
+	});
+	const leadOffset = $derived(leading ? LEAD_HEIGHT + GAP : 0);
+
 	const columns = $derived.by(() => {
 		const cols: Note[][] = Array.from({ length: colCount }, () => []);
-		const heights: number[] = Array(colCount).fill(0);
+		const heights: number[] = Array.from({ length: colCount }, (_, i) =>
+			i < leadSpan ? leadOffset : 0
+		);
 		for (const note of notes) {
 			let minIdx = 0;
 			for (let i = 1; i < colCount; i++) {
@@ -102,12 +116,18 @@
 </script>
 
 <div bind:this={gridEl} class="masonry-wrap {className}" style="--masonry-cols: {colCount}">
-	{#if leading}
-		<div class="masonry-lead">{@render leading()}</div>
+	{#if leading && leadSpan > 0}
+		<div
+			class="absolute top-0 left-0"
+			style="width: calc(({leadSpan} * (100% - {GAP * (colCount - 1)}px)) / {colCount} + {GAP *
+				(leadSpan - 1)}px); z-index: 10;"
+		>
+			{@render leading()}
+		</div>
 	{/if}
 	<div class="masonry-balanced">
 		{#each columns as col, i (i)}
-			<div class="masonry-balanced-col">
+			<div class="masonry-balanced-col" style={i < leadSpan ? `margin-top: ${leadOffset}px` : ''}>
 				{#each col as note (note.id)}
 					<div data-note-height={note.id}>
 						{#if children}
