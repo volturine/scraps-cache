@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity, identityFromSyncKey, decryptSyncPayload } from '$lib/syncPairing';
-import { getAllNotesMetadata, getSyncOutboxKeys, markSyncOutbox, putNote } from '$lib/db/idb';
+import {
+	getAllLabels,
+	getAllNotesMetadata,
+	getSyncOutboxKeys,
+	markSyncOutbox,
+	putLabel,
+	putNote
+} from '$lib/db/idb';
 import { loadProfiles, saveProfile } from '$lib/profiles';
 import type { StoredProfile } from '$lib/profiles';
 import type { Note } from '$lib/types';
@@ -103,6 +110,70 @@ describe('sync key keyring', () => {
 		]);
 	});
 
+	it('logout keeps the signed-out profile\u2019s notes under the local namespace', async () => {
+		const active = keyringEntry(createSyncIdentity().syncKey, 'Main', 1);
+		await saveProfile(active);
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+		store.profiles = [active];
+		store.account = identityFromSyncKey(active.syncKey);
+		await putNote(active.id, note('kept-after-unlink'));
+
+		await store.logout();
+
+		expect(store.account).toBeNull();
+		expect((await getAllNotesMetadata('device-local')).map(({ id }) => id)).toEqual([
+			'kept-after-unlink'
+		]);
+	});
+
+	it('rescues label-only pre-upgrade installs, not just notes', async () => {
+		const stranded = keyringEntry(createSyncIdentity().syncKey, 'Upgraded', 1);
+		await saveProfile(stranded);
+		localStorage.setItem('gkc-last-active-profile', stranded.id);
+		await putLabel('device-local', {
+			id: 'label-1',
+			name: 'Work',
+			createdAt: 1,
+			updatedAt: 1
+		});
+
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+
+		expect((await getAllLabels(stranded.id)).map(({ name }) => name)).toEqual(['Work']);
+	});
+
+	it('pairing an already-saved key never replaces its namespace from the relay', async () => {
+		vi.spyOn(notesStore, 'replaceWithCloudManual').mockResolvedValue(true);
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+		const first = keyringEntry(createSyncIdentity().syncKey, 'First', 1);
+		const second = keyringEntry(createSyncIdentity().syncKey, 'Second', 2);
+		syncStore.profiles = [first, second];
+		syncStore.account = identityFromSyncKey(first.syncKey);
+		await putNote(second.id, note('offline-edit'));
+
+		const adopted = await profileCoordinator.receiveLinkedKey(second.syncKey);
+		expect(adopted.outcome).toBe('linked');
+		// Offline changes survive; incremental sync runs, replacement does not.
+		expect((await getAllNotesMetadata(second.id)).map(({ id }) => id)).toEqual(['offline-edit']);
+		expect(notesStore.replaceWithCloudManual).not.toHaveBeenCalled();
+		expect(notesStore.syncWithCloudManual).toHaveBeenCalled();
+	});
+
+	it('renaming an inactive profile queues its encrypted name record for next activation', async () => {
+		const inactive = keyringEntry(createSyncIdentity().syncKey, 'Inactive', 2);
+		syncStore.profiles = [keyringEntry(createSyncIdentity().syncKey, 'Main', 1), inactive];
+		syncStore.account = identityFromSyncKey(
+			keyringEntry(createSyncIdentity().syncKey, 'Main', 1).syncKey
+		);
+
+		await syncStore.renameProfile(inactive.id, 'Renamed');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(await getSyncOutboxKeys(inactive.id)).toContain('profile-meta');
+	});
+
 	it('logout removes the keyring entry of the signed-out key', async () => {
 		const active = keyringEntry(createSyncIdentity().syncKey, 'Main', 1);
 		const kept = keyringEntry(createSyncIdentity().syncKey, 'Kept', 2);
@@ -156,7 +227,10 @@ describe('profile switching (namespaced)', () => {
 		await markSyncOutbox(first.id, ['note:first-note']);
 
 		await profileCoordinator.switchTo(second.id);
-		expect(await getSyncOutboxKeys(second.id)).toEqual([]);
+		await new Promise((resolve) => setTimeout(resolve, 0)); // let queued writes land
+		// Activation queues the encrypted profile-name record; hydration of the
+		// default board may also mark itself dirty.
+		expect(await getSyncOutboxKeys(second.id)).toContain('profile-meta');
 
 		await profileCoordinator.switchTo(first.id);
 		expect(await getSyncOutboxKeys(first.id)).toContain('note:first-note');

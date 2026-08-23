@@ -7,11 +7,8 @@ import {
 	type KanbanColumn
 } from '$lib/kanban';
 import { syncStore } from '$lib/stores/sync.svelte';
-import {
-	loadBoardsFromDevice,
-	saveBoardsToDevice,
-	writeBoardTombstones
-} from '$lib/syncTombstones';
+import { loadBoardsFromDevice } from '$lib/syncTombstones';
+import { writeKanbanState } from '$lib/db/idb';
 import { uid } from '$lib/utils';
 
 function normalizeBoard(value: unknown): KanbanBoard | null {
@@ -113,7 +110,6 @@ export class KanbanStore {
 			return !current || current.updatedAt < board.updatedAt;
 		});
 		if (recovered.length) {
-			await this.persistSyncState(pid);
 			this.requestSync(recovered.map((board) => `board:${board.id}`));
 		}
 	}
@@ -151,11 +147,26 @@ export class KanbanStore {
 			this.activeBoardId = this.boards[0].id;
 	}
 
-	async persistSyncState(pid: string): Promise<void> {
-		await Promise.all([
-			saveBoardsToDevice(pid, this.boardsForSync()),
-			writeBoardTombstones(pid, this.boardTombstonesForSync())
-		]);
+	async persistSyncState(pid: string, syncOutboxKeys: Iterable<string> = []): Promise<void> {
+		// Boards, tombstones, and their upload markers land in one transaction
+		// so a crash can never change board state without its markers.
+		await writeKanbanState(
+			pid,
+			this.boardsForSync(),
+			this.boardTombstonesForSync(),
+			syncOutboxKeys
+		);
+	}
+
+	/** Persist state atomically with the given upload markers, then nudge sync. */
+	private requestSync(keys: Iterable<string> = []): void {
+		const write = this.pendingDeviceWrites.then(() =>
+			this.persistSyncState(syncStore.activePid, keys)
+		);
+		this.pendingDeviceWrites = write.catch(() => undefined);
+		// Empty re-mark: the atomic write above already queued the keys; this
+		// only nudges the debounced push via the shared data-change hook.
+		syncStore.requestAutoSync([]);
 	}
 
 	/** Used for the explicit “discard local data” link flow. */
@@ -199,7 +210,7 @@ export class KanbanStore {
 		const existing = this.boards.find((board) => board.id === boardId);
 		if (!existing) return;
 
-		const deletedAt = Date.now();
+		const deletedAt = this.nextVersion(existing.updatedAt);
 		this.boardTombstones = { ...this.boardTombstones, [boardId]: deletedAt };
 		const remaining = this.boards.filter((board) => board.id !== boardId);
 		const syncKeys = [`board-tombstone:${boardId}`];
@@ -256,6 +267,11 @@ export class KanbanStore {
 		this.changeBoard(boardId, (candidate) => ({ ...candidate, backlogFilter: next }));
 	}
 
+	/** Monotonic version: same-millisecond edits and backward clock jumps must still win. */
+	private nextVersion(previous: number | undefined): number {
+		return Math.max(Date.now(), (previous ?? 0) + 1);
+	}
+
 	private changeBoard(
 		boardId: string,
 		change: (
@@ -263,17 +279,15 @@ export class KanbanStore {
 		) => Omit<KanbanBoard, 'updatedAt'> & Partial<Pick<KanbanBoard, 'updatedAt'>>
 	): void {
 		let changed = false;
-		const updatedAt = Date.now();
+		let updatedAt = Date.now();
+		const previous = this.boards.find((board) => board.id === boardId);
+		if (previous) updatedAt = this.nextVersion(previous.updatedAt);
 		this.boards = this.boards.map((board) => {
 			if (board.id !== boardId) return board;
 			changed = true;
 			return { ...change(board), updatedAt };
 		});
 		if (changed) this.requestSync([`board:${boardId}`]);
-	}
-
-	private requestSync(keys: Iterable<string> = []): void {
-		syncStore.requestAutoSync(keys);
 	}
 }
 

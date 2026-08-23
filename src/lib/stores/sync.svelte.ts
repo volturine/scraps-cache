@@ -40,11 +40,12 @@ import {
 import {
 	commitSyncControl,
 	deleteSyncState,
-	getAllNotesMetadata,
 	getOutboxGeneration,
 	getSyncOutboxKeys,
 	getSyncState,
 	markSyncOutbox,
+	moveProfileNamespace,
+	namespaceHasData,
 	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
 import {
@@ -237,12 +238,14 @@ export class SyncStore {
 	private async healStrandedLocalData(activePid: string): Promise<void> {
 		if (activePid === LOCAL_PROFILE_ID) return;
 		try {
-			const [activeNotes, localNotes] = await Promise.all([
-				getAllNotesMetadata(activePid),
-				getAllNotesMetadata(LOCAL_PROFILE_ID)
+			// Any data type counts: notes, labels, boards, tombstones, reminders,
+			// pending uploads — a notes-only check strands label-only installs.
+			const [activeHasData, localHasData] = await Promise.all([
+				namespaceHasData(activePid),
+				namespaceHasData(LOCAL_PROFILE_ID)
 			]);
-			if (!activeNotes.length && localNotes.length) {
-				console.error('[sync] adopting pre-upgrade notes into the active profile');
+			if (!activeHasData && localHasData) {
+				console.error('[sync] adopting pre-upgrade data into the active profile');
 				await adoptLocalDatasetInto(activePid);
 				// The rescued rows match this device's stale baseline, but the relay
 				// copy may be incomplete or gone (cloud deletes, resets, earlier
@@ -273,9 +276,12 @@ export class SyncStore {
 			console.error('[sync] could not rename profile:', err)
 		);
 		// The name travels inside its own account's encrypted records so every
-		// device holding this key converges on it.
+		// device holding this sync key converges on one local label. Inactive
+		// keys get their namespace's outbox marked so the upload happens on the
+		// next activation.
 		if (this.activeProfile?.id === id)
 			void this.queueOutbox([PROFILE_META_KEY]).catch(() => undefined);
+		else void markSyncOutbox(id, [PROFILE_META_KEY]).catch(() => undefined);
 		return updated;
 	}
 
@@ -1205,6 +1211,14 @@ export class SyncStore {
 		setLastActiveProfileId(null);
 		if (accountId) void this.clearAccountControlPlane(accountId);
 		if (profile) {
+			// Both "Unlink" and "Delete cloud data" promise local notes are kept:
+			// relocate the dataset under the local namespace before dropping the
+			// keyring entry. Only the explicit profile-removal action deletes data.
+			try {
+				await moveProfileNamespace(profile.id, LOCAL_PROFILE_ID);
+			} catch (err) {
+				console.error('[sync] could not keep the signed-out profile\u2019s notes:', err);
+			}
 			await removeProfileRecord(profile.id).catch((err) =>
 				console.error('[sync] could not remove the signed-out profile:', err)
 			);

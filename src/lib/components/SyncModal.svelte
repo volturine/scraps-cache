@@ -303,7 +303,14 @@
 		info = '';
 		const success = await notesStore.syncWithCloudManual();
 		syncing = false;
-		if (!success) error = friendlyError(syncStore.lastError, 'Sync failed');
+		if (!success) {
+			error = friendlyError(syncStore.lastError, 'Sync failed');
+			return;
+		}
+		// Partial success: text synced but quota-blocked photos or hydration
+		// failures remain pending. Surface it instead of showing a clean pass.
+		const warning = syncStore.lastError || notesStore.lastPersistError;
+		if (warning) error = friendlyError(warning, 'Some records are still pending');
 	}
 
 	function unlinkDevice() {

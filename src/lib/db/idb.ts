@@ -508,21 +508,79 @@ export async function getAllLabels(pid: string): Promise<Label[]> {
 	return ((await db.getAll(LABELS_STORE, profileRange(pid))) as Label[]).map(plainLabel);
 }
 
-export async function putLabel(pid: string, label: Label): Promise<void> {
+export async function putLabel(
+	pid: string,
+	label: Label,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
+	const outboxKeys = [...new Set(syncOutboxKeys)];
+	// A garbage marker must abort before anything is written so the label row
+	// and its outbox entries stay all-or-nothing.
+	for (const key of outboxKeys) {
+		if (typeof key !== 'string' || !key) throw new Error('Invalid sync outbox key');
+	}
 	const generation = writeGeneration;
 	await enqueueDeviceWrite(async () => {
 		if (generation !== writeGeneration) return;
 		const db = await getDB();
-		await db.put(LABELS_STORE, plainLabel(label), ns(pid, label.id));
+		const tx = db.transaction(
+			outboxKeys.length ? [LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [LABELS_STORE],
+			'readwrite'
+		);
+		try {
+			tx.objectStore(LABELS_STORE).put(plainLabel(label), ns(pid, label.id));
+			if (outboxKeys.length) {
+				const next = await nextOutboxGeneration(tx);
+				for (const key of outboxKeys)
+					await tx.objectStore(SYNC_OUTBOX_STORE).put(next, ns(pid, key));
+			}
+			await tx.done;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				// The transaction may already have aborted after a failed request.
+			}
+			await tx.done.catch(() => undefined);
+			throw error;
+		}
 	});
 }
 
-export async function deleteLabel(pid: string, id: string): Promise<void> {
+export async function deleteLabel(
+	pid: string,
+	id: string,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
+	const outboxKeys = [...new Set(syncOutboxKeys)];
+	for (const key of outboxKeys) {
+		if (typeof key !== 'string' || !key) throw new Error('Invalid sync outbox key');
+	}
 	const generation = writeGeneration;
 	await enqueueDeviceWrite(async () => {
 		if (generation !== writeGeneration) return;
 		const db = await getDB();
-		await db.delete(LABELS_STORE, ns(pid, id));
+		const tx = db.transaction(
+			outboxKeys.length ? [LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [LABELS_STORE],
+			'readwrite'
+		);
+		try {
+			tx.objectStore(LABELS_STORE).delete(ns(pid, id));
+			if (outboxKeys.length) {
+				const next = await nextOutboxGeneration(tx);
+				for (const key of outboxKeys)
+					await tx.objectStore(SYNC_OUTBOX_STORE).put(next, ns(pid, key));
+			}
+			await tx.done;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				// The transaction may already have aborted after a failed request.
+			}
+			await tx.done.catch(() => undefined);
+			throw error;
+		}
 	});
 }
 
@@ -887,6 +945,71 @@ export async function estimateProfileBytes(pid: string): Promise<number> {
 	return total;
 }
 
+/**
+ * Persist boards, their tombstones, and pending upload markers in one
+ * transaction so a crash can never change board state without its markers.
+ */
+export async function writeKanbanState(
+	pid: string,
+	boards: unknown,
+	boardTombstones: Record<string, number>,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
+	const outboxKeys = [...new Set(syncOutboxKeys)].filter(Boolean);
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+		const state = tx.objectStore(SYNC_STATE_STORE);
+		const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+		try {
+			state.put(
+				JSON.parse(JSON.stringify(boards ?? [])),
+				scopedStateKey('gkc-idb-kanban-boards', pid)
+			);
+			state.put(
+				Object.fromEntries(
+					Object.entries(boardTombstones ?? {}).filter(([, at]) => Number(at) > 0)
+				),
+				scopedStateKey('gkc-idb-board-tombstones', pid)
+			);
+			if (outboxKeys.length) {
+				const next = await nextOutboxGeneration(tx);
+				for (const key of outboxKeys) await outbox.put(next, ns(pid, key));
+			}
+			await tx.done;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				// The transaction may already have aborted after a failed request.
+			}
+			await tx.done.catch(() => undefined);
+			throw error;
+		}
+	});
+}
+
+/**
+ * Whether a namespace holds any profile data at all: notes, labels, photo
+ * blobs, pending uploads, delete manifests, boards, or reminder keys. Used to
+ * rescue stranded pre-namespacing datasets of every shape.
+ */
+export async function namespaceHasData(pid: string): Promise<boolean> {
+	const db = await getDB();
+	const range = profileRange(pid);
+	const [noteCount, labelCount, imageCount, outboxCount] = await Promise.all([
+		db.count(NOTES_STORE, range),
+		db.count(LABELS_STORE, range),
+		db.count(IMAGES_STORE, range),
+		db.count(SYNC_OUTBOX_STORE, range)
+	]);
+	if (noteCount || labelCount || imageCount || outboxCount) return true;
+	for (const base of LEGACY_SCOPED_KEYS) {
+		if ((await db.get(SYNC_STATE_STORE, scopedStateKey(base, pid))) !== undefined) return true;
+	}
+	return false;
+}
+
 /** Hand ownership of one namespace's rows to another (used when the first sync
  * key is created or paired on a device that had local no-account data).
  * Tombstones, boards, and reminder keys move across as part of the dataset. */
@@ -920,5 +1043,33 @@ export async function copyProfileNamespace(fromPid: string, toPid: string): Prom
 			await state.put(value, scopedStateKey(base, toPid));
 		}
 		await tx.done;
+	});
+}
+
+/**
+ * Relocate a whole namespace: copy rows and profile-scoped state keys to the
+ * target pid, then remove the source. Used when signing out so the promised
+ * "notes on this device are kept" survive under the local namespace.
+ */
+export async function moveProfileNamespace(fromPid: string, toPid: string): Promise<void> {
+	if (fromPid === toPid) return;
+	await copyProfileNamespace(fromPid, toPid);
+	const generation = ++writeGeneration;
+	await enqueueDeviceWrite(async () => {
+		if (generation !== writeGeneration) return;
+		const db = await getDB();
+		const tx = db.transaction(
+			[NOTES_STORE, LABELS_STORE, IMAGES_STORE, SYNC_OUTBOX_STORE],
+			'readwrite'
+		);
+		const range = profileRange(fromPid);
+		tx.objectStore(NOTES_STORE).delete(range);
+		tx.objectStore(LABELS_STORE).delete(range);
+		tx.objectStore(IMAGES_STORE).delete(range);
+		tx.objectStore(SYNC_OUTBOX_STORE).delete(range);
+		await tx.done;
+		const state = db.transaction(SYNC_STATE_STORE, 'readwrite');
+		for (const base of LEGACY_SCOPED_KEYS) await state.store.delete(scopedStateKey(base, fromPid));
+		await state.done;
 	});
 }

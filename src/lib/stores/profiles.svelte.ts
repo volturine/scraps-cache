@@ -2,7 +2,7 @@
 // switch is: drain pending writes, flip this window's identity, reload memory
 // from the target namespace, then pull that key's cloud deltas. Runs under the
 // sync web lock so no sync flight can interleave with the handover.
-import { syncStore } from './sync.svelte';
+import { syncStore, PROFILE_META_KEY } from './sync.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import {
 	adoptLocalDatasetInto,
@@ -40,7 +40,9 @@ export class ProfileCoordinator {
 		}
 		syncStore.activateProfile(target);
 		await notesStore.reloadForProfile();
-		void notesStore.syncWithCloudManual();
+		// Queue the encrypted profile-name record so a fresh key's account learns
+		// its local name (baseline dedupe makes repeat switches free).
+		void syncStore.queueOutbox([PROFILE_META_KEY]).catch(() => undefined);
 	}
 
 	/** Create a brand-new sync key and make it this window's active profile. */
@@ -57,6 +59,7 @@ export class ProfileCoordinator {
 				// The very first key on a device adopts local no-account data so
 				// registering never looks like data loss; later keys start empty.
 				await this.activate(result.profile, { adoptLocal: !syncStore.activeProfile });
+				await notesStore.syncWithCloudManual();
 				return { success: true };
 			});
 		} catch (err) {
@@ -81,6 +84,7 @@ export class ProfileCoordinator {
 				if (target.id === syncStore.activeProfile?.id) return { success: true };
 				await syncStore.waitForOutboxWrites();
 				await this.activate(target);
+				await notesStore.syncWithCloudManual();
 				return { success: true };
 			});
 		} catch (err) {
@@ -109,6 +113,10 @@ export class ProfileCoordinator {
 			return await this.exclusive(async () => {
 				await syncStore.waitForOutboxWrites();
 				let profile = profileForSyncKey(syncStore.profiles, syncKey);
+				// A key this device already holds keeps its namespace and any offline
+				// edits: pairing must never replace it from the relay. Only a brand
+				// new key starts from an empty namespace.
+				const existed = profile != null;
 				if (!profile) {
 					profile = {
 						id: randomOpaqueId(),
@@ -122,13 +130,12 @@ export class ProfileCoordinator {
 					// First key on this device: take ownership of any local no-account
 					// data up front, then let the modal ask merge vs discard.
 					if (!syncStore.activeProfile) await adoptLocalDatasetInto(profile.id);
-					syncStore.activateProfile(profile);
-					await notesStore.reloadForProfile();
+					await this.activate(profile);
 					return { outcome: 'choice' };
 				}
-				syncStore.activateProfile(profile);
-				await notesStore.reloadForProfile();
-				void notesStore.replaceWithCloudManual();
+				await this.activate(profile);
+				if (existed) await notesStore.syncWithCloudManual();
+				else await notesStore.replaceWithCloudManual();
 				return { outcome: 'linked' };
 			});
 		} catch (err) {
