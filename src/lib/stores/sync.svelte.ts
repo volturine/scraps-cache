@@ -590,6 +590,7 @@ export class SyncStore {
 			let resetRetries = 0;
 			const quotaBlockedKeys = new Set<string>();
 			let quotaSingleUpload = false;
+			let quotaRetryRecords: SyncRecord[] | null = null;
 			const keys = syncControlKeys(account.accountId);
 			let baseline: Record<string, string> = {};
 			try {
@@ -648,15 +649,19 @@ export class SyncStore {
 						: firstFullUpload
 							? undefined
 							: outboxKeys;
-				const currentRecords = await buildSyncRecords(
-					mergedNotes,
-					mergedLabels,
-					mergedBoards,
-					mergedTombstones,
-					mergedLabelTombstones,
-					mergedBoardTombstones,
-					uploadKeys
-				);
+				const retryRecords: SyncRecord[] | null = quotaRetryRecords;
+				quotaRetryRecords = null;
+				const currentRecords: SyncRecord[] =
+					retryRecords ??
+					(await buildSyncRecords(
+						mergedNotes,
+						mergedLabels,
+						mergedBoards,
+						mergedTombstones,
+						mergedLabelTombstones,
+						mergedBoardTombstones,
+						uploadKeys
+					));
 				// The profile name rides its own account's encrypted records so every
 				// device holding this sync key converges on one local label.
 				const metaUploadDue =
@@ -665,7 +670,7 @@ export class SyncStore {
 					outboxKeys.has(PROFILE_META_KEY) &&
 					!quotaBlockedKeys.has(PROFILE_META_KEY) &&
 					(uploadKeys === undefined || uploadKeys.has(PROFILE_META_KEY));
-				if (metaUploadDue) {
+				if (metaUploadDue && !retryRecords) {
 					const metaPayload = {
 						kind: 'profile-meta' as const,
 						value: { name: this.activeProfile?.name ?? '' }
@@ -774,13 +779,16 @@ export class SyncStore {
 					quotaRetries += 1;
 					if (quotaRetries > MAX_QUOTA_RETRIES)
 						throw new Error('Relay kept rejecting uploads for storage quota');
-					if (outgoing.length > 1) quotaSingleUpload = true;
-					else {
+					if (outgoing.length > 1) {
+						quotaSingleUpload = true;
+						quotaRetryRecords = currentRecords;
+					} else {
 						const blockedKey = outgoing[0].key;
 						quotaBlockedKeys.add(blockedKey);
 						await markSyncOutbox(pid, [blockedKey]);
 						outboxKeys.add(blockedKey);
 						quotaSingleUpload = false;
+						quotaRetryRecords = currentRecords.filter((record) => record.key !== blockedKey);
 					}
 					hasMore = true;
 					continue;
