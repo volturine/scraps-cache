@@ -18,17 +18,25 @@
 		leading?: Snippet;
 	} = $props();
 
-	let colCount = $state(2);
-
-	$effect(() => {
-		const update = () => {
-			const w = window.innerWidth;
-			colCount = w >= 1700 ? 7 : w >= 1400 ? 6 : w >= 1100 ? 5 : w >= 768 ? 4 : w >= 600 ? 3 : 2;
-		};
-		update();
-		window.addEventListener('resize', update);
-		return () => window.removeEventListener('resize', update);
-	});
+	/** Column count tracks the grid's own width, so cards keep a consistent size
+	 *  even when a lead item (calendar) shrinks the columns area. */
+	function colsFor(width: number): number {
+		return width >= 1700
+			? 7
+			: width >= 1400
+				? 6
+				: width >= 1100
+					? 5
+					: width >= 768
+						? 4
+						: width >= 600
+							? 3
+							: 2;
+	}
+	let containerWidth = $state(0);
+	const colCount = $derived(
+		colsFor(containerWidth || (typeof window !== 'undefined' ? window.innerWidth : 1024))
+	);
 
 	/** Rough height for shortest-column packing (cards scroll at max-h 320px). */
 	function estimateHeight(note: Note): number {
@@ -70,6 +78,8 @@
 		const root = gridEl;
 		if (!root || typeof ResizeObserver === 'undefined') return;
 		const measure = () => {
+			const bal = root.querySelector<HTMLElement>(':scope > .masonry-balanced');
+			containerWidth = (bal ?? root).clientWidth;
 			const cards = root.querySelectorAll<HTMLElement>('[data-note-height]');
 			let changed = measuredHeights.size !== cards.length;
 			const next = new Map<string, number>();
@@ -83,6 +93,9 @@
 		};
 		measure();
 		const observer = new ResizeObserver(measure);
+		observer.observe(root);
+		const bal = root.querySelector<HTMLElement>(':scope > .masonry-balanced');
+		if (bal) observer.observe(bal);
 		root.querySelectorAll<HTMLElement>('[data-note-height]').forEach((el) => observer.observe(el));
 		return () => observer.disconnect();
 	});
