@@ -65,7 +65,7 @@
 	},
 	"dependencies": {
 		"@cipherman/pake-js": "^0.1.1",
-		"@lucide/svelte": "^1.31.0",
+		"@lucide/svelte": "^1.33.0",
 		"@noble/ciphers": "^2.3.0",
 		"@noble/curves": "^2.3.0",
 		"@noble/hashes": "^2.3.0",
