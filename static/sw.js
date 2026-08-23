@@ -116,6 +116,14 @@ function idbRequest(request) {
 	});
 }
 
+function idbTransaction(transaction) {
+	return new Promise((resolve, reject) => {
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = () => reject(transaction.error);
+		transaction.onabort = () => reject(transaction.error);
+	});
+}
+
 function withTimeout(promise, ms) {
 	return new Promise((resolve, reject) => {
 		const timer = setTimeout(() => reject(new Error('timeout')), ms);
@@ -185,28 +193,37 @@ async function reminderWakeId(noteId, reminder) {
 	return bytesToBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)));
 }
 
-async function rememberFiredWake(wakeId) {
+async function claimFiredWake(wakeId) {
+	const db = await openNotesDb();
 	try {
-		const db = await openNotesDb();
-		try {
-			if (!db.objectStoreNames.contains(SYNC_STATE_STORE)) return;
-			const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
-			const store = tx.objectStore(SYNC_STATE_STORE);
-			const stored = await idbRequest(store.get(FIRED_KEY));
-			const fired = new Set(
-				Array.isArray(stored) ? stored.filter((item) => typeof item === 'string') : []
-			);
-			fired.add(wakeId);
-			await idbRequest(store.put([...fired], FIRED_KEY));
-		} finally {
-			db.close();
+		if (!db.objectStoreNames.contains(SYNC_STATE_STORE)) return true;
+		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
+		const done = idbTransaction(tx);
+		const store = tx.objectStore(SYNC_STATE_STORE);
+		const stored = await idbRequest(store.get(FIRED_KEY));
+		const fired = new Set(
+			Array.isArray(stored) ? stored.filter((item) => typeof item === 'string') : []
+		);
+		if (fired.has(wakeId)) {
+			await done;
+			return false;
 		}
-	} catch {
-		/* notification delivery is more important than its local receipt */
+		fired.add(wakeId);
+		await idbRequest(store.put([...fired], FIRED_KEY));
+		await done;
+		return true;
+	} finally {
+		db.close();
 	}
 }
 
 async function showReminderWake(wake) {
+	try {
+		if (!(await claimFiredWake(wake.id))) return;
+	} catch {
+		/* IndexedDB can be unavailable; retain once-per-push delivery. */
+	}
+
 	let notes = [];
 	try {
 		notes = await withTimeout(loadLocalReminderState(), 1_500);
@@ -234,7 +251,6 @@ async function showReminderWake(wake) {
 	} else {
 		await showGenericReminder(wake.id);
 	}
-	await rememberFiredWake(wake.id);
 }
 
 self.addEventListener('push', (event) => {

@@ -127,15 +127,14 @@ describe('reminder service worker', () => {
 		expect(await firedWakeIds()).toEqual([id]);
 	});
 
-	it('uses one stable generic tag when the note has not synced', async () => {
+	it('shows a repeated wake only once when the note has not synced', async () => {
 		await seedNotes([]);
 		const show = vi.fn().mockResolvedValue(undefined);
 		const push = loadPushHandler(show);
 		const id = reminderWakeId('missing-note', 2_000);
 		const payload = { type: 'reminder-wake', id, fireAt: 2_000 };
-		await push(payload);
-		await push(payload);
-		expect(show).toHaveBeenCalledTimes(2);
+		await Promise.all([push(payload), push(payload)]);
+		expect(show).toHaveBeenCalledTimes(1);
 		for (const call of show.mock.calls) {
 			expect(call).toEqual([
 				'Reminder',

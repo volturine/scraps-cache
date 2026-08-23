@@ -1,5 +1,5 @@
 import { tickAppClock } from '$lib/appClock.svelte';
-import { getFiredReminderKeys, markFiredReminderKey } from '$lib/db/idb';
+import { claimFiredReminderKey, getFiredReminderKeys } from '$lib/db/idb';
 import {
 	nextReminderAt,
 	notificationPermission,
@@ -123,11 +123,11 @@ export class ReminderStore {
 		this.openNote(noteId);
 	}
 
-	private addFallbackAlert(alert: ReminderAlert): void {
+	private async addFallbackAlert(alert: ReminderAlert, alreadyClaimed = false): Promise<void> {
+		if (!alreadyClaimed && !(await this.claimFired(alert.wakeId))) return;
 		if (!this.alerts.some((item) => item.wakeId === alert.wakeId)) {
 			this.alerts = [...this.alerts, alert];
 		}
-		this.markFired(alert.wakeId);
 	}
 
 	private scan(): void {
@@ -145,14 +145,17 @@ export class ReminderStore {
 				title: reminderPreview(note)
 			};
 			if (notificationPermission() !== 'granted') {
-				this.addFallbackAlert(alert);
+				void this.addFallbackAlert(alert);
 				continue;
 			}
-			void showReminderNotification(alert, () => this.open(note.id)).then((shown) => {
-				if (shown) this.markFired(wakeId);
-				else this.addFallbackAlert(alert);
-			});
+			void this.showSystemNotification(alert);
 		}
+	}
+
+	private async showSystemNotification(alert: ReminderAlert): Promise<void> {
+		if (!(await this.claimFired(alert.wakeId))) return;
+		const shown = await showReminderNotification(alert, () => this.open(alert.noteId));
+		if (!shown) await this.addFallbackAlert(alert, true);
 	}
 
 	private arm(): void {
@@ -180,10 +183,19 @@ export class ReminderStore {
 		}
 	}
 
-	private markFired(key: string): void {
-		if (this.fired.has(key)) return;
+	private async claimFired(key: string): Promise<boolean> {
+		if (this.fired.has(key)) return false;
 		this.fired.add(key);
-		void markFiredReminderKey(key).catch(() => undefined);
+		try {
+			return await claimFiredReminderKey(key);
+		} catch {
+			// Keep once-per-session behavior when IndexedDB is unavailable.
+			return true;
+		}
+	}
+
+	private markFired(key: string): void {
+		void this.claimFired(key);
 	}
 
 	private onSwMessage = (event: MessageEvent) => {
