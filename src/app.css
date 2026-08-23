@@ -435,6 +435,12 @@ body {
 	max-width: 100%;
 }
 
+/* Keep the calendar's type size stable regardless of container/device (iOS font boosting). */
+.reminder-calendar {
+	-webkit-text-size-adjust: none;
+	text-size-adjust: none;
+}
+
 .masonry-wrap > .masonry-balanced {
 	flex: 1 1 18rem;
 	min-width: 0;

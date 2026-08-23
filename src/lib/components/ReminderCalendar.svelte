@@ -117,7 +117,7 @@
 </script>
 
 <div
-	class="w-full select-none rounded-2xl border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3 py-3"
+	class="reminder-calendar w-full select-none rounded-2xl border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3 py-3"
 >
 	<div class="mb-2 flex items-center justify-between">
 		<button
