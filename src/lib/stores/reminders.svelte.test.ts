@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReminderStore } from './reminders.svelte';
 import { reminderWakeId, type ReminderNote } from '$lib/reminderNotify';
-import { getFiredReminderKeys } from '$lib/db/idb';
+import { getFiredReminderKeys, setFiredReminderKeys } from '$lib/db/idb';
 
 function note(partial: Partial<ReminderNote> = {}): ReminderNote {
 	return {
@@ -15,9 +15,14 @@ function note(partial: Partial<ReminderNote> = {}): ReminderNote {
 	};
 }
 
+beforeEach(() => {
+	localStorage.clear();
+});
+
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
+	localStorage.clear();
 });
 
 describe('ReminderStore', () => {
@@ -38,6 +43,21 @@ describe('ReminderStore', () => {
 		store.dismiss('n1');
 		store.sync([note({ reminder: 100 })]);
 		expect(store.alerts).toEqual([]);
+	});
+
+	it('does not replay an in-app alert after reload using only local device state', async () => {
+		const due = note({ id: 'local-reload-reminder', reminder: 100 });
+		const firstLoad = new ReminderStore();
+		firstLoad.sync([due]);
+		await firstLoad.whenReady();
+		await vi.waitFor(() => expect(firstLoad.alerts).toHaveLength(1));
+
+		await setFiredReminderKeys([]);
+		const reloaded = new ReminderStore();
+		reloaded.sync([due]);
+		await reloaded.whenReady();
+
+		expect(reloaded.alerts).toEqual([]);
 	});
 
 	it('persists a system notification before displaying it and does not replay it after reload', async () => {

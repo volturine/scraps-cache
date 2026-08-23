@@ -15,6 +15,28 @@ import {
 import { publishReminderWakes, registerReminderDevice } from '$lib/reminderWake';
 
 const MAX_TIMER_MS = 60_000;
+const FIRED_REMINDERS_MIRROR_KEY = 'gkc-fired-reminders-mirror';
+
+function readFiredReminderMirror(): string[] {
+	if (typeof localStorage === 'undefined') return [];
+	try {
+		const stored: unknown = JSON.parse(localStorage.getItem(FIRED_REMINDERS_MIRROR_KEY) ?? '[]');
+		return Array.isArray(stored)
+			? stored.filter((item): item is string => typeof item === 'string')
+			: [];
+	} catch {
+		return [];
+	}
+}
+
+function writeFiredReminderMirror(keys: Iterable<string>): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		localStorage.setItem(FIRED_REMINDERS_MIRROR_KEY, JSON.stringify([...keys]));
+	} catch {
+		/* IndexedDB remains the durable fallback when localStorage is unavailable. */
+	}
+}
 
 export class ReminderStore {
 	alerts = $state<ReminderAlert[]>([]);
@@ -175,17 +197,20 @@ export class ReminderStore {
 	}
 
 	private async hydrateFired(): Promise<void> {
+		this.fired = new Set([...this.fired, ...readFiredReminderMirror()]);
 		try {
 			const stored = await getFiredReminderKeys();
 			this.fired = new Set([...this.fired, ...stored]);
 		} catch {
 			/* IndexedDB may be unavailable in private browsing or tests. */
 		}
+		writeFiredReminderMirror(this.fired);
 	}
 
 	private async claimFired(key: string): Promise<boolean> {
 		if (this.fired.has(key)) return false;
 		this.fired.add(key);
+		writeFiredReminderMirror(this.fired);
 		try {
 			return await claimFiredReminderKey(key);
 		} catch {
