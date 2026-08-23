@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { formatReminderCountdown, isReminderOverdue } from './utils';
+import { dayKey, formatReminderCountdown, isReminderOverdue } from './utils';
+
+describe('dayKey', () => {
+	it('formats an epoch timestamp as a zero-padded local date', () => {
+		expect(dayKey(new Date(2026, 7, 13, 6, 48).getTime())).toBe('2026-08-13');
+	});
+
+	it('pads single-digit months and days', () => {
+		expect(dayKey(new Date(2026, 0, 5).getTime())).toBe('2026-01-05');
+	});
+});
 
 describe('isReminderOverdue', () => {
 	const now = new Date(2026, 7, 13, 6, 48, 0, 0).getTime();

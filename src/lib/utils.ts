@@ -81,6 +81,14 @@ export function formatReminderCountdown(ts: number, nowMs = Date.now()): string 
 	return `in ${countLabel(seconds, 'second')}`;
 }
 
+/** Local-time YYYY-MM-DD key for an epoch-ms timestamp, used to group by calendar day. */
+export function dayKey(ts: number): string {
+	const d = new Date(ts);
+	const month = String(d.getMonth() + 1).padStart(2, '0');
+	const day = String(d.getDate()).padStart(2, '0');
+	return `${d.getFullYear()}-${month}-${day}`;
+}
+
 /** True when a reminder timestamp is in the past. */
 export function isReminderOverdue(ts: number | null, now = Date.now()): boolean {
 	return ts != null && ts < now;

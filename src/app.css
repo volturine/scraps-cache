@@ -420,6 +420,22 @@ body {
 	box-sizing: border-box;
 }
 
+/* Lead item (e.g. reminders calendar) floats over the first columns. */
+.masonry-wrap {
+	position: relative;
+}
+
+/* Keep the calendar's type size stable regardless of container/device (iOS font boosting). */
+.reminder-calendar {
+	-webkit-text-size-adjust: none;
+	text-size-adjust: none;
+}
+
+.masonry-wrap > .masonry-balanced {
+	flex: 1 1 18rem;
+	min-width: 0;
+}
+
 .masonry-balanced-col {
 	flex: 1 1 0;
 	min-width: 0;

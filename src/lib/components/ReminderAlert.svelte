@@ -16,7 +16,7 @@
 	>
 		{#each alerts as alert (alert.wakeId)}
 			<div
-				class="pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl border border-[var(--gkc-border)] bg-[var(--gkc-surface)] px-3 py-3 shadow-2xl"
+				class="pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3 py-3 shadow-2xl"
 				role="alert"
 				transition:fly={{ y: -16, duration: 180 }}
 			>
@@ -29,8 +29,12 @@
 					class="min-w-0 flex-1 text-left"
 					onclick={() => reminderStore.open(alert.noteId)}
 				>
-					<div class="truncate text-sm font-semibold text-[var(--gkc-text)]">{alert.title}</div>
-					<div class="text-xs text-[var(--gkc-text-muted)]">{formatReminder(alert.reminder)}</div>
+					<div class="truncate text-sm font-semibold text-[var(--scraps-cache-text)]">
+						{alert.title}
+					</div>
+					<div class="text-xs text-[var(--scraps-cache-text-muted)]">
+						{formatReminder(alert.reminder)}
+					</div>
 				</button>
 				<button
 					type="button"

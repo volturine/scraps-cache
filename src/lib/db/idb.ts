@@ -540,18 +540,23 @@ export async function setFiredReminderKeys(keys: Iterable<string>): Promise<void
 	await setSyncState(FIRED_REMINDERS_KEY, [...keys]);
 }
 
-/** Merge one delivered wake atomically so pages and the service worker cannot lose each other's ids. */
-export async function markFiredReminderKey(key: string): Promise<void> {
-	await enqueueDeviceWrite(async () => {
+/** Atomically claim a wake for delivery. Returns false when another context already claimed it. */
+export async function claimFiredReminderKey(key: string): Promise<boolean> {
+	return enqueueDeviceWrite(async () => {
 		const db = await getDB();
 		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
 		const stored = await tx.store.get(FIRED_REMINDERS_KEY);
 		const keys = new Set(
 			Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []
 		);
+		if (keys.has(key)) {
+			await tx.done;
+			return false;
+		}
 		keys.add(key);
 		await tx.store.put([...keys], FIRED_REMINDERS_KEY);
 		await tx.done;
+		return true;
 	});
 }
 
