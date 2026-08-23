@@ -24,7 +24,7 @@ import {
 	type SyncRecord,
 	type SyncRecordPayload
 } from '$lib/syncRecords';
-import { sha256 } from '$lib/syncHash';
+import { recordTag, sha256 } from '$lib/syncHash';
 import {
 	createOneTimePairingCode,
 	createPairingRequestKey,
@@ -105,6 +105,8 @@ export interface SyncUsage {
 	envelopeCount: number;
 	maxBytes: number;
 	maxEnvelopes: number;
+	/** XOR-bundle of stored record tags; opaque without the sync key. */
+	tagDigest?: string;
 }
 
 type SyncResult = {
@@ -702,7 +704,8 @@ export class SyncStore {
 							id,
 							slot,
 							expectedId: recordIds[record.key] ?? null,
-							ciphertext: encryptSyncPayload(account.syncKey, record.payload)
+							ciphertext: encryptSyncPayload(account.syncKey, record.payload),
+							tag: await recordTag(account.syncKey, record.payload)
 						};
 					})
 				);
@@ -776,7 +779,6 @@ export class SyncStore {
 				}
 				if (!response.success || !response.data) return this.fail(response);
 				const remoteUsage = response.data.usage;
-				let serverEnvelopeCount: number | null = null;
 				if (remoteUsage && typeof remoteUsage === 'object') {
 					const candidate = remoteUsage as Partial<SyncUsage>;
 					if (
@@ -788,7 +790,6 @@ export class SyncStore {
 						].every((value) => typeof value === 'number' && Number.isFinite(value))
 					) {
 						this.usage = candidate as SyncUsage;
-						serverEnvelopeCount = candidate.envelopeCount ?? null;
 					}
 				}
 				const writesAccepted = response.data.writesAccepted === true;
@@ -1057,37 +1058,57 @@ export class SyncStore {
 					pendingDeletes
 				});
 
-				// Integrity backfill: the local ledger ("what the relay already has")
+				// Integrity handshake: the local ledger ("what the relay already has")
 				// can drift from reality — wiped relays, deleted accounts, lost upload
-				// queues, migrations. When the relay reports fewer envelopes than this
-				// device tracks as current, diff exact slots and re-queue whatever is
-				// missing. One repair attempt per sync keeps a bad state from looping.
-				if (
-					downloadsDrained &&
-					!pullOnly &&
-					!integrityBackfillDone &&
-					serverEnvelopeCount != null &&
-					serverEnvelopeCount < currentKeys.size &&
-					!syncCancelled()
-				) {
+				// queues, restored backups. Compare exact content tags: every current
+				// record's tag is recomputed from its payload, so both missing records
+				// and stale-in-place versions are detected and re-queued. One repair
+				// attempt per sync keeps a bad state from looping.
+				if (downloadsDrained && !pullOnly && !integrityBackfillDone && !syncCancelled()) {
 					integrityBackfillDone = true;
-					const serverSlots = await this.fetchServerSlots();
-					if (serverSlots) {
-						const missingKeys: string[] = [];
-						for (const key of currentKeys) {
-							if (quotaBlockedKeys.has(key)) continue;
-							if (!serverSlots.has(await sha256(`${account.syncKey}\u0000${key}`)))
-								missingKeys.push(key);
+					const serverSlotTags = await this.fetchServerSlots();
+					if (serverSlotTags) {
+						// Full enumeration: no outbox filter, so every current record is
+						// tagged. Photos without local bytes cannot produce a tag; their
+						// relay slots are treated as unknown rather than stale.
+						const expectedTags = new Map<string, string>();
+						const slotKeys = new Map<string, string>();
+						for (const record of await buildSyncRecords(
+							mergedNotes,
+							mergedLabels,
+							mergedBoards,
+							appliedTombstoneMaps.notes,
+							appliedTombstoneMaps.labels,
+							appliedTombstoneMaps.boards,
+							undefined
+						)) {
+							const slot = await sha256(`${account.syncKey}\u0000${record.key}`);
+							expectedTags.set(slot, await recordTag(account.syncKey, record.payload));
+							slotKeys.set(slot, record.key);
 						}
-						if (missingKeys.length) {
-							for (const key of missingKeys) delete baseline[key];
-							const generation = await markSyncOutbox(pid, missingKeys);
-							for (const key of missingKeys) {
+						if (recordIds[PROFILE_META_KEY]) {
+							const metaPayload = {
+								kind: 'profile-meta' as const,
+								value: { name: this.activeProfile?.name ?? '' }
+							};
+							const slot = await sha256(`${account.syncKey}\u0000${PROFILE_META_KEY}`);
+							expectedTags.set(slot, await recordTag(account.syncKey, metaPayload));
+							slotKeys.set(slot, PROFILE_META_KEY);
+						}
+						const repairKeys: string[] = [];
+						for (const [slot, tag] of expectedTags) {
+							const serverTag = serverSlotTags.get(slot);
+							if (serverTag !== tag) repairKeys.push(slotKeys.get(slot)!);
+						}
+						if (repairKeys.length) {
+							for (const key of repairKeys) delete baseline[key];
+							const generation = await markSyncOutbox(pid, repairKeys);
+							for (const key of repairKeys) {
 								outboxKeys.add(key);
 								internallyMarkedOutbox.set(key, generation);
 							}
 							console.info(
-								`[sync] relay copy is missing ${missingKeys.length} record(s); re-uploading`
+								`[sync] relay copy drifted for ${repairKeys.length} record(s); re-uploading`
 							);
 							hasMore = true;
 							continue;
@@ -1178,10 +1199,12 @@ export class SyncStore {
 	}
 
 	/**
-	 * Integrity handshake half: fetch the exact set of slots the relay holds
-	 * for the active account. The caller diffs them against what it expects.
+	 * Integrity handshake half: fetch every slot the relay holds for the active
+	 * account, with its content tag where known. Slots are keyed hashes and
+	 * tags keyed content hashes — both recomputable only by the owner, so the
+	 * response leaks nothing.
 	 */
-	async fetchServerSlots(): Promise<Set<string> | null> {
+	async fetchServerSlots(): Promise<Map<string, string | null> | null> {
 		if (!this.account) return null;
 		try {
 			const response = await fetch('/api/sync/verify', {
@@ -1195,7 +1218,19 @@ export class SyncStore {
 			if (!response.ok) return null;
 			const data = (await response.json().catch(() => null)) as { slots?: unknown } | null;
 			if (!data || !Array.isArray(data.slots)) return null;
-			return new Set(data.slots.filter((slot): slot is string => typeof slot === 'string'));
+			const map = new Map<string, string | null>();
+			for (const entry of data.slots) {
+				if (!entry || typeof entry !== 'object') continue;
+				const slot = (entry as { slot?: unknown }).slot;
+				if (typeof slot !== 'string') continue;
+				map.set(
+					slot,
+					typeof (entry as { tag?: unknown }).tag === 'string'
+						? ((entry as { tag: string }).tag as string)
+						: null
+				);
+			}
+			return map;
 		} catch {
 			return null;
 		}

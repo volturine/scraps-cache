@@ -14,7 +14,14 @@ import { SyncStore, type SyncSnapshot } from './sync.svelte';
 
 type RequestPayload = {
 	cursor: number;
-	envelopes: Array<{ id: string; slot: string; expectedId: string | null; ciphertext: string }>;
+	envelopes: Array<{
+		id: string;
+		slot: string;
+		expectedId: string | null;
+		ciphertext: string;
+		tag?: string;
+	}>;
+
 	deleteSlots: Array<{ id: string; slot: string }>;
 };
 
@@ -443,6 +450,42 @@ describe('client sync state machine', () => {
 		expect(await idb.getSyncOutboxKeys(PID)).toEqual([]);
 		expect(await idb.getSyncState(keys.baseline)).toMatchObject({
 			'note:note-1': expect.any(String)
+		});
+	});
+
+	it('re-uploads a record whose stored content tag went stale even when counts match', async () => {
+		const local = note('note-1', { title: 'current local version' });
+		const { store, account, requests } = createHarness((_request, index) =>
+			index === 0
+				? { success: true, data: emptyData({ cursor: 1 }) }
+				: { success: true, data: emptyData({ cursor: 2, writesAccepted: true }) }
+		);
+		const staleSlot = await sha256(`${account.syncKey}\u0000note:note-1`);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({ slots: [{ slot: staleSlot, tag: 'f'.repeat(64) }] })
+			}))
+		);
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': 'ledger-fingerprint' },
+			recordIds: { 'note:note-1': 'relay-id' }
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		vi.unstubAllGlobals();
+		// Equal counts but a foreign tag means the slot holds a stale version:
+		// the ledger must be overridden and the current payload re-uploaded.
+		const upload = requests.at(-1)?.envelopes[0];
+		expect(upload?.expectedId).toBe('relay-id');
+		expect(upload?.tag).toMatch(/^[a-f0-9]{64}$/);
+		expect(decryptSyncPayload(account.syncKey, upload!.ciphertext)).toMatchObject({
+			kind: 'note',
+			value: { title: 'current local version' }
 		});
 	});
 
