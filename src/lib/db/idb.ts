@@ -584,6 +584,43 @@ export async function deleteLabel(
 	});
 }
 
+/** Delete a label together with its tombstone and upload marker. */
+export async function deleteLabelWithTombstone(
+	pid: string,
+	id: string,
+	labelTombstones: Record<string, number>
+): Promise<void> {
+	const outboxKey = `label-tombstone:${id}`;
+	const generation = writeGeneration;
+	await enqueueDeviceWrite(async () => {
+		if (generation !== writeGeneration) return;
+		const db = await getDB();
+		const previousGeneration = outboxGenerationCache;
+		const tx = db.transaction([LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+		try {
+			await tx.objectStore(LABELS_STORE).delete(ns(pid, id));
+			await tx
+				.objectStore(SYNC_STATE_STORE)
+				.put(
+					Object.fromEntries(Object.entries(labelTombstones).filter(([, at]) => Number(at) > 0)),
+					scopedStateKey('gkc-idb-label-tombstones', pid)
+				);
+			const next = await nextOutboxGeneration(tx);
+			await tx.objectStore(SYNC_OUTBOX_STORE).put(next, ns(pid, outboxKey));
+			await tx.done;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				// The transaction may already have aborted after a failed request.
+			}
+			await tx.done.catch(() => undefined);
+			outboxGenerationCache = previousGeneration;
+			throw error;
+		}
+	});
+}
+
 export async function bulkPutNotes(pid: string, notes: Note[]): Promise<void> {
 	for (const note of notes) {
 		await putNote(pid, note);
@@ -1051,25 +1088,44 @@ export async function copyProfileNamespace(fromPid: string, toPid: string): Prom
  * target pid, then remove the source. Used when signing out so the promised
  * "notes on this device are kept" survive under the local namespace.
  */
-export async function moveProfileNamespace(fromPid: string, toPid: string): Promise<void> {
+export async function unlinkProfileToNamespace(fromPid: string, toPid: string): Promise<void> {
 	if (fromPid === toPid) return;
-	await copyProfileNamespace(fromPid, toPid);
-	const generation = ++writeGeneration;
+	++writeGeneration;
 	await enqueueDeviceWrite(async () => {
-		if (generation !== writeGeneration) return;
 		const db = await getDB();
 		const tx = db.transaction(
-			[NOTES_STORE, LABELS_STORE, IMAGES_STORE, SYNC_OUTBOX_STORE],
+			[
+				PROFILES_STORE,
+				NOTES_STORE,
+				LABELS_STORE,
+				IMAGES_STORE,
+				SYNC_OUTBOX_STORE,
+				SYNC_STATE_STORE
+			],
 			'readwrite'
 		);
+		const loose = (name: string): LooseStore => tx.objectStore(name) as unknown as LooseStore;
 		const range = profileRange(fromPid);
-		tx.objectStore(NOTES_STORE).delete(range);
-		tx.objectStore(LABELS_STORE).delete(range);
-		tx.objectStore(IMAGES_STORE).delete(range);
-		tx.objectStore(SYNC_OUTBOX_STORE).delete(range);
+		for (const storeName of [NOTES_STORE, LABELS_STORE, IMAGES_STORE, SYNC_OUTBOX_STORE]) {
+			const source = loose(storeName);
+			let cursor = await source.openCursor(range);
+			while (cursor) {
+				await loose(storeName).put(
+					cursor.value,
+					ns(toPid, String(cursor.key).slice(fromPid.length + 2))
+				);
+				cursor = await cursor.continue();
+			}
+			tx.objectStore(storeName).delete(range);
+		}
+		const state = loose(SYNC_STATE_STORE);
+		for (const base of LEGACY_SCOPED_KEYS) {
+			const sourceKey = scopedStateKey(base, fromPid);
+			const value = await state.get(sourceKey);
+			if (value !== undefined) await state.put(value, scopedStateKey(base, toPid));
+			await state.delete(sourceKey);
+		}
+		await loose(PROFILES_STORE).delete(fromPid);
 		await tx.done;
-		const state = db.transaction(SYNC_STATE_STORE, 'readwrite');
-		for (const base of LEGACY_SCOPED_KEYS) await state.store.delete(scopedStateKey(base, fromPid));
-		await state.done;
 	});
 }

@@ -60,7 +60,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 				refillWindowMs: 60_000
 			});
 			if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
-			return json({ slots: store.listAccountSlotsWithTags(body.accountId) });
+			return json(store.listAccountSlotsWithTags(body.accountId));
 		} catch (error) {
 			recordSqliteError(error);
 			console.error('[sync] integrity verification failed:', error);

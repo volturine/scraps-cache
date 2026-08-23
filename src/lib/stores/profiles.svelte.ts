@@ -42,7 +42,7 @@ export class ProfileCoordinator {
 		await notesStore.reloadForProfile();
 		// Queue the encrypted profile-name record so a fresh key's account learns
 		// its local name (baseline dedupe makes repeat switches free).
-		void syncStore.queueOutbox([PROFILE_META_KEY]).catch(() => undefined);
+		await syncStore.queueOutbox([PROFILE_META_KEY]);
 	}
 
 	/** Create a brand-new sync key and make it this window's active profile. */
@@ -134,8 +134,14 @@ export class ProfileCoordinator {
 					return { outcome: 'choice' };
 				}
 				await this.activate(profile);
-				if (existed) await notesStore.syncWithCloudManual();
-				else await notesStore.replaceWithCloudManual();
+				const synced = existed
+					? await notesStore.syncWithCloudManual()
+					: await notesStore.replaceWithCloudManual();
+				if (!synced)
+					return {
+						outcome: 'choice',
+						error: syncStore.lastError ?? 'Could not sync the received profile'
+					};
 				return { outcome: 'linked' };
 			});
 		} catch (err) {

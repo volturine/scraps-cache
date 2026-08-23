@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as idb from '$lib/db/idb';
 import { createSyncIdentity, identityFromSyncKey, decryptSyncPayload } from '$lib/syncPairing';
 import {
 	getAllLabels,
@@ -127,6 +128,26 @@ describe('sync key keyring', () => {
 		]);
 	});
 
+	it('keeps the active profile and key retryable when unlink storage fails', async () => {
+		const active = keyringEntry(createSyncIdentity().syncKey, 'Main', 1);
+		await saveProfile(active);
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+		store.profiles = [active];
+		store.account = identityFromSyncKey(active.syncKey);
+		await putNote(active.id, note('must-survive'));
+		vi.spyOn(idb, 'unlinkProfileToNamespace').mockRejectedValueOnce(
+			new Error('IndexedDB transaction aborted')
+		);
+
+		const result = await store.logout();
+
+		expect(result).toMatchObject({ success: false });
+		expect(store.account?.syncKey).toBe(active.syncKey);
+		expect((await loadProfiles()).map(({ id }) => id)).toContain(active.id);
+		expect((await getAllNotesMetadata(active.id)).map(({ id }) => id)).toEqual(['must-survive']);
+	});
+
 	it('rescues label-only pre-upgrade installs, not just notes', async () => {
 		const stranded = keyringEntry(createSyncIdentity().syncKey, 'Upgraded', 1);
 		await saveProfile(stranded);
@@ -159,6 +180,23 @@ describe('sync key keyring', () => {
 		expect((await getAllNotesMetadata(second.id)).map(({ id }) => id)).toEqual(['offline-edit']);
 		expect(notesStore.replaceWithCloudManual).not.toHaveBeenCalled();
 		expect(notesStore.syncWithCloudManual).toHaveBeenCalled();
+	});
+
+	it('reports a failed normal sync while pairing an already-saved key', async () => {
+		vi.spyOn(notesStore, 'replaceWithCloudManual').mockResolvedValue(true);
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockImplementation(async () => {
+			syncStore.lastError = 'Relay unavailable';
+			return false;
+		});
+		const first = keyringEntry(createSyncIdentity().syncKey, 'First', 1);
+		const second = keyringEntry(createSyncIdentity().syncKey, 'Second', 2);
+		syncStore.profiles = [first, second];
+		syncStore.account = identityFromSyncKey(first.syncKey);
+
+		const adopted = await profileCoordinator.receiveLinkedKey(second.syncKey);
+
+		expect(adopted).toMatchObject({ outcome: 'choice', error: 'Relay unavailable' });
+		expect(notesStore.replaceWithCloudManual).not.toHaveBeenCalled();
 	});
 
 	it('renaming an inactive profile queues its encrypted name record for next activation', async () => {

@@ -169,7 +169,7 @@
 			const adopted = await profileCoordinator.receiveLinkedKey(result.receivedSyncKey ?? '');
 			loading = false;
 			if (adopted.error || !result.receivedSyncKey) {
-				mode = 'link';
+				mode = syncStore.isLoggedIn ? 'linked' : 'link';
 				error = friendlyError(
 					adopted.error ?? 'Invalid encrypted sync key',
 					'Could not set up the received sync key'
@@ -231,7 +231,12 @@
 				error = '';
 				return;
 			}
-			await syncStore.logout();
+			const unlinked = await syncStore.logout();
+			if (!unlinked.success) {
+				error = friendlyError(unlinked.error, 'Could not preserve local notes while unlinking');
+				info = '';
+				return;
+			}
 			error = friendlyError(
 				syncStore.lastError || notesStore.lastPersistError,
 				'Could not finish setup'
@@ -313,9 +318,13 @@
 		if (warning) error = friendlyError(warning, 'Some records are still pending');
 	}
 
-	function unlinkDevice() {
+	async function unlinkDevice() {
 		const account = syncStore.account;
-		void syncStore.logout();
+		const result = await syncStore.logout();
+		if (!result.success) {
+			error = friendlyError(result.error, 'Could not preserve local notes while unlinking');
+			return;
+		}
 		mode = 'menu';
 		error = '';
 		info = '';

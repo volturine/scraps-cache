@@ -8,7 +8,7 @@ import {
 	type SyncIdentity
 } from '$lib/syncPairing';
 import { syncControlKeys } from '$lib/syncEngine';
-import { sha256 } from '$lib/syncHash';
+import { recordTag, sha256 } from '$lib/syncHash';
 import * as idb from '$lib/db/idb';
 import { SyncStore, type SyncSnapshot } from './sync.svelte';
 
@@ -425,7 +425,7 @@ describe('client sync state machine', () => {
 			'fetch',
 			vi.fn(async () => ({
 				ok: true,
-				json: async () => ({ slots: [] })
+				json: async () => ({ cursor: 1, slots: [] })
 			}))
 		);
 		const keys = syncControlKeys(account.accountId);
@@ -465,7 +465,10 @@ describe('client sync state machine', () => {
 			'fetch',
 			vi.fn(async () => ({
 				ok: true,
-				json: async () => ({ slots: [{ slot: staleSlot, tag: 'f'.repeat(64) }] })
+				json: async () => ({
+					cursor: 1,
+					slots: [{ id: 'relay-id', slot: staleSlot, tag: 'f'.repeat(64) }]
+				})
 			}))
 		);
 		await seedControl(account.accountId, {
@@ -487,6 +490,80 @@ describe('client sync state machine', () => {
 			kind: 'note',
 			value: { title: 'current local version' }
 		});
+	});
+
+	it('deletes unexpected relay slots during exact integrity repair', async () => {
+		const { store, requests } = createHarness(() => ({
+			success: true,
+			data: emptyData({ cursor: 1, writesAccepted: true })
+		}));
+		const extraSlot = 'e'.repeat(64);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					cursor: 1,
+					slots: [{ id: 'unexpected-id', slot: extraSlot, tag: 'f'.repeat(64) }]
+				})
+			}))
+		);
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests.at(-1)?.deleteSlots).toEqual([{ id: 'unexpected-id', slot: extraSlot }]);
+		expect(JSON.stringify(requests.at(-1)?.deleteSlots)).not.toContain('key');
+	});
+
+	it('pulls a concurrent write before classifying its slot as unexpected', async () => {
+		const remote = note('concurrent-note');
+		const payload = { kind: 'note' as const, value: remote };
+		let remoteSlot = '';
+		const { store, account, requests } = createHarness((_request, index) =>
+			index === 0
+				? { success: true, data: emptyData({ cursor: 1 }) }
+				: {
+						success: true,
+						data: emptyData({
+							cursor: 2,
+							envelopes: [envelope(account, 'concurrent-id', 2, payload, remoteSlot)]
+						})
+					}
+		);
+		remoteSlot = await sha256(`${account.syncKey}\u0000note:${remote.id}`);
+		const remoteTag = await recordTag(account.syncKey, payload);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					cursor: 2,
+					slots: [{ id: 'concurrent-id', slot: remoteSlot, tag: remoteTag }]
+				})
+			}))
+		);
+		await seedControl(account.accountId, { cursor: 1, baseline: { existing: 'state' } });
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(result.notes?.map(({ id }) => id)).toContain(remote.id);
+		expect(requests.flatMap((request) => request.deleteSlots)).toEqual([]);
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+
+	it('surfaces partial success when integrity verification is unavailable', async () => {
+		const { store } = createHarness(() => ({ success: true, data: emptyData() }));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({ ok: false }))
+		);
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(store.lastError).toMatch(/integrity verification could not complete/i);
 	});
 
 	it('rewinds a leftover cursor when there is no baseline so a full pull can run', async () => {

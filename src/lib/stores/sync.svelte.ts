@@ -44,8 +44,8 @@ import {
 	getSyncOutboxKeys,
 	getSyncState,
 	markSyncOutbox,
-	moveProfileNamespace,
 	namespaceHasData,
+	unlinkProfileToNamespace,
 	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
 import {
@@ -85,6 +85,8 @@ type LinkPoll =
 	| { state: 'matched'; expiresAt: number; peerPublicKey: string }
 	| { state: 'connected'; expiresAt: number; peerPublicKey: string; grant: { ciphertext: string } }
 	| { state: 'expired' | 'not-found' };
+
+type ServerSlot = { id: string; tag: string | null };
 
 interface SyncStatus {
 	lastSync: number;
@@ -281,9 +283,8 @@ export class SyncStore {
 		// device holding this sync key converges on one local label. Inactive
 		// keys get their namespace's outbox marked so the upload happens on the
 		// next activation.
-		if (this.activeProfile?.id === id)
-			void this.queueOutbox([PROFILE_META_KEY]).catch(() => undefined);
-		else void markSyncOutbox(id, [PROFILE_META_KEY]).catch(() => undefined);
+		if (this.activeProfile?.id === id) await this.queueOutbox([PROFILE_META_KEY]);
+		else await markSyncOutbox(id, [PROFILE_META_KEY]);
 		return updated;
 	}
 
@@ -631,6 +632,8 @@ export class SyncStore {
 			let poisonCount = 0;
 			let stalledWrites = 0;
 			let integrityBackfillDone = false;
+			let integrityVerificationIncomplete = false;
+			const integrityDeletes = new Map<string, { id: string; slot: string; key?: string }>();
 			while (hasMore) {
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				const startedWithDownloadsDrained = downloadsDrained;
@@ -741,12 +744,17 @@ export class SyncStore {
 					pullOnly,
 					catchUpComplete: downloadsDrained
 				}).filter((key) => key !== PROFILE_META_KEY);
-				const deleteSlots = await Promise.all(
+				const plannedDeleteSlots = await Promise.all(
 					deletableKeys.map(async (key) => ({
 						id: recordIds[key],
 						slot: await sha256(`${account.syncKey}\u0000${key}`)
 					}))
 				);
+				const integrityDeleteSlots = [...integrityDeletes.values()];
+				const deleteSlots = [
+					...plannedDeleteSlots,
+					...integrityDeleteSlots.map(({ id, slot }) => ({ id, slot }))
+				];
 				const payload = JSON.stringify({
 					accountId: account.accountId,
 					authSecret: account.authSecret,
@@ -798,6 +806,10 @@ export class SyncStore {
 					for (const key of deletableKeys) delete recordIds[key];
 					for (const [key, id] of sentRecordIds) recordIds[key] = id;
 					for (const key of deletableKeys) acknowledgedOutbox.add(key);
+					for (const deletion of integrityDeleteSlots) {
+						if (deletion.key) delete recordIds[deletion.key];
+						integrityDeletes.delete(deletion.slot);
+					}
 				}
 				if (response.data.reset === true) {
 					// The relay was deliberately reset while this device retained a baseline.
@@ -1043,15 +1055,16 @@ export class SyncStore {
 						changed.filter((record) => !quotaBlockedKeys.has(record.key)).length > outgoing.length);
 				const pendingDeletes =
 					downloadsDrained &&
-					planDeletableKeys({
-						recordIds,
-						notes: mergedNotes,
-						labels: mergedLabels,
-						boards: mergedBoards,
-						tombstones: appliedTombstoneMaps,
-						pullOnly,
-						catchUpComplete: true
-					}).length > 0;
+					(integrityDeletes.size > 0 ||
+						planDeletableKeys({
+							recordIds,
+							notes: mergedNotes,
+							labels: mergedLabels,
+							boards: mergedBoards,
+							tombstones: appliedTombstoneMaps,
+							pullOnly,
+							catchUpComplete: true
+						}).length > 0);
 				hasMore = syncRoundHasMore({
 					remoteHasMore: response.data.hasMore === true,
 					remainingUploads,
@@ -1065,14 +1078,20 @@ export class SyncStore {
 				// and stale-in-place versions are detected and re-queued. One repair
 				// attempt per sync keeps a bad state from looping.
 				if (downloadsDrained && !pullOnly && !integrityBackfillDone && !syncCancelled()) {
+					const verification = await this.fetchServerSlots();
+					if (verification && verification.cursor > cursor) {
+						// Another device wrote after this pull drained. Catch up before
+						// deciding that its new opaque slots are unexpected.
+						hasMore = true;
+						continue;
+					}
 					integrityBackfillDone = true;
-					const serverSlotTags = await this.fetchServerSlots();
-					if (serverSlotTags) {
-						// Full enumeration: no outbox filter, so every current record is
-						// tagged. Photos without local bytes cannot produce a tag; their
-						// relay slots are treated as unknown rather than stale.
+					if (verification && verification.cursor === cursor) {
+						const serverSlotTags = verification.slots;
+						// Full enumeration: every local record is tagged and every relay
+						// slot must correspond to current local state.
 						const expectedTags = new Map<string, string>();
-						const slotKeys = new Map<string, string>();
+						const expectedSlots = new Map<string, string>();
 						for (const record of await buildSyncRecords(
 							mergedNotes,
 							mergedLabels,
@@ -1084,23 +1103,45 @@ export class SyncStore {
 						)) {
 							const slot = await sha256(`${account.syncKey}\u0000${record.key}`);
 							expectedTags.set(slot, await recordTag(account.syncKey, record.payload));
-							slotKeys.set(slot, record.key);
+							expectedSlots.set(slot, record.key);
 						}
-						if (recordIds[PROFILE_META_KEY]) {
+						const expectedCurrentKeys = currentRecordKeys(
+							mergedNotes,
+							mergedLabels,
+							mergedBoards,
+							appliedTombstoneMaps
+						);
+						if (this.activeProfile) expectedCurrentKeys.add(PROFILE_META_KEY);
+						for (const key of expectedCurrentKeys) {
+							const slot = await sha256(`${account.syncKey}\u0000${key}`);
+							expectedSlots.set(slot, key);
+						}
+						if (this.activeProfile) {
 							const metaPayload = {
 								kind: 'profile-meta' as const,
-								value: { name: this.activeProfile?.name ?? '' }
+								value: { name: this.activeProfile.name }
 							};
-							const slot = await sha256(`${account.syncKey}\u0000${PROFILE_META_KEY}`);
-							expectedTags.set(slot, await recordTag(account.syncKey, metaPayload));
-							slotKeys.set(slot, PROFILE_META_KEY);
+							const metaSlot = await sha256(`${account.syncKey}\u0000${PROFILE_META_KEY}`);
+							expectedTags.set(metaSlot, await recordTag(account.syncKey, metaPayload));
 						}
 						const repairKeys: string[] = [];
-						for (const [slot, tag] of expectedTags) {
-							const serverTag = serverSlotTags.get(slot);
-							if (serverTag !== tag) repairKeys.push(slotKeys.get(slot)!);
+						for (const [slot, key] of expectedSlots) {
+							const expectedTag = expectedTags.get(slot);
+							if (!expectedTag) {
+								integrityVerificationIncomplete = true;
+								continue;
+							}
+							if (serverSlotTags.get(slot)?.tag !== expectedTag) repairKeys.push(key);
 						}
-						if (repairKeys.length) {
+						for (const [slot, serverRecord] of serverSlotTags) {
+							if (!expectedSlots.has(slot))
+								integrityDeletes.set(slot, {
+									id: serverRecord.id,
+									slot,
+									key: await knownSlotKey(slot)
+								});
+						}
+						if (repairKeys.length || integrityDeletes.size > 0) {
 							for (const key of repairKeys) delete baseline[key];
 							const generation = await markSyncOutbox(pid, repairKeys);
 							for (const key of repairKeys) {
@@ -1108,12 +1149,12 @@ export class SyncStore {
 								internallyMarkedOutbox.set(key, generation);
 							}
 							console.info(
-								`[sync] relay copy drifted for ${repairKeys.length} record(s); re-uploading`
+								`[sync] repairing ${repairKeys.length} stale or missing and ${integrityDeletes.size} unexpected relay record(s)`
 							);
 							hasMore = true;
 							continue;
 						}
-					}
+					} else integrityVerificationIncomplete = true;
 				}
 			}
 
@@ -1122,6 +1163,9 @@ export class SyncStore {
 				this.lastError = `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`;
 			} else if (quotaBlockedKeys.size > 0) {
 				this.lastError = 'Some records exceed the account storage quota';
+			} else if (integrityVerificationIncomplete) {
+				this.lastError =
+					'Synced, but relay integrity verification could not complete. It will retry automatically.';
 			} else {
 				this.lastError = null;
 			}
@@ -1204,7 +1248,7 @@ export class SyncStore {
 	 * tags keyed content hashes — both recomputable only by the owner, so the
 	 * response leaks nothing.
 	 */
-	async fetchServerSlots(): Promise<Map<string, string | null> | null> {
+	async fetchServerSlots(): Promise<{ cursor: number; slots: Map<string, ServerSlot> } | null> {
 		if (!this.account) return null;
 		try {
 			const response = await fetch('/api/sync/verify', {
@@ -1216,29 +1260,58 @@ export class SyncStore {
 				})
 			});
 			if (!response.ok) return null;
-			const data = (await response.json().catch(() => null)) as { slots?: unknown } | null;
-			if (!data || !Array.isArray(data.slots)) return null;
-			const map = new Map<string, string | null>();
+			const data = (await response.json().catch(() => null)) as {
+				cursor?: unknown;
+				slots?: unknown;
+			} | null;
+			if (
+				!data ||
+				!Number.isSafeInteger(data.cursor) ||
+				Number(data.cursor) < 0 ||
+				!Array.isArray(data.slots)
+			)
+				return null;
+			const map = new Map<string, ServerSlot>();
 			for (const entry of data.slots) {
-				if (!entry || typeof entry !== 'object') continue;
+				if (!entry || typeof entry !== 'object') return null;
 				const slot = (entry as { slot?: unknown }).slot;
-				if (typeof slot !== 'string') continue;
-				map.set(
-					slot,
-					typeof (entry as { tag?: unknown }).tag === 'string'
-						? ((entry as { tag: string }).tag as string)
-						: null
-				);
+				const id = (entry as { id?: unknown }).id;
+				const tag = (entry as { tag?: unknown }).tag;
+				if (
+					typeof slot !== 'string' ||
+					!/^[a-f0-9]{64}$/.test(slot) ||
+					typeof id !== 'string' ||
+					!/^[A-Za-z0-9_-]{1,128}$/.test(id) ||
+					(tag !== null && (typeof tag !== 'string' || !/^[a-f0-9]{64}$/.test(tag))) ||
+					map.has(slot)
+				)
+					return null;
+				map.set(slot, {
+					id,
+					tag
+				});
 			}
-			return map;
+			return { cursor: Number(data.cursor), slots: map };
 		} catch {
 			return null;
 		}
 	}
 
-	async logout(): Promise<void> {
+	async logout(): Promise<{ success: boolean; error?: string }> {
 		const accountId = this.account?.accountId;
 		const profile = this.activeProfile;
+		if (profile) {
+			try {
+				// The namespace move and keyring removal are one IndexedDB transaction:
+				// either local data is safely adopted or this profile remains retryable.
+				await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
+			} catch (err) {
+				const error =
+					err instanceof Error ? err.message : 'Could not keep this profile\u2019s local data';
+				this.lastError = error;
+				return { success: false, error };
+			}
+		}
 		this.account = null;
 		this.lastError = null;
 		this.progress = null;
@@ -1246,19 +1319,9 @@ export class SyncStore {
 		setLastActiveProfileId(null);
 		if (accountId) void this.clearAccountControlPlane(accountId);
 		if (profile) {
-			// Both "Unlink" and "Delete cloud data" promise local notes are kept:
-			// relocate the dataset under the local namespace before dropping the
-			// keyring entry. Only the explicit profile-removal action deletes data.
-			try {
-				await moveProfileNamespace(profile.id, LOCAL_PROFILE_ID);
-			} catch (err) {
-				console.error('[sync] could not keep the signed-out profile\u2019s notes:', err);
-			}
-			await removeProfileRecord(profile.id).catch((err) =>
-				console.error('[sync] could not remove the signed-out profile:', err)
-			);
 			this.profiles = this.profiles.filter((entry) => entry.id !== profile.id);
 		}
+		return { success: true };
 	}
 
 	async deleteCloudAccount(): Promise<{ success: boolean; error?: string }> {
@@ -1279,8 +1342,7 @@ export class SyncStore {
 					error: typeof data.error === 'string' ? data.error : 'Could not delete synced data'
 				};
 			}
-			await this.logout();
-			return { success: true };
+			return this.logout();
 		} catch (error) {
 			return {
 				success: false,

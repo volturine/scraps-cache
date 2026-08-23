@@ -4,13 +4,17 @@ import type { Note } from '$lib/types';
 import {
 	clearSyncOutbox,
 	commitSyncControl,
+	deleteLabelWithTombstone,
+	getAllLabels,
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
 	getSyncState,
 	getOutboxGeneration,
 	hydrateNoteAttachments,
 	markSyncOutbox,
+	putLabel,
 	putNote,
+	scopedStateKey,
 	setSyncState
 } from './idb';
 
@@ -76,6 +80,29 @@ describe('durable sync outbox', () => {
 
 		expect(second).toBeGreaterThan(first);
 		expect(await getOutboxGeneration()).toBe(second);
+	});
+
+	it('commits a label deletion, tombstone, and marker atomically', async () => {
+		await putLabel(PID, { id: 'label-1', name: 'Work', createdAt: 1, updatedAt: 1 });
+		await deleteLabelWithTombstone(PID, 'label-1', { 'label-1': 2 });
+
+		expect(await getAllLabels(PID)).toEqual([]);
+		expect(await getSyncState(scopedStateKey('gkc-idb-label-tombstones', PID))).toEqual({
+			'label-1': 2
+		});
+		expect(await getSyncOutboxKeys(PID)).toContain('label-tombstone:label-1');
+	});
+
+	it('rolls back the label deletion when its tombstone cannot be stored', async () => {
+		await putLabel(PID, { id: 'label-1', name: 'Work', createdAt: 1, updatedAt: 1 });
+
+		await expect(
+			deleteLabelWithTombstone(PID, 'label-1', {
+				'label-1': { valueOf: () => 1 } as unknown as number
+			})
+		).rejects.toBeDefined();
+		expect((await getAllLabels(PID)).map(({ id }) => id)).toEqual(['label-1']);
+		expect(await getSyncOutboxKeys(PID)).not.toContain('label-tombstone:label-1');
 	});
 
 	it('rolls back cursor and outbox changes together when a control write fails', async () => {

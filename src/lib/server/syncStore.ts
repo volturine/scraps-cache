@@ -259,7 +259,9 @@ export class SyncStore {
 		uploads: OpaqueUpload[],
 		deletions: OpaqueDelete[],
 		downloadLimit = 12
-	): SyncResult & { usage: UsageRow & { maxBytes: number; maxEnvelopes: number } } {
+	): SyncResult & {
+		usage: UsageRow & { tagDigest: string; maxBytes: number; maxEnvelopes: number };
+	} {
 		return this.database.transaction(() => {
 			const account = this.database
 				.prepare(
@@ -479,12 +481,21 @@ export class SyncStore {
 	 * known. Slots are keyed hashes and tags keyed content hashes; both are
 	 * recomputable only by the owner, so the response leaks nothing.
 	 */
-	listAccountSlotsWithTags(accountId: string): Array<{ slot: string; tag: string | null }> {
-		return (
-			this.database
-				.prepare('SELECT slot, tag FROM envelopes WHERE account_id = ? ORDER BY slot')
-				.all(accountId) as Array<{ slot: string; tag: string | null }>
-		).map((row) => ({ slot: String(row.slot), tag: row.tag ?? null }));
+	listAccountSlotsWithTags(accountId: string): {
+		cursor: number;
+		slots: Array<{ id: string; slot: string; tag: string | null }>;
+	} {
+		return this.database.transaction(() => {
+			const account = this.database
+				.prepare('SELECT next_seq FROM accounts WHERE account_id = ?')
+				.get(accountId) as { next_seq: number } | undefined;
+			const slots = (
+				this.database
+					.prepare('SELECT id, slot, tag FROM envelopes WHERE account_id = ? ORDER BY slot')
+					.all(accountId) as Array<{ id: string; slot: string; tag: string | null }>
+			).map((row) => ({ id: String(row.id), slot: String(row.slot), tag: row.tag ?? null }));
+			return { cursor: account?.next_seq ?? 0, slots };
+		})();
 	}
 
 	getQuotas(): SyncQuotas {
@@ -543,33 +554,11 @@ export class SyncStore {
 	}
 
 	purgeExpiredDeletedEnvelopes(now = Date.now(), graceMs = DELETED_SLOT_GRACE_MS): number {
-		// Purged grace rows leave the live envelope set for good, so their tag
-		// contributions must leave the account digests with them.
-		const expired = this.database
-			.prepare('SELECT account_id, tag FROM deleted_envelopes WHERE deleted_at <= ?')
-			.all(now - graceMs) as Array<{ account_id: string; tag: string | null }>;
-		const perAccount = new Map<string, string>();
-		for (const row of expired) {
-			if (!row.tag) continue;
-			const current = perAccount.get(row.account_id) ?? this.readTagDigest(row.account_id);
-			perAccount.set(row.account_id, xorHex(current, tagContribution(row.tag)));
-		}
-		const removed = this.database
+		// Deleted rows left the live-set digest when they were staged. Purging the
+		// recovery copy must not alter that digest a second time.
+		return this.database
 			.prepare('DELETE FROM deleted_envelopes WHERE deleted_at <= ?')
 			.run(now - graceMs).changes;
-		for (const [accountId, digest] of perAccount) {
-			this.database
-				.prepare('UPDATE accounts SET tag_digest = ? WHERE account_id = ?')
-				.run(digest, accountId);
-		}
-		return removed;
-	}
-
-	private readTagDigest(accountId: string): string {
-		const row = this.database
-			.prepare('SELECT tag_digest FROM accounts WHERE account_id = ?')
-			.get(accountId) as { tag_digest?: string } | undefined;
-		return row?.tag_digest ?? EMPTY_TAG_DIGEST;
 	}
 
 	getMeta(key: string): string | null {

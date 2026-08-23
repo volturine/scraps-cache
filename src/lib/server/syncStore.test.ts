@@ -256,11 +256,18 @@ describe('SQLite sync store', () => {
 		const uploaded = store.sync(
 			'account',
 			0,
-			[{ id: 'photo', slot: slot('a'), ciphertext: 'opaque' }],
+			[{ id: 'photo', slot: slot('a'), ciphertext: 'opaque', tag: slot('b') }],
 			[],
 			10
 		);
-		store.sync('account', uploaded.cursor, [], [{ id: 'photo', slot: slot('a') }], 10);
+		const deleted = store.sync(
+			'account',
+			uploaded.cursor,
+			[],
+			[{ id: 'photo', slot: slot('a') }],
+			10
+		);
+		const digestAfterDelete = deleted.usage.tagDigest;
 
 		const raw = new Database(join(directory, 'sync.sqlite'));
 		const { deletedAt } = raw
@@ -270,6 +277,9 @@ describe('SQLite sync store', () => {
 
 		expect(store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS - 1)).toBe(0);
 		expect(store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS)).toBe(1);
+		expect(store.sync('account', deleted.cursor, [], [], 10).usage.tagDigest).toBe(
+			digestAfterDelete
+		);
 	});
 
 	it('returns the current slot and rejects a stale conditional replacement', () => {

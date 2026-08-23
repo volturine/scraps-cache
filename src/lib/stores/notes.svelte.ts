@@ -9,6 +9,7 @@ import {
 	getAllLabels,
 	putLabel,
 	deleteLabel,
+	deleteLabelWithTombstone,
 	bulkPutNotes,
 	bulkPutLabels,
 	clearAllNotes,
@@ -237,6 +238,10 @@ export class NotesStore {
 		const ids = this.notes
 			.filter((note) => (note.images ?? []).some((image) => !image.dataUrl))
 			.map((note) => note.id);
+		const pendingIds = new Set(ids);
+		for (const noteId of this.attachmentHydrationFailures) {
+			if (!pendingIds.has(noteId)) this.attachmentHydrationFailures.delete(noteId);
+		}
 		if (ids.length === 0) return Promise.resolve();
 
 		let next = 0;
@@ -252,20 +257,6 @@ export class NotesStore {
 				this.attachmentPass = null;
 			});
 		return this.attachmentPass;
-	}
-
-	/** Only hydrate a few notes per sync so photo-heavy accounts transfer in fractions. */
-	private async hydrateAttachmentsForSync(): Promise<void> {
-		const dirtyKeys = new Set(await getSyncOutboxKeys(this.pid).catch(() => []));
-		const ids = this.notes
-			.filter(
-				(note) =>
-					(dirtyKeys.has(`note:${note.id}`) ||
-						(note.images ?? []).some((image) => dirtyKeys.has(`attachment:${image.id}`))) &&
-					(note.images ?? []).some((image) => !image.dataUrl)
-			)
-			.map((note) => note.id);
-		for (const noteId of ids) await this.ensureNoteAttachments(noteId);
 	}
 
 	/** Queue attachment bytes only when a note card enters the viewport. */
@@ -531,11 +522,8 @@ export class NotesStore {
 				);
 			});
 			this.labels = this.labels.filter((label) => label.id !== id);
-			deleteLabel(this.pid, id, [`label-tombstone:${id}`]).catch((err) =>
-				this.recordPersistenceError('Could not delete label', err)
-			);
 			for (const note of affected) this.persist(note.id);
-			this.markLabelsDeleted([id], deletedAt);
+			this.persistLabelDeletion(id, deletedAt);
 			return;
 		}
 
@@ -550,11 +538,8 @@ export class NotesStore {
 				deletedAt
 			);
 		});
-		deleteLabel(this.pid, id, [`label-tombstone:${id}`]).catch((err) =>
-			this.recordPersistenceError('Could not delete label', err)
-		);
 		for (const noteId of affectedNoteIds) this.persist(noteId);
-		this.markLabelsDeleted([id], deletedAt);
+		this.persistLabelDeletion(id, deletedAt);
 	}
 
 	// Search ---------------------------------------------------------------
@@ -735,12 +720,16 @@ export class NotesStore {
 		await Promise.all(ids.map((id) => deleteNote(this.pid, id)));
 	}
 
-	private markLabelsDeleted(ids: string[], deletedAt = Date.now()): void {
-		if (ids.length === 0) return;
-		for (const id of ids) this.deletedLabelIds[id] = deletedAt;
-		void writeLabelTombstones(this.pid, this.deletedLabelIds).then(() =>
-			this.markLabelsDirty(ids.map((id) => `label-tombstone:${id}`))
-		);
+	private persistLabelDeletion(id: string, deletedAt: number): void {
+		const tombstones = { ...this.deletedLabelIds, [id]: deletedAt };
+		this.deletedLabelIds = tombstones;
+		void deleteLabelWithTombstone(this.pid, id, tombstones)
+			.then(() => {
+				this.dirty = true;
+				this.scheduleSyncPush();
+				syncStore.requestAutoSync([]);
+			})
+			.catch((err) => this.recordPersistenceError('Could not delete label', err));
 	}
 
 	private markLabelsDirty(keys: Iterable<string> = []): void {
@@ -1140,12 +1129,9 @@ export class NotesStore {
 
 	private async doSyncLocked(indicate = false): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
-		const hydrationFailuresBefore = this.attachmentHydrationFailures.size;
-		// A newly reset relay needs one current-state bootstrap from this source device.
-		// Bytes are returned to thumb-only memory immediately after reconciliation below.
-		if (await syncStore.needsCurrentStateBootstrap()) await this.hydrateAllAttachments();
-		// Only pull a few full attachments into memory per normal cycle for upload readiness.
-		await this.hydrateAttachmentsForSync();
+		// Integrity verification hashes every current attachment. Read all bytes from
+		// IndexedDB before taking the sync snapshot; failures remain visible and retry.
+		await this.hydrateAllAttachments();
 		const localNotes = this.notes.map(cloneNote);
 		const localLabels = [...this.labels];
 		try {
@@ -1171,8 +1157,7 @@ export class NotesStore {
 			// A photo that failed to load has no payload to upload: the sync is
 			// only partial. Keep the warning visible until the retry succeeds so
 			// "synced" never hides an unsynced photo.
-			const newHydrationFailures = this.attachmentHydrationFailures.size - hydrationFailuresBefore;
-			if (newHydrationFailures > 0) {
+			if (this.attachmentHydrationFailures.size > 0) {
 				syncStore.lastError =
 					'Synced, but some photos could not be prepared for upload. They will retry automatically.';
 			} else if (!syncStore.lastError) {
