@@ -605,54 +605,49 @@
 									</div>
 								</div>
 							{:else}
+								{@const active = profile.id === syncStore.activeProfile?.id}
 								<div
-									class="flex items-center gap-2 rounded-lg border border-[var(--scraps-cache-border)] px-3 py-2"
+									class="relative flex items-center gap-2 rounded-lg border border-[var(--scraps-cache-border)] px-3 py-2"
 								>
-									{#if profile.id === syncStore.activeProfile?.id}
-										<button
-											type="button"
-											class="min-w-0 flex-1 text-left"
-											onclick={() => {
+									<button
+										type="button"
+										class="absolute inset-0 rounded-lg touch-manipulation disabled:cursor-not-allowed"
+										disabled={!active && handoverBlocked}
+										title={!active && notesStore.syncing
+											? 'Wait for the current sync to finish'
+											: undefined}
+										aria-label={active ? `Manage ${profile.name}` : `Switch to ${profile.name}`}
+										onclick={() => {
+											if (active) {
 												mode = 'linked';
 												error = '';
 												info = '';
-											}}
-										>
-											<span class="block truncate text-sm">{profile.name}</span>
-											{#if sizeLabel(profile.id)}
-												<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
-													>>{sizeLabel(profile.id)} stored locally</span
-												>
-												>
-											{/if}
+												return;
+											}
+											void switchProfile(profile.id);
+										}}
+									></button>
+									<span class="pointer-events-none relative min-w-0 flex-1">
+										<span class="block truncate text-sm">{profile.name}</span>
+										{#if sizeLabel(profile.id)}
+											<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
+												>{sizeLabel(profile.id)} stored locally</span
+											>
+										{/if}
+										{#if active}
 											<span class="block text-xs font-medium text-[var(--scraps-cache-success)]"
 												>Active — tap to manage</span
 											>
-										</button>
-									{:else}
-										<span class="min-w-0 flex-1">
-											<span class="block truncate text-sm">{profile.name}</span>
-											{#if sizeLabel(profile.id)}
-												<span class="block text-xs text-[var(--scraps-cache-text-muted)]"
-													>>{sizeLabel(profile.id)} stored locally</span
-												>
-												>
-											{/if}
-										</span>
-										<button
-											type="button"
-											onclick={() => void switchProfile(profile.id)}
-											disabled={handoverBlocked}
-											title={notesStore.syncing ? 'Wait for the current sync to finish' : undefined}
-											class="shrink-0 rounded-md border border-[var(--scraps-cache-border)] px-2 py-1 text-xs font-medium touch-manipulation"
-										>
-											{profileCoordinator.switching ? '…' : 'Switch'}
-										</button>
-									{/if}
+										{:else}
+											<span class="block text-xs text-[var(--scraps-cache-text-muted)]">
+												{profileCoordinator.switching ? 'Switching…' : 'Tap to switch'}
+											</span>
+										{/if}
+									</span>
 									<button
 										type="button"
 										onclick={() => void exportProfile(profile.id)}
-										class="icon-btn h-7 w-7 shrink-0"
+										class="icon-btn relative z-10 h-7 w-7 shrink-0"
 										aria-label="Export notes of {profile.name}"
 									>
 										<Download class="h-3.5 w-3.5" aria-hidden="true" />
@@ -660,19 +655,19 @@
 									<button
 										type="button"
 										onclick={() => startRename(profile.id, profile.name)}
-										class="icon-btn h-7 w-7 shrink-0"
+										class="icon-btn relative z-10 h-7 w-7 shrink-0"
 										aria-label="Rename {profile.name}"
 									>
 										<Pencil class="h-3.5 w-3.5" aria-hidden="true" />
 									</button>
-									{#if profile.id !== syncStore.activeProfile?.id}
+									{#if !active}
 										<button
 											type="button"
 											onclick={() => {
 												removingId = profile.id;
 												cancelEdit();
 											}}
-											class="icon-btn h-7 w-7 shrink-0"
+											class="icon-btn relative z-10 h-7 w-7 shrink-0"
 											aria-label="Remove {profile.name}"
 										>
 											<Trash2 class="h-3.5 w-3.5" aria-hidden="true" />
