@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReminderStore } from './reminders.svelte';
 import { reminderWakeId, type ReminderNote } from '$lib/reminderNotify';
 import { getFiredReminderKeys, setFiredReminderKeys } from '$lib/db/idb';
+import { LOCAL_PID } from '$lib/profiles';
 
 function note(partial: Partial<ReminderNote> = {}): ReminderNote {
 	return {
@@ -52,7 +53,7 @@ describe('ReminderStore', () => {
 		await firstLoad.whenReady();
 		await vi.waitFor(() => expect(firstLoad.alerts).toHaveLength(1));
 
-		await setFiredReminderKeys([]);
+		await setFiredReminderKeys(LOCAL_PID, []);
 		const reloaded = new ReminderStore();
 		reloaded.sync([due]);
 		await reloaded.whenReady();
@@ -63,7 +64,7 @@ describe('ReminderStore', () => {
 	it('persists a system notification before displaying it and does not replay it after reload', async () => {
 		const deliveredWithFiredKeys: string[][] = [];
 		const showNotification = vi.fn(async () => {
-			deliveredWithFiredKeys.push(await getFiredReminderKeys());
+			deliveredWithFiredKeys.push(await getFiredReminderKeys(LOCAL_PID));
 		});
 		vi.stubGlobal('Notification', { permission: 'granted' });
 		vi.stubGlobal('navigator', {

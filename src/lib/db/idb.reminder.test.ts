@@ -3,13 +3,14 @@ import { claimFiredReminderKey, getFiredReminderKeys } from './idb';
 
 describe('reminder delivery claims', () => {
 	it('allows only one concurrent claim for a wake id', async () => {
+		const pid = 'reminder-claim-profile';
 		const wakeId = 'a'.repeat(43);
 		const claims = await Promise.all([
-			claimFiredReminderKey(wakeId),
-			claimFiredReminderKey(wakeId)
+			claimFiredReminderKey(pid, wakeId),
+			claimFiredReminderKey(pid, wakeId)
 		]);
 
 		expect(claims.sort()).toEqual([false, true]);
-		expect(await getFiredReminderKeys()).toEqual([wakeId]);
+		expect(await getFiredReminderKeys(pid)).toEqual([wakeId]);
 	});
 });
