@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-trixie-slim AS build
+FROM node:24-alpine AS build
 
 WORKDIR /app
 
@@ -11,7 +11,9 @@ COPY . .
 RUN npm run build \
 	&& npm prune --omit=dev
 
-FROM node:24-trixie-slim AS runtime
+FROM alpine:3.24 AS runtime
+
+COPY --from=node:24-alpine /usr/local/bin/node /usr/local/bin/node
 
 ENV NODE_ENV=production \
 	HOST=0.0.0.0 \
@@ -26,7 +28,10 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --chmod=755 docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 
-RUN mkdir -p /data \
+RUN apk add --no-cache libstdc++ libgcc setpriv \
+	&& addgroup -g 1000 -S node \
+	&& adduser -S -D -H -u 1000 -G node node \
+	&& mkdir -p /data \
 	&& chown node:node /data
 
 VOLUME ["/data"]
