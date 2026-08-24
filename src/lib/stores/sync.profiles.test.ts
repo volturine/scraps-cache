@@ -331,6 +331,56 @@ describe('profile switching (namespaced)', () => {
 		}
 	});
 
+	it('keeps repeated sync flights bound to the activated profile', async () => {
+		vi.mocked(notesStore.syncWithCloudManual).mockRestore();
+		const first = keyringEntry(createSyncIdentity().syncKey, 'First', 1);
+		const second = keyringEntry(createSyncIdentity().syncKey, 'Second', 2);
+		syncStore.profiles = [first, second];
+		syncStore.account = identityFromSyncKey(first.syncKey);
+		await putNote(first.id, note('first-note'));
+		await putNote(second.id, note('second-note'));
+		const flights: Array<{ pid: string; syncKey: string; noteIds: string[] }> = [];
+		vi.spyOn(syncStore, 'sync').mockImplementation(async (notes, labels) => {
+			flights.push({
+				pid: syncStore.activePid,
+				syncKey: syncStore.account?.syncKey ?? '',
+				noteIds: notes.map(({ id }) => id)
+			});
+			return { success: true, notes, labels };
+		});
+
+		for (const profile of [second, first, second, first]) {
+			const result = await profileCoordinator.switchTo(profile.id);
+			expect(result.success, result.error).toBe(true);
+			expect(result.error).toBeUndefined();
+			expect(profileCoordinator.switching).toBe(false);
+		}
+
+		expect(flights).toEqual([
+			{ pid: second.id, syncKey: second.syncKey, noteIds: ['second-note'] },
+			{ pid: first.id, syncKey: first.syncKey, noteIds: ['first-note'] },
+			{ pid: second.id, syncKey: second.syncKey, noteIds: ['second-note'] },
+			{ pid: first.id, syncKey: first.syncKey, noteIds: ['first-note'] }
+		]);
+	});
+
+	it('keeps the activated profile usable while surfacing a failed post-switch sync', async () => {
+		const first = keyringEntry(createSyncIdentity().syncKey, 'First', 1);
+		const second = keyringEntry(createSyncIdentity().syncKey, 'Second', 2);
+		syncStore.profiles = [first, second];
+		syncStore.account = identityFromSyncKey(first.syncKey);
+		vi.mocked(notesStore.syncWithCloudManual).mockImplementation(async () => {
+			syncStore.lastError = 'Relay unavailable';
+			return false;
+		});
+
+		const result = await profileCoordinator.switchTo(second.id);
+
+		expect(result).toEqual({ success: true, error: 'Relay unavailable' });
+		expect(syncStore.activeProfile?.id).toBe(second.id);
+		expect(profileCoordinator.switching).toBe(false);
+	});
+
 	it('starts a freshly created key with no notes while the previous dataset stays in place', async () => {
 		vi.stubGlobal(
 			'fetch',

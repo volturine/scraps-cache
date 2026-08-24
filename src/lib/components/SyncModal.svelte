@@ -117,11 +117,8 @@
 			return;
 		}
 		mode = 'linked';
-		syncing = true;
-		const ok = await notesStore.syncWithCloudManual();
-		syncing = false;
-		if (!ok)
-			error = friendlyError(syncStore.lastError, 'Created, but the first sync did not finish');
+		if (result.error)
+			error = friendlyError(result.error, 'Created, but the first sync did not finish');
 	}
 
 	async function beginLink() {
@@ -281,7 +278,11 @@
 		}
 		mode = 'linked';
 		const name = syncStore.activeProfile?.name ?? 'sync key';
-		info = `Switched to ${name}. Syncing…`;
+		if (result.error) {
+			error = friendlyError(result.error, 'Switched profiles, but sync did not finish');
+			return;
+		}
+		info = `Switched to ${name}.`;
 	}
 
 	async function removeProfile(id: string) {

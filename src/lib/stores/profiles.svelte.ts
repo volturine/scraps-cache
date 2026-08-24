@@ -64,8 +64,16 @@ export class ProfileCoordinator {
 			if (!created.success) return created;
 			// Manual sync acquires the same non-reentrant web lock, so it must
 			// start after the namespace handover releases that lock.
-			await notesStore.syncWithCloudManual();
-			return { success: true };
+			const synced = await notesStore.syncWithCloudManual();
+			return synced
+				? { success: true }
+				: {
+						success: true,
+						error:
+							syncStore.lastError ??
+							notesStore.lastPersistError ??
+							'Created, but the first sync did not finish'
+					};
 		} catch (err) {
 			return {
 				success: false,
@@ -90,7 +98,17 @@ export class ProfileCoordinator {
 				await this.activate(target);
 				return true;
 			});
-			if (changed) await notesStore.syncWithCloudManual();
+			if (changed) {
+				const synced = await notesStore.syncWithCloudManual();
+				if (!synced)
+					return {
+						success: true,
+						error:
+							syncStore.lastError ??
+							notesStore.lastPersistError ??
+							'Switched profiles, but sync did not finish'
+					};
+			}
 			return { success: true };
 		} catch (err) {
 			return {
