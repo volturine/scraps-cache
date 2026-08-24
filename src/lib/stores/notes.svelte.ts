@@ -215,7 +215,16 @@ export class NotesStore {
 		const load = hydrateNoteAttachments(profileId, source)
 			.then((hydrated) => {
 				if (this.pid !== profileId) return;
-				this.attachmentHydrationFailures.delete(noteId);
+				const missingBytes = (hydrated.images ?? []).some((image) => !image.dataUrl);
+				if (missingBytes) {
+					this.attachmentHydrationFailures.add(noteId);
+					this.recordPersistenceError(
+						`Could not load attachments for note ${noteId}`,
+						new Error('Attachment bytes are missing from device storage')
+					);
+				} else {
+					this.attachmentHydrationFailures.delete(noteId);
+				}
 				const index = this.notes.findIndex((note) => note.id === noteId);
 				if (index === -1) return;
 				const current = this.notes[index];
@@ -834,9 +843,8 @@ export class NotesStore {
 			const leftover = synced ? await getSyncOutboxKeys(this.pid).catch(() => []) : [];
 			if (synced && leftover.length === 0) {
 				this.dirty = false;
-			} else if (this.dirty || leftover.length > 0) {
+			} else {
 				this.dirty = true;
-				this.scheduleSyncPush();
 			}
 			return synced;
 		});
@@ -1079,7 +1087,7 @@ export class NotesStore {
 
 	// Manual sync — caller shows UI feedback (spinning cloud icon).
 	async syncWithCloudManual(): Promise<boolean> {
-		return this.queueSync(true);
+		return this.flushSync(true);
 	}
 
 	// Auto sync — silent, no UI feedback. Opportunistic pulls (boot, editor
@@ -1140,6 +1148,8 @@ export class NotesStore {
 		// Integrity verification hashes every current attachment. Read all bytes from
 		// IndexedDB before taking the sync snapshot; failures remain visible and retry.
 		await this.hydrateAllAttachments();
+		const recoveringAttachments = this.attachmentHydrationFailures.size > 0;
+		if (recoveringAttachments) await syncStore.rewindCursorForAttachmentRecovery();
 		const localNotes = this.notes.map(cloneNote);
 		const localLabels = [...this.labels];
 		try {
@@ -1162,12 +1172,13 @@ export class NotesStore {
 				await this.hydrateAllAttachments();
 				return this.doSyncLocked(indicate);
 			}
+			if (recoveringAttachments) await this.hydrateAllAttachments();
 			// A photo that failed to load has no payload to upload: the sync is
 			// only partial. Keep the warning visible until the retry succeeds so
 			// "synced" never hides an unsynced photo.
 			if (this.attachmentHydrationFailures.size > 0) {
 				syncStore.lastError =
-					'Synced, but some photos could not be prepared for upload. They will retry automatically.';
+					'Synced, but some photos could not be prepared for upload. They will retry on the next sync.';
 			} else if (!syncStore.lastError) {
 				this.lastPersistError = null;
 			}

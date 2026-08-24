@@ -45,6 +45,7 @@ import {
 	getSyncState,
 	markSyncOutbox,
 	namespaceHasData,
+	setSyncState,
 	unlinkProfileToNamespace,
 	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
@@ -1224,6 +1225,12 @@ export class SyncStore {
 			() => undefined
 		);
 		return Number.isSafeInteger(cursor) && Number(cursor) >= 0 ? Number(cursor) : null;
+	}
+
+	/** Replay this account when local attachment metadata has lost its blob. */
+	async rewindCursorForAttachmentRecovery(): Promise<void> {
+		if (!this.account) return;
+		await setSyncState(syncControlKeys(this.account.accountId).cursor, 0);
 	}
 
 	async clearAccountControlPlane(accountId: string): Promise<void> {
