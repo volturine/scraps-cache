@@ -73,7 +73,7 @@ export class ReminderStore {
 			tickAppClock();
 			this.scan();
 			this.arm();
-			void registerReminderDevice();
+			void registerReminderDevice(true);
 		}, 60_000);
 		const onWake = () => {
 			if (document.visibilityState === 'hidden') return;
@@ -81,7 +81,7 @@ export class ReminderStore {
 				tickAppClock();
 				this.scan();
 				this.arm();
-				void registerReminderDevice();
+				void registerReminderDevice(true);
 			});
 		};
 		document.addEventListener('visibilitychange', onWake);

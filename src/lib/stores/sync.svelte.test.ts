@@ -8,7 +8,8 @@ import {
 	type SyncIdentity
 } from '$lib/syncPairing';
 import { syncControlKeys } from '$lib/syncEngine';
-import { recordTag, sha256 } from '$lib/syncHash';
+import { EMPTY_TAG_DIGEST, recordTag, sha256, tagContribution, xorHex } from '$lib/syncHash';
+import { buildSyncRecords } from '$lib/syncRecords';
 import * as idb from '$lib/db/idb';
 import { SyncStore, type SyncSnapshot } from './sync.svelte';
 
@@ -37,6 +38,7 @@ type RelayData = {
 		envelopeCount: number;
 		maxBytes: number;
 		maxEnvelopes: number;
+		tagDigest?: string;
 	};
 };
 
@@ -492,6 +494,39 @@ describe('client sync state machine', () => {
 		});
 	});
 
+	it('uses a matching bundle digest without a second delta or detailed verification', async () => {
+		const local = note('note-1');
+		const record = (await buildSyncRecords([local], [], [], {}, {}, {}, undefined))[0];
+		const fingerprint = record.fingerprint;
+		let digest = EMPTY_TAG_DIGEST;
+		const { store, account, requests } = createHarness(() => ({
+			success: true,
+			data: emptyData({
+				cursor: 1,
+				usage: {
+					ciphertextBytes: 1,
+					envelopeCount: 1,
+					maxBytes: 1000,
+					maxEnvelopes: 50,
+					tagDigest: digest
+				}
+			})
+		}));
+		const accountTag = await recordTag(account.syncKey, record.payload);
+		digest = xorHex(EMPTY_TAG_DIGEST, tagContribution(accountTag));
+		vi.spyOn(store, 'fetchServerSlots');
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': fingerprint },
+			recordIds: { 'note:note-1': 'relay-id' }
+		});
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests).toHaveLength(1);
+		expect(store.fetchServerSlots).not.toHaveBeenCalled();
+	});
+
 	it('deletes unexpected relay slots during exact integrity repair', async () => {
 		const { store, requests } = createHarness(() => ({
 			success: true,
@@ -625,11 +660,14 @@ describe('client sync state machine', () => {
 		expect(reset.success, reset.error).toBe(true);
 		expect(store.consumeCurrentStateBootstrapRequest()).toBe(true);
 		expect(requests[0].envelopes).toEqual([]);
-		expect(requests[2].envelopes).toEqual([]);
+		const resetRequestCount = requests.length;
+		expect(resetRequestCount).toBe(2);
 
 		const rebuilt = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 		expect(rebuilt.success, rebuilt.error).toBe(true);
-		const rebuiltUploads = requests.slice(4).flatMap((request) => request.envelopes);
+		const rebuiltUploads = requests
+			.slice(resetRequestCount)
+			.flatMap((request) => request.envelopes);
 		expect(rebuiltUploads).toHaveLength(2);
 		expect(rebuiltUploads.every((item) => item.expectedId === null)).toBe(true);
 	});

@@ -67,6 +67,8 @@ describe('auto sync staleness window', () => {
 		clock.mockReturnValue(now + 30_000);
 		await notesStore.syncWithCloud();
 
-		expect(requests.length).toBe(4);
+		// The first bootstrap uses pull + upload rounds; an unchanged established
+		// account needs only the single pull round.
+		expect(requests.length).toBe(3);
 	});
 });

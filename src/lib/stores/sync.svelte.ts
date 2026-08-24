@@ -24,7 +24,7 @@ import {
 	type SyncRecord,
 	type SyncRecordPayload
 } from '$lib/syncRecords';
-import { recordTag, sha256 } from '$lib/syncHash';
+import { EMPTY_TAG_DIGEST, recordTag, sha256, tagContribution, xorHex } from '$lib/syncHash';
 import {
 	createOneTimePairingCode,
 	createPairingRequestKey,
@@ -633,6 +633,7 @@ export class SyncStore {
 			let stalledWrites = 0;
 			let integrityBackfillDone = false;
 			let integrityVerificationIncomplete = false;
+			let serverTagDigest: string | null = null;
 			const integrityDeletes = new Map<string, { id: string; slot: string; key?: string }>();
 			while (hasMore) {
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
@@ -805,6 +806,10 @@ export class SyncStore {
 						].every((value) => typeof value === 'number' && Number.isFinite(value))
 					) {
 						this.usage = candidate as SyncUsage;
+						serverTagDigest =
+							typeof candidate.tagDigest === 'string' && /^[a-f0-9]{64}$/.test(candidate.tagDigest)
+								? candidate.tagDigest
+								: null;
 					}
 				}
 				const writesAccepted = response.data.writesAccepted === true;
@@ -1055,9 +1060,12 @@ export class SyncStore {
 					}
 				}
 
+				const pendingOutboxUpload = [...outboxKeys].some(
+					(key) => !acknowledgedOutbox.has(key) && !quotaBlockedKeys.has(key)
+				);
 				const remainingUploads =
 					!pullOnly &&
-					(!startedWithDownloadsDrained ||
+					((!startedWithDownloadsDrained && (firstFullUpload || pendingOutboxUpload)) ||
 						(!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) ||
 						changed.filter((record) => !quotaBlockedKeys.has(record.key)).length > outgoing.length);
 				const pendingDeletes =
@@ -1080,11 +1088,50 @@ export class SyncStore {
 
 				// Integrity handshake: the local ledger ("what the relay already has")
 				// can drift from reality — wiped relays, deleted accounts, lost upload
-				// queues, restored backups. Compare exact content tags: every current
-				// record's tag is recomputed from its payload, so both missing records
-				// and stale-in-place versions are detected and re-queued. One repair
-				// attempt per sync keeps a bad state from looping.
-				if (downloadsDrained && !pullOnly && !integrityBackfillDone && !syncCancelled()) {
+				// queues, restored backups. The normal path compares the relay's bundled
+				// keyed digest with one recomputed from local payloads. Only a mismatch
+				// downloads the exact slot map needed for repair.
+				if (
+					downloadsDrained &&
+					!pullOnly &&
+					!hasMore &&
+					!integrityBackfillDone &&
+					!syncCancelled()
+				) {
+					const integrityRecords = await buildSyncRecords(
+						mergedNotes,
+						mergedLabels,
+						mergedBoards,
+						appliedTombstoneMaps.notes,
+						appliedTombstoneMaps.labels,
+						appliedTombstoneMaps.boards,
+						undefined
+					);
+					const expectedTags = new Map<string, string>();
+					const expectedSlots = new Map<string, string>();
+					let expectedTagDigest = EMPTY_TAG_DIGEST;
+					for (const record of integrityRecords) {
+						const slot = await sha256(`${account.syncKey}\u0000${record.key}`);
+						const tag = await recordTag(account.syncKey, record.payload);
+						expectedTags.set(slot, tag);
+						expectedSlots.set(slot, record.key);
+						expectedTagDigest = xorHex(expectedTagDigest, tagContribution(tag));
+					}
+					if (this.activeProfile) {
+						const metaPayload = {
+							kind: 'profile-meta' as const,
+							value: { name: this.activeProfile.name }
+						};
+						const metaSlot = await sha256(`${account.syncKey}\u0000${PROFILE_META_KEY}`);
+						const metaTag = await recordTag(account.syncKey, metaPayload);
+						expectedSlots.set(metaSlot, PROFILE_META_KEY);
+						expectedTags.set(metaSlot, metaTag);
+						expectedTagDigest = xorHex(expectedTagDigest, tagContribution(metaTag));
+					}
+					if (serverTagDigest === expectedTagDigest) {
+						integrityBackfillDone = true;
+						continue;
+					}
 					const verification = await this.fetchServerSlots();
 					if (verification && verification.cursor > cursor) {
 						// Another device wrote after this pull drained. Catch up before
@@ -1097,21 +1144,6 @@ export class SyncStore {
 						const serverSlotTags = verification.slots;
 						// Full enumeration: every local record is tagged and every relay
 						// slot must correspond to current local state.
-						const expectedTags = new Map<string, string>();
-						const expectedSlots = new Map<string, string>();
-						for (const record of await buildSyncRecords(
-							mergedNotes,
-							mergedLabels,
-							mergedBoards,
-							appliedTombstoneMaps.notes,
-							appliedTombstoneMaps.labels,
-							appliedTombstoneMaps.boards,
-							undefined
-						)) {
-							const slot = await sha256(`${account.syncKey}\u0000${record.key}`);
-							expectedTags.set(slot, await recordTag(account.syncKey, record.payload));
-							expectedSlots.set(slot, record.key);
-						}
 						const expectedCurrentKeys = currentRecordKeys(
 							mergedNotes,
 							mergedLabels,
@@ -1122,14 +1154,6 @@ export class SyncStore {
 						for (const key of expectedCurrentKeys) {
 							const slot = await sha256(`${account.syncKey}\u0000${key}`);
 							expectedSlots.set(slot, key);
-						}
-						if (this.activeProfile) {
-							const metaPayload = {
-								kind: 'profile-meta' as const,
-								value: { name: this.activeProfile.name }
-							};
-							const metaSlot = await sha256(`${account.syncKey}\u0000${PROFILE_META_KEY}`);
-							expectedTags.set(metaSlot, await recordTag(account.syncKey, metaPayload));
 						}
 						const repairKeys: string[] = [];
 						for (const [slot, key] of expectedSlots) {
@@ -1172,7 +1196,7 @@ export class SyncStore {
 				this.lastError = 'Some records exceed the account storage quota';
 			} else if (integrityVerificationIncomplete) {
 				this.lastError =
-					'Synced, but relay integrity verification could not complete. It will retry automatically.';
+					'Synced, but relay integrity verification could not complete. It will retry on the next sync.';
 			} else {
 				this.lastError = null;
 			}
