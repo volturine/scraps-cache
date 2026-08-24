@@ -210,9 +210,11 @@ export class NotesStore {
 		const pending = this.attachmentLoads.get(noteId);
 		if (pending) return pending;
 
+		const profileId = this.pid;
 		const source = cloneNote(existing);
-		const load = hydrateNoteAttachments(this.pid, source)
+		const load = hydrateNoteAttachments(profileId, source)
 			.then((hydrated) => {
+				if (this.pid !== profileId) return;
 				this.attachmentHydrationFailures.delete(noteId);
 				const index = this.notes.findIndex((note) => note.id === noteId);
 				if (index === -1) return;
@@ -223,6 +225,7 @@ export class NotesStore {
 				}
 			})
 			.catch((err) => {
+				if (this.pid !== profileId) return;
 				this.attachmentHydrationFailures.add(noteId);
 				this.recordPersistenceError(`Could not load attachments for note ${noteId}`, err);
 			});
@@ -678,12 +681,17 @@ export class NotesStore {
 	 * to the previous profile and reloads from storage.
 	 */
 	async reloadForProfile(): Promise<void> {
+		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
+		this.syncPushTimer = null;
 		for (const timer of this.noteRetryTimers.values()) clearTimeout(timer);
 		this.noteRetryTimers.clear();
 		this.noteRetryAttempts.clear();
 		this.attachmentLoads.clear();
+		this.attachmentHydrationFailures.clear();
+		this.visibleAttachmentQueue.clear();
 		this.syncFollowupRequested = false;
 		this.dirty = false;
+		this.lastPersistError = null;
 		resetTombstoneCaches();
 		this.loaded = false;
 		await this.init();
@@ -748,7 +756,7 @@ export class NotesStore {
 	private noteRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private noteRetryAttempts = new Map<string, number>();
 	private dirty = false;
-	private syncFlight: Promise<boolean> | null = null;
+	private syncFlight = $state.raw<Promise<boolean> | null>(null);
 	private syncFollowupRequested = false;
 
 	private scheduleNoteRetry(id: string): void {

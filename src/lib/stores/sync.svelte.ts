@@ -275,10 +275,8 @@ export class SyncStore {
 		const profile = this.profiles.find((entry) => entry.id === id);
 		if (!profile || !trimmed || profile.name === trimmed) return profile ?? null;
 		const updated = { ...profile, name: trimmed };
+		await saveProfile(updated);
 		this.profiles = this.profiles.map((entry) => (entry.id === id ? updated : entry));
-		await saveProfile(updated).catch((err) =>
-			console.error('[sync] could not rename profile:', err)
-		);
 		// The name travels inside its own account's encrypted records so every
 		// device holding this sync key converges on one local label. Inactive
 		// keys get their namespace's outbox marked so the upload happens on the

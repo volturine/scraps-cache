@@ -25,4 +25,27 @@ describe('AttachmentHydrationQueue', () => {
 		await Promise.resolve();
 		expect(started).toEqual(['a', 'b', 'c']);
 	});
+
+	it('drops queued work when the active dataset changes', async () => {
+		const started: string[] = [];
+		let release!: () => void;
+		const queue = new AttachmentHydrationQueue(
+			(id) =>
+				new Promise<void>((resolve) => {
+					started.push(id);
+					release = resolve;
+				}),
+			1
+		);
+
+		queue.enqueue('old-running');
+		queue.enqueue('old-queued');
+		queue.clear();
+		queue.enqueue('old-running');
+		release();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(started).toEqual(['old-running', 'old-running']);
+	});
 });

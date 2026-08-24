@@ -6,7 +6,7 @@
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { buildProfileNotesExport } from '$lib/profiles';
-	import { estimateProfileBytes, pruneOrphanImageBlobs } from '$lib/db/idb';
+	import { estimateProfileBytes } from '$lib/db/idb';
 	import { unregisterReminderDevice } from '$lib/reminderWake';
 	import { downloadJSON } from '$lib/utils';
 	import { Cloud, Download, Pencil, Trash2, X } from '@lucide/svelte';
@@ -19,13 +19,24 @@
 	let code = $state('');
 	let error = $state('');
 	let info = $state('');
-	let loading = $state(false);
-	let syncing = $state(false);
+	type Operation =
+		| 'create'
+		| 'connect'
+		| 'export'
+		| 'pair'
+		| 'choose'
+		| 'rename'
+		| 'remove'
+		| 'sync'
+		| 'switch'
+		| 'unlink'
+		| 'delete';
+	let operation = $state<Operation | null>(null);
 	let copyFlash = $state(false);
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
-	let timer: ReturnType<typeof setInterval> | null = null;
+	let timer: ReturnType<typeof setTimeout> | null = null;
 	let deleteConfirm = $state(false);
 	let newName = $state('');
 	let editingId = $state<string | null>(null);
@@ -33,6 +44,8 @@
 	let removingId = $state<string | null>(null);
 
 	// A running sync must finish before a dataset handover can start.
+	const syncing = $derived(operation === 'sync' || operation === 'choose' || notesStore.syncing);
+	const busy = $derived(operation !== null || notesStore.syncing || profileCoordinator.switching);
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 
 	// Approximate on-device footprint per saved key. Recomputed after each
@@ -41,19 +54,39 @@
 	$effect(() => {
 		void syncStore.lastSync;
 		const ids = syncStore.profiles.map((profile) => profile.id);
+		let cancelled = false;
 		void Promise.all(
 			ids.map(async (id) => {
-				await pruneOrphanImageBlobs(id).catch(() => undefined);
 				return [id, await estimateProfileBytes(id).catch(() => 0)] as const;
 			})
 		).then((entries) => {
-			sizes = Object.fromEntries(entries);
+			if (!cancelled) sizes = Object.fromEntries(entries);
 		});
+		return () => {
+			cancelled = true;
+		};
 	});
+
+	async function runOperation<T>(
+		kind: Operation,
+		fallback: string,
+		run: () => Promise<T>
+	): Promise<T | undefined> {
+		if (busy) return undefined;
+		operation = kind;
+		try {
+			return await run();
+		} catch (err) {
+			error = friendlyError(err instanceof Error ? err.message : null, fallback);
+			return undefined;
+		} finally {
+			if (operation === kind) operation = null;
+		}
+	}
 
 	async function exportProfile(id: string) {
 		error = '';
-		try {
+		await runOperation('export', 'Could not export that sync key\u2019s notes.', async () => {
 			const name = syncStore.profiles.find((profile) => profile.id === id)?.name ?? 'profile';
 			const backup = await buildProfileNotesExport(id);
 			if (!backup) {
@@ -66,9 +99,7 @@
 					.toISOString()
 					.slice(0, 10)}.scraps-cache-backup`
 			);
-		} catch {
-			error = 'Could not export that sync key\u2019s notes.';
-		}
+		});
 	}
 
 	function sizeLabel(id: string): string {
@@ -80,8 +111,16 @@
 	}
 
 	function stopWaiting() {
-		if (timer) clearInterval(timer);
+		if (timer) clearTimeout(timer);
 		timer = null;
+	}
+
+	function schedulePoll(active: StartedDeviceLink) {
+		stopWaiting();
+		timer = setTimeout(() => {
+			timer = null;
+			void pollLink(active);
+		}, 1500);
 	}
 	onDestroy(() => {
 		stopWaiting();
@@ -105,17 +144,18 @@
 	}
 
 	async function create() {
-		loading = true;
 		error = '';
 		info = '';
 		const name = newName;
-		newName = '';
-		const result = await profileCoordinator.create(name);
-		loading = false;
+		const result = await runOperation('create', 'Could not create sync', () =>
+			profileCoordinator.create(name)
+		);
+		if (!result) return;
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not create sync');
 			return;
 		}
+		newName = '';
 		mode = 'linked';
 		if (result.error)
 			error = friendlyError(result.error, 'Created, but the first sync did not finish');
@@ -127,11 +167,12 @@
 			error = 'Enter the full one-time code';
 			return;
 		}
-		loading = true;
 		error = '';
 		info = '';
-		const result = await syncStore.startDeviceLink(normalized);
-		loading = false;
+		const result = await runOperation('connect', 'Could not start connection', () =>
+			syncStore.startDeviceLink(normalized)
+		);
+		if (!result) return;
 		if (!result.success || !result.link) {
 			error = friendlyError(result.error, 'Could not start connection');
 			return;
@@ -139,19 +180,27 @@
 		waiting = result.link;
 		now = Date.now();
 		mode = 'waiting';
-		stopWaiting();
-		timer = setInterval(() => {
-			void pollLink();
-		}, 1500);
-		void pollLink();
+		void pollLink(result.link);
 	}
 
-	async function pollLink() {
-		if (!waiting) return;
+	async function pollLink(active: StartedDeviceLink) {
+		if (waiting?.id !== active.id) return;
 		now = Date.now();
-		const active = waiting;
-		const result = await syncStore.pollDeviceLink(active);
-		if (waiting !== active) return;
+		let result;
+		try {
+			result = await syncStore.pollDeviceLink(active);
+		} catch (err) {
+			if (waiting?.id !== active.id) return;
+			stopWaiting();
+			waiting = null;
+			mode = active.role === 'existing' ? 'linked' : 'link';
+			error = friendlyError(
+				err instanceof Error ? err.message : null,
+				'Could not check the connection. Try again.'
+			);
+			return;
+		}
+		if (waiting?.id !== active.id) return;
 		if (result.linked) {
 			const wasExisting = active.role === 'existing';
 			stopWaiting();
@@ -162,9 +211,10 @@
 				error = '';
 				return;
 			}
-			loading = true;
-			const adopted = await profileCoordinator.receiveLinkedKey(result.receivedSyncKey ?? '');
-			loading = false;
+			const adopted = await runOperation('pair', 'Could not set up the received sync key', () =>
+				profileCoordinator.receiveLinkedKey(result.receivedSyncKey ?? '')
+			);
+			if (!adopted) return;
 			if (adopted.error || !result.receivedSyncKey) {
 				mode = syncStore.isLoggedIn ? 'linked' : 'link';
 				error = friendlyError(
@@ -179,7 +229,7 @@
 				info = '';
 			} else {
 				mode = 'linked';
-				info = 'Paired. Downloading synced notes…';
+				info = 'Paired and synced.';
 				error = '';
 			}
 			return;
@@ -189,15 +239,18 @@
 			waiting = null;
 			mode = active.role === 'existing' ? 'linked' : 'link';
 			error = friendlyError(result.error, 'Connection timed out. Try again on both devices.');
+			return;
 		}
+		schedulePoll(active);
 	}
 
 	async function startExistingConnection() {
-		loading = true;
 		error = '';
 		info = '';
-		const result = await syncStore.startExistingDeviceLink();
-		loading = false;
+		const result = await runOperation('connect', 'Could not start connection', () =>
+			syncStore.startExistingDeviceLink()
+		);
+		if (!result) return;
 		if (!result.success || !result.link) {
 			error = friendlyError(result.error, 'Could not start connection');
 			return;
@@ -205,20 +258,13 @@
 		waiting = result.link;
 		now = Date.now();
 		mode = 'waiting';
-		stopWaiting();
-		timer = setInterval(() => {
-			void pollLink();
-		}, 1500);
-		void pollLink();
+		void pollLink(result.link);
 	}
 
 	async function choose(merge: boolean) {
-		if (loading || syncing) return;
-		loading = true;
-		syncing = true;
 		error = '';
 		info = merge ? 'Merging notes…' : 'Downloading synced notes…';
-		try {
+		const completed = await runOperation('choose', 'Could not finish setup', async () => {
 			const success = merge
 				? await notesStore.mergeWithCloudManual()
 				: await notesStore.replaceWithCloudManual();
@@ -226,13 +272,13 @@
 				mode = 'linked';
 				info = merge ? 'Notes merged.' : 'Notes replaced from sync.';
 				error = '';
-				return;
+				return true;
 			}
 			const unlinked = await syncStore.logout();
 			if (!unlinked.success) {
 				error = friendlyError(unlinked.error, 'Could not preserve local notes while unlinking');
 				info = '';
-				return;
+				return false;
 			}
 			error = friendlyError(
 				syncStore.lastError || notesStore.lastPersistError,
@@ -241,10 +287,9 @@
 			info = '';
 			// Stay on choice so the user can retry without re-linking.
 			if (!merge && !syncStore.isLoggedIn) mode = 'link';
-		} finally {
-			loading = false;
-			syncing = false;
-		}
+			return false;
+		});
+		if (completed === undefined) info = '';
 	}
 
 	function startRename(id: string, current: string) {
@@ -261,17 +306,20 @@
 	async function saveRename() {
 		const id = editingId;
 		if (!id || !editName.trim()) return;
-		await syncStore.renameProfile(id, editName);
-		cancelEdit();
+		error = '';
+		const renamed = await runOperation('rename', 'Could not rename that sync key', () =>
+			syncStore.renameProfile(id, editName)
+		);
+		if (renamed) cancelEdit();
 	}
 
 	async function switchProfile(id: string) {
-		if (profileCoordinator.switching) return;
 		error = '';
 		info = '';
-		loading = true;
-		const result = await profileCoordinator.switchTo(id);
-		loading = false;
+		const result = await runOperation('switch', 'Could not switch sync key', () =>
+			profileCoordinator.switchTo(id)
+		);
+		if (!result) return;
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not switch sync key');
 			return;
@@ -286,10 +334,12 @@
 	}
 
 	async function removeProfile(id: string) {
-		if (profileCoordinator.switching) return;
 		error = '';
-		const removed = await syncStore.removeProfile(id);
-		if (!removed) error = 'Could not remove that sync key.';
+		const removed = await runOperation('remove', 'Could not remove that sync key', () =>
+			syncStore.removeProfile(id)
+		);
+		if (removed) removingId = null;
+		else if (removed === false) error = 'Could not remove that sync key.';
 	}
 
 	function formatBytes(bytes: number): string {
@@ -303,12 +353,12 @@
 	}
 
 	async function syncNow() {
-		if (syncing) return;
-		syncing = true;
 		error = '';
 		info = '';
-		const success = await notesStore.syncWithCloudManual();
-		syncing = false;
+		const success = await runOperation('sync', 'Sync failed', () =>
+			notesStore.syncWithCloudManual()
+		);
+		if (success === undefined) return;
 		if (!success) {
 			error = friendlyError(syncStore.lastError, 'Sync failed');
 			return;
@@ -321,7 +371,11 @@
 
 	async function unlinkDevice() {
 		const account = syncStore.account;
-		const result = await syncStore.logout();
+		error = '';
+		const result = await runOperation('unlink', 'Could not unlink this device', () =>
+			syncStore.logout()
+		);
+		if (!result) return;
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not preserve local notes while unlinking');
 			return;
@@ -370,11 +424,12 @@
 	}
 
 	async function deleteCloudData() {
-		if (!deleteConfirm || loading) return;
-		loading = true;
+		if (!deleteConfirm) return;
 		error = '';
-		const result = await syncStore.deleteCloudAccount();
-		loading = false;
+		const result = await runOperation('delete', 'Could not delete synced data', () =>
+			syncStore.deleteCloudAccount()
+		);
+		if (!result) return;
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not delete synced data');
 			return;
@@ -399,6 +454,7 @@
 		code = formatPairingCode((event.currentTarget as HTMLInputElement).value);
 	}
 	function close() {
+		if (busy) return;
 		stopWaiting();
 		onClose();
 	}
@@ -413,6 +469,7 @@
 		type="button"
 		class="absolute inset-0 bg-black/40"
 		onclick={close}
+		disabled={busy}
 		aria-label="Close sync dialog"
 	></button>
 	<div
@@ -435,7 +492,13 @@
 					Sync
 				{/if}
 			</h2>
-			<button type="button" onclick={close} class="icon-btn h-8 w-8" aria-label="Close">
+			<button
+				type="button"
+				onclick={close}
+				disabled={busy}
+				class="icon-btn h-8 w-8"
+				aria-label="Close"
+			>
 				<X class="h-4 w-4" aria-hidden="true" />
 			</button>
 		</div>
@@ -476,14 +539,14 @@
 				<button
 					type="button"
 					onclick={() => void syncNow()}
-					disabled={loading || syncing}
+					disabled={busy}
 					class="scraps-cache-button scraps-cache-button-primary w-full px-3 py-2.5 text-sm font-medium"
-					>{syncing ? 'Syncing…' : '🔄 Sync now'}</button
+					>{operation === 'sync' || notesStore.syncing ? 'Syncing…' : '🔄 Sync now'}</button
 				>
 				<button
 					type="button"
 					onclick={() => void startExistingConnection()}
-					disabled={loading || syncing}
+					disabled={busy}
 					class="scraps-cache-button scraps-cache-button-secondary w-full px-3 py-2.5 text-sm"
 					>Connect another device</button
 				>
@@ -494,6 +557,7 @@
 						info = '';
 						mode = 'menu';
 					}}
+					disabled={busy}
 					class="w-full rounded-lg border border-[var(--scraps-cache-border)] px-3 py-2.5 text-sm touch-manipulation"
 					>Switch sync key</button
 				>
@@ -505,6 +569,7 @@
 				<button
 					type="button"
 					onclick={unlinkDevice}
+					disabled={busy}
 					class="scraps-cache-button scraps-cache-button-destructive w-full text-sm"
 					>Unlink this device</button
 				>
@@ -519,16 +584,16 @@
 								onclick={() => {
 									deleteConfirm = false;
 								}}
-								disabled={loading}
+								disabled={busy}
 								class="flex-1 rounded border border-[var(--scraps-cache-border)] px-2 py-1.5 text-xs"
 								>Cancel</button
 							>
 							<button
 								type="button"
 								onclick={() => void deleteCloudData()}
-								disabled={loading}
+								disabled={busy}
 								class="scraps-cache-button scraps-cache-button-destructive-solid flex-1 px-2 py-1.5 text-xs font-medium"
-								>{loading ? 'Deleting…' : 'Delete cloud data'}</button
+								>{operation === 'delete' ? 'Deleting…' : 'Delete cloud data'}</button
 							>
 						</div>
 					</div>
@@ -538,6 +603,7 @@
 						onclick={() => {
 							deleteConfirm = true;
 						}}
+						disabled={busy}
 						class="scraps-cache-button scraps-cache-button-destructive w-full text-xs"
 						>Delete cloud data</button
 					>
@@ -568,12 +634,14 @@
 									<button
 										type="button"
 										onclick={() => void saveRename()}
+										disabled={busy}
 										class="shrink-0 text-xs font-medium text-[var(--scraps-cache-primary)]"
 										>Save</button
 									>
 									<button
 										type="button"
 										onclick={cancelEdit}
+										disabled={busy}
 										class="shrink-0 text-xs text-[var(--scraps-cache-text-muted)]">Cancel</button
 									>
 								</div>
@@ -591,15 +659,16 @@
 											onclick={() => {
 												removingId = null;
 											}}
+											disabled={busy}
 											class="flex-1 rounded border border-[var(--scraps-cache-border)] px-2 py-1 text-xs"
 											>Keep</button
 										>
 										<button
 											type="button"
 											onclick={() => {
-												removingId = null;
 												void removeProfile(profile.id);
 											}}
+											disabled={busy}
 											class="scraps-cache-button scraps-cache-button-destructive-solid flex-1 px-2 py-1 text-xs font-medium"
 											>Remove</button
 										>
@@ -613,7 +682,7 @@
 									<button
 										type="button"
 										class="absolute inset-0 rounded-lg touch-manipulation disabled:cursor-not-allowed"
-										disabled={!active && handoverBlocked}
+										disabled={busy}
 										title={!active && notesStore.syncing
 											? 'Wait for the current sync to finish'
 											: undefined}
@@ -648,6 +717,7 @@
 									<button
 										type="button"
 										onclick={() => void exportProfile(profile.id)}
+										disabled={busy}
 										class="icon-btn relative z-10 h-7 w-7 shrink-0"
 										aria-label="Export notes of {profile.name}"
 									>
@@ -656,6 +726,7 @@
 									<button
 										type="button"
 										onclick={() => startRename(profile.id, profile.name)}
+										disabled={busy}
 										class="icon-btn relative z-10 h-7 w-7 shrink-0"
 										aria-label="Rename {profile.name}"
 									>
@@ -668,6 +739,7 @@
 												removingId = profile.id;
 												cancelEdit();
 											}}
+											disabled={busy}
 											class="icon-btn relative z-10 h-7 w-7 shrink-0"
 											aria-label="Remove {profile.name}"
 										>
@@ -688,7 +760,7 @@
 				</p>
 				<button
 					type="button"
-					disabled={handoverBlocked}
+					disabled={busy}
 					onclick={() => {
 						mode = 'register';
 						error = '';
@@ -703,6 +775,7 @@
 						error = '';
 						info = '';
 					}}
+					disabled={busy}
 					class="w-full rounded-lg border border-[var(--scraps-cache-border)] px-3 py-3 text-sm touch-manipulation"
 					>Connect to an existing sync</button
 				>
@@ -725,12 +798,13 @@
 				{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}<button
 					type="button"
 					onclick={() => void create()}
-					disabled={loading}
+					disabled={busy}
 					class="scraps-cache-button scraps-cache-button-primary w-full px-3 py-2 text-sm font-medium"
-					>{loading ? 'Creating…' : 'Create my sync key'}</button
+					>{operation === 'create' ? 'Creating…' : 'Create my sync key'}</button
 				><button
 					type="button"
 					onclick={() => (mode = 'menu')}
+					disabled={busy}
 					class="w-full text-xs text-[var(--scraps-cache-text-muted)] touch-manipulation"
 					>← Back</button
 				>
@@ -753,12 +827,13 @@
 				/>{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}<button
 					type="button"
 					onclick={() => void beginLink()}
-					disabled={loading}
+					disabled={busy}
 					class="scraps-cache-button scraps-cache-button-primary w-full px-3 py-2 text-sm font-medium"
-					>{loading ? 'Starting…' : 'Start connection'}</button
+					>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
 				><button
 					type="button"
 					onclick={() => (mode = 'menu')}
+					disabled={busy}
 					class="w-full text-xs text-[var(--scraps-cache-text-muted)] touch-manipulation"
 					>← Back</button
 				>
@@ -855,20 +930,20 @@
 							></div>
 						</div>
 					</div>
-				{:else if syncing || loading}
+				{:else if busy}
 					<p class="text-sm text-[var(--scraps-cache-text-muted)]">{info || 'Working…'}</p>
 				{/if}
 				<button
 					type="button"
 					onclick={() => void choose(true)}
-					disabled={loading || syncing}
+					disabled={busy}
 					class="scraps-cache-button scraps-cache-button-primary w-full px-3 py-3 text-left text-sm font-medium"
 					>Keep and merge local notes</button
 				>
 				<button
 					type="button"
 					onclick={() => void choose(false)}
-					disabled={loading || syncing}
+					disabled={busy}
 					class="scraps-cache-button scraps-cache-button-destructive w-full border border-[var(--scraps-cache-danger)] px-3 py-3 text-left text-sm font-medium"
 					>Discard local notes and download synced notes</button
 				>
