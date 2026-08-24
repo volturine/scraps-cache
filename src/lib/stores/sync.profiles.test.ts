@@ -13,7 +13,7 @@ import { loadProfiles, saveProfile } from '$lib/profiles';
 import type { StoredProfile } from '$lib/profiles';
 import type { Note } from '$lib/types';
 import { syncStore, SyncStore } from './sync.svelte';
-import { notesStore } from './notes.svelte';
+import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { profileCoordinator } from './profiles.svelte';
 
 function keyringEntry(syncKey: string, name: string, createdAt: number): StoredProfile {
@@ -292,6 +292,43 @@ describe('profile switching (namespaced)', () => {
 		const switched = await profileCoordinator.switchTo(second.id);
 		expect(switched.success, switched.error).toBe(true);
 		expect(syncStore.activeProfile?.id).toBe(second.id);
+	});
+
+	it('releases the web lock before syncing the activated profile', async () => {
+		const first = keyringEntry(createSyncIdentity().syncKey, 'First', 1);
+		const second = keyringEntry(createSyncIdentity().syncKey, 'Second', 2);
+		syncStore.profiles = [first, second];
+		syncStore.account = identityFromSyncKey(first.syncKey);
+		let held = false;
+		const request = vi.fn(async (_name: string, run: () => Promise<unknown>) => {
+			if (held) throw new Error('Web Lock requested recursively');
+			held = true;
+			try {
+				return await run();
+			} finally {
+				held = false;
+			}
+		});
+		Object.defineProperty(navigator, 'locks', { configurable: true, value: { request } });
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockImplementation(() =>
+			navigator.locks.request(SYNC_LOCK, async () => true)
+		);
+
+		try {
+			const switched = await profileCoordinator.switchTo(second.id);
+
+			expect(switched.success, switched.error).toBe(true);
+			expect(syncStore.activeProfile?.id).toBe(second.id);
+			expect(profileCoordinator.switching).toBe(false);
+
+			const switchedBack = await profileCoordinator.switchTo(first.id);
+			expect(switchedBack.success, switchedBack.error).toBe(true);
+			expect(syncStore.activeProfile?.id).toBe(first.id);
+			expect(profileCoordinator.switching).toBe(false);
+			expect(request).toHaveBeenCalledTimes(4);
+		} finally {
+			Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
+		}
 	});
 
 	it('starts a freshly created key with no notes while the previous dataset stays in place', async () => {

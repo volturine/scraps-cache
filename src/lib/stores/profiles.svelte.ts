@@ -51,7 +51,7 @@ export class ProfileCoordinator {
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			return await this.exclusive(async () => {
+			const created = await this.exclusive(async () => {
 				await syncStore.waitForOutboxWrites();
 				const result = await syncStore.register(name);
 				if (!result.success || !result.profile)
@@ -59,9 +59,13 @@ export class ProfileCoordinator {
 				// The very first key on a device adopts local no-account data so
 				// registering never looks like data loss; later keys start empty.
 				await this.activate(result.profile, { adoptLocal: !syncStore.activeProfile });
-				await notesStore.syncWithCloudManual();
 				return { success: true };
 			});
+			if (!created.success) return created;
+			// Manual sync acquires the same non-reentrant web lock, so it must
+			// start after the namespace handover releases that lock.
+			await notesStore.syncWithCloudManual();
+			return { success: true };
 		} catch (err) {
 			return {
 				success: false,
@@ -78,15 +82,16 @@ export class ProfileCoordinator {
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			return await this.exclusive(async () => {
+			const changed = await this.exclusive(async () => {
 				const target = syncStore.profiles.find((profile) => profile.id === profileId);
-				if (!target) return { success: false, error: 'That sync key is no longer on this device' };
-				if (target.id === syncStore.activeProfile?.id) return { success: true };
+				if (!target) throw new Error('That sync key is no longer on this device');
+				if (target.id === syncStore.activeProfile?.id) return false;
 				await syncStore.waitForOutboxWrites();
 				await this.activate(target);
-				await notesStore.syncWithCloudManual();
-				return { success: true };
+				return true;
 			});
+			if (changed) await notesStore.syncWithCloudManual();
+			return { success: true };
 		} catch (err) {
 			return {
 				success: false,
@@ -110,7 +115,11 @@ export class ProfileCoordinator {
 		if (blocked) return { outcome: 'choice', error: blocked };
 		this.switching = true;
 		try {
-			return await this.exclusive(async () => {
+			const activated: {
+				outcome: 'choice' | 'linked';
+				error?: string;
+				syncExisting?: boolean;
+			} = await this.exclusive(async () => {
 				await syncStore.waitForOutboxWrites();
 				let profile = profileForSyncKey(syncStore.profiles, syncKey);
 				// A key this device already holds keeps its namespace and any offline
@@ -134,9 +143,8 @@ export class ProfileCoordinator {
 					return { outcome: 'choice' };
 				}
 				await this.activate(profile);
-				const synced = existed
-					? await notesStore.syncWithCloudManual()
-					: await notesStore.replaceWithCloudManual();
+				if (existed) return { outcome: 'linked' as const, syncExisting: true };
+				const synced = await notesStore.replaceWithCloudManual();
 				if (!synced)
 					return {
 						outcome: 'choice',
@@ -144,6 +152,14 @@ export class ProfileCoordinator {
 					};
 				return { outcome: 'linked' };
 			});
+			if (!activated.syncExisting) return activated;
+			const synced = await notesStore.syncWithCloudManual();
+			if (!synced)
+				return {
+					outcome: 'choice',
+					error: syncStore.lastError ?? 'Could not sync the received profile'
+				};
+			return { outcome: 'linked' };
 		} catch (err) {
 			return {
 				outcome: 'choice',
