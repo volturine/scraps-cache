@@ -76,8 +76,33 @@ describe('SyncModal profile interactions', () => {
 		expect(button.textContent).toContain('Sync now');
 	});
 
+	it('shows syncing only for a sync started from the modal', async () => {
+		const manualSync = deferred<boolean>();
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValueOnce(manualSync.promise);
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		await fireEvent.click(screen.getByRole('button', { name: '🔄 Sync now' }));
+		expect(screen.getByRole('button', { name: 'Syncing…' })).toBeTruthy();
+		expect(screen.getByText('Syncing…', { selector: 'p' })).toBeTruthy();
+
+		manualSync.resolve(true);
+		await waitFor(() => expect(screen.getByRole('button', { name: '🔄 Sync now' })).toBeTruthy());
+	});
+
 	it('reacts when a store-owned sync starts and ends', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
+		const syncNow = screen.getByRole('button', { name: '🔄 Sync now' }) as HTMLButtonElement;
+
+		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = new Promise(
+			() => undefined
+		);
+		await tick();
+		expect(syncNow.disabled).toBe(true);
+		expect(syncNow.textContent).toContain('Sync now');
+		expect(screen.queryByText('Syncing…')).toBeNull();
+
+		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+		await tick();
 		await fireEvent.click(screen.getByRole('button', { name: 'Switch sync key' }));
 		const target = screen.getByRole('button', { name: 'Switch to Side' }) as HTMLButtonElement;
 

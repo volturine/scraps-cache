@@ -44,7 +44,10 @@
 	let removingId = $state<string | null>(null);
 
 	// A running sync must finish before a dataset handover can start.
-	const syncing = $derived(operation === 'sync' || operation === 'choose' || notesStore.syncing);
+	// Background pulls and outbox retries are intentionally silent. They still
+	// block a dataset handover, but only a sync started from this modal owns its
+	// visible "Syncing" state.
+	const syncing = $derived(operation === 'sync' || operation === 'choose');
 	const busy = $derived(operation !== null || notesStore.syncing || profileCoordinator.switching);
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 
@@ -541,7 +544,7 @@
 					onclick={() => void syncNow()}
 					disabled={busy}
 					class="scraps-cache-button scraps-cache-button-primary w-full px-3 py-2.5 text-sm font-medium"
-					>{operation === 'sync' || notesStore.syncing ? 'Syncing…' : '🔄 Sync now'}</button
+					>{operation === 'sync' ? 'Syncing…' : '🔄 Sync now'}</button
 				>
 				<button
 					type="button"
