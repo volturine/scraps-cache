@@ -487,13 +487,25 @@ export class SyncStore {
 	} {
 		return this.database.transaction(() => {
 			const account = this.database
-				.prepare('SELECT next_seq FROM accounts WHERE account_id = ?')
-				.get(accountId) as { next_seq: number } | undefined;
+				.prepare('SELECT next_seq, tag_digest FROM accounts WHERE account_id = ?')
+				.get(accountId) as { next_seq: number; tag_digest: string } | undefined;
 			const slots = (
 				this.database
 					.prepare('SELECT id, slot, tag FROM envelopes WHERE account_id = ? ORDER BY slot')
 					.all(accountId) as Array<{ id: string; slot: string; tag: string | null }>
 			).map((row) => ({ id: String(row.id), slot: String(row.slot), tag: row.tag ?? null }));
+			// Verification is the source-of-truth audit. Rebuild the cached bundle
+			// digest from the live envelope rows so historical counter drift heals
+			// itself after one detailed verification instead of repeating forever.
+			let tagDigest = EMPTY_TAG_DIGEST;
+			for (const { tag } of slots) {
+				if (tag) tagDigest = xorHex(tagDigest, tagContribution(tag));
+			}
+			if (account && account.tag_digest !== tagDigest) {
+				this.database
+					.prepare('UPDATE accounts SET tag_digest = ? WHERE account_id = ?')
+					.run(tagDigest, accountId);
+			}
 			return { cursor: account?.next_seq ?? 0, slots };
 		})();
 	}

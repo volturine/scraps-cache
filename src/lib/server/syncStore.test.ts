@@ -282,6 +282,34 @@ describe('SQLite sync store', () => {
 		);
 	});
 
+	it('repairs a drifted bundle digest during detailed slot verification', () => {
+		const { store, directory } = createStore();
+		store.createAccount('account', 'credential');
+		const uploaded = store.sync(
+			'account',
+			0,
+			[
+				{ id: 'note', slot: slot('a'), ciphertext: 'cipher-note', tag: slot('b') },
+				{ id: 'photo', slot: slot('c'), ciphertext: 'cipher-photo', tag: slot('d') }
+			],
+			[],
+			10
+		);
+		const expectedDigest = uploaded.usage.tagDigest;
+		const raw = new Database(join(directory, 'sync.sqlite'));
+		try {
+			raw
+				.prepare('UPDATE accounts SET tag_digest = ? WHERE account_id = ?')
+				.run(slot('f'), 'account');
+		} finally {
+			raw.close();
+		}
+
+		expect(store.sync('account', uploaded.cursor, [], [], 10).usage.tagDigest).toBe(slot('f'));
+		expect(store.listAccountSlotsWithTags('account').slots).toHaveLength(2);
+		expect(store.sync('account', uploaded.cursor, [], [], 10).usage.tagDigest).toBe(expectedDigest);
+	});
+
 	it('returns the current slot and rejects a stale conditional replacement', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
