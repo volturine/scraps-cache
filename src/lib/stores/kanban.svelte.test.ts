@@ -1,10 +1,13 @@
 const PID = 'device-local';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createKanbanBoard } from '$lib/kanban';
 import { loadBoardsFromDevice } from '$lib/syncTombstones';
+import { getSyncOutboxKeys } from '$lib/db/idb';
 import { KanbanStore } from './kanban.svelte';
 
 describe('kanban persist during sync', () => {
+	beforeEach(() => localStorage.clear());
+
 	it('writes $state boards to IndexedDB without throwing DataCloneError', async () => {
 		const store = new KanbanStore();
 		await expect(store.persistSyncState(PID)).resolves.toBeUndefined();
@@ -20,15 +23,34 @@ describe('kanban persist during sync', () => {
 		expect(() => structuredClone(stored)).not.toThrow();
 	});
 
-	it('keeps a newer localStorage board over a stale IndexedDB copy', async () => {
+	it('loads only the target profile boards instead of merging in-memory boards', async () => {
 		const store = new KanbanStore();
-		const base = store.boardsForSync()[0];
-		store.boards = [{ ...base, name: 'stale', updatedAt: 1 }];
+		const first = createKanbanBoard('First profile');
+		const second = createKanbanBoard('Second profile');
+		store.boards = [first];
+		await store.persistSyncState('first-profile', [`board:${first.id}`]);
+		store.boards = [second];
+		await store.persistSyncState('second-profile', [`board:${second.id}`]);
+
+		store.boards = [first];
+		await store.hydrateFromDevice('second-profile');
+
+		expect(store.boards.map((board) => board.name)).toEqual(['Second profile']);
+		expect(await getSyncOutboxKeys('second-profile')).toEqual([`board:${second.id}`]);
+	});
+
+	it('does not create or queue another board when reloading an existing namespace', async () => {
+		const store = new KanbanStore();
+		const existing = createKanbanBoard('Existing');
 		await store.persistSyncState(PID);
-		store.boards = [{ ...base, name: 'from-ls', updatedAt: 2 }];
+		store.boards = [existing];
+		await store.persistSyncState(PID);
+
 		await store.hydrateFromDevice(PID);
-		expect(store.boards[0]?.name).toBe('from-ls');
-		expect((await loadBoardsFromDevice(PID, store.boardsForSync()))[0]?.name).toBe('from-ls');
+		await store.hydrateFromDevice(PID);
+
+		expect(store.boards.map((board) => board.id)).toEqual([existing.id]);
+		expect(await getSyncOutboxKeys(PID)).toEqual([]);
 	});
 });
 

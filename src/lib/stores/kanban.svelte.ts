@@ -75,43 +75,28 @@ export class KanbanStore {
 
 	constructor() {
 		this.activeBoardId = this.boards[0].id;
-
-		$effect.root(() => {
-			$effect(() => {
-				// Touch the reactive fields so board edits re-persist their namespace.
-				void this.boards;
-				void this.boardTombstones;
-				const write = this.pendingDeviceWrites.then(() =>
-					this.persistSyncState(syncStore.activePid)
-				);
-				this.pendingDeviceWrites = write.catch(() => undefined);
-			});
-		});
 	}
 
 	async hydrateFromDevice(
 		pid: string,
 		remoteTombstones: Record<string, number> = {}
 	): Promise<void> {
-		const fromMemory = this.boardsForSync();
-		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(pid, undefined);
-		const fromIdb = Array.isArray(stored) ? stored : [];
+		const stored = await loadBoardsFromDevice<unknown>(pid, undefined);
+		const fromIdb = normalizeBoards(stored);
 		const tombstones = { ...this.boardTombstones, ...remoteTombstones };
 		this.boardTombstones = tombstones;
-		this.boards = mergeKanbanBoards(fromMemory, fromIdb, tombstones);
+		// Memory belongs to whichever profile was active previously (or to the
+		// constructor placeholder). A namespace load must never merge it into the
+		// target profile or every reload/switch creates a new synced board.
+		this.boards = mergeKanbanBoards([], fromIdb, tombstones);
 		if (!this.boards.length) {
-			this.boards = [createKanbanBoard()];
+			const board = createKanbanBoard();
+			this.boards = [board];
+			await this.persistSyncState(pid, [`board:${board.id}`]);
+			syncStore.requestAutoSync([]);
 		}
 		if (!this.boards.some((board) => board.id === this.activeBoardId))
 			this.activeBoardId = this.boards[0].id;
-		const idbById = new Map(fromIdb.map((board) => [board.id, board]));
-		const recovered = this.boards.filter((board) => {
-			const current = idbById.get(board.id);
-			return !current || current.updatedAt < board.updatedAt;
-		});
-		if (recovered.length) {
-			this.requestSync(recovered.map((board) => `board:${board.id}`));
-		}
 	}
 
 	get activeBoard(): KanbanBoard {

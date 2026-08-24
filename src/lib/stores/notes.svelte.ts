@@ -1093,6 +1093,10 @@ export class NotesStore {
 	// Auto sync — silent, no UI feedback. Opportunistic pulls (boot, editor
 	// open) are throttled; pending local edits always sync via flushSync.
 	async syncWithCloud(): Promise<boolean> {
+		// Startup and foreground events can arrive together, especially on iOS.
+		// They all ask for the same opportunistic pull, so join the active flight.
+		// Durable edits request their own follow-up in scheduleSyncPush().
+		if (this.syncFlight) return this.syncFlight;
 		if (Date.now() - this.lastAutoSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return true;
 		const synced = await this.queueSync(false);
 		if (synced) this.lastAutoSyncAt = Date.now();
