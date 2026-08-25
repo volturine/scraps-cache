@@ -1,4 +1,6 @@
 <script lang="ts" generics="T extends string | number">
+	import { onMount } from 'svelte';
+
 	const ITEM_H = 36;
 	const VISIBLE = 5;
 
@@ -73,43 +75,46 @@
 		scheduleSettle();
 	}
 
-	function attachWheel(node: HTMLDivElement) {
-		el = node;
+	function setValue(next: T) {
+		if (next !== value) onChange(next);
+		snapTo(indexOf(next));
+	}
+
+	onMount(() => {
+		const node = el;
+		if (!node) return;
+		snapTo(valueIndex);
 		const onScroll = () => handleScroll();
 		const onEnd = () => settle();
 		node.addEventListener('scroll', onScroll);
 		node.addEventListener('scrollend', onEnd);
-		$effect(() => {
-			snapTo(valueIndex);
-		});
 		return () => {
 			node.removeEventListener('scroll', onScroll);
 			node.removeEventListener('scrollend', onEnd);
 			if (settleTimer) clearTimeout(settleTimer);
-			el = undefined;
 		};
-	}
+	});
 
 	function handleKeydown(e: KeyboardEvent) {
 		const idx = indexOf(value);
 		if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
 			e.preventDefault();
-			if (idx > 0) onChange(items[idx - 1].value);
+			if (idx > 0) setValue(items[idx - 1].value);
 		} else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
 			e.preventDefault();
-			if (idx < items.length - 1) onChange(items[idx + 1].value);
+			if (idx < items.length - 1) setValue(items[idx + 1].value);
 		} else if (e.key === 'Home') {
 			e.preventDefault();
-			onChange(items[0].value);
+			setValue(items[0].value);
 		} else if (e.key === 'End') {
 			e.preventDefault();
-			onChange(items[items.length - 1].value);
+			setValue(items[items.length - 1].value);
 		} else if (e.key === 'PageUp') {
 			e.preventDefault();
-			onChange(items[Math.max(0, idx - 5)].value);
+			setValue(items[Math.max(0, idx - 5)].value);
 		} else if (e.key === 'PageDown') {
 			e.preventDefault();
-			onChange(items[Math.min(items.length - 1, idx + 5)].value);
+			setValue(items[Math.min(items.length - 1, idx + 5)].value);
 		}
 	}
 
@@ -124,7 +129,7 @@
 
 	function selectItem(item: { value: T }) {
 		if (dragging) return;
-		onChange(item.value);
+		setValue(item.value);
 	}
 
 	function handleOptionKeydown(e: KeyboardEvent, item: { value: T }) {
@@ -147,7 +152,7 @@
 		tabindex="0"
 		aria-label={ariaLabel}
 		aria-activedescendant={optionId(centerIndex)}
-		{@attach attachWheel}
+		bind:this={el}
 		onkeydown={handleKeydown}
 		onpointerdown={handlePointerDown}
 		onpointermove={handlePointerMove}

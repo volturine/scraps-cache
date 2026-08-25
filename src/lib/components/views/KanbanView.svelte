@@ -31,17 +31,17 @@
 	const backlogFilterActive = $derived(backlogFilter.mode === 'custom');
 
 	let renamingBoard = $state(false);
-	let boardName = $state('');
-	let boardNameId = '';
+	let boardName = $derived(board.name);
 	let backlogFilterOpen = $state(false);
+	let tagPickerOpen = $state(false);
+	let tagPickerRoot: HTMLDivElement | null = $state(null);
 
-	$effect(() => {
-		if (board.id !== boardNameId) {
-			boardNameId = board.id;
-			boardName = board.name;
-			backlogFilterOpen = false;
-		}
-	});
+	function selectBoard(id: string) {
+		kanbanStore.selectBoard(id);
+		renamingBoard = false;
+		backlogFilterOpen = false;
+		tagPickerOpen = false;
+	}
 
 	function commitBoardName() {
 		const next = boardName.trim();
@@ -62,6 +62,7 @@
 		if (!window.confirm(message)) return;
 		renamingBoard = false;
 		backlogFilterOpen = false;
+		tagPickerOpen = false;
 		kanbanStore.deleteBoard(board.id);
 	}
 
@@ -70,12 +71,20 @@
 		return notesStore.labels.find((label) => label.id === column.labelId)?.name ?? 'Deleted label';
 	}
 
-	function addTagColumn(event: Event) {
-		const select = event.currentTarget as HTMLSelectElement;
-		const labelId = select.value;
+	function addTagColumn(labelId: string) {
 		if (!labelId) return;
 		kanbanStore.addTagColumn(board.id, labelId);
-		select.value = '';
+		tagPickerOpen = false;
+	}
+
+	function onTagPickerPointerDown(event: PointerEvent) {
+		if (!tagPickerOpen) return;
+		if (event.target instanceof Node && tagPickerRoot?.contains(event.target)) return;
+		tagPickerOpen = false;
+	}
+
+	function onTagPickerKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') tagPickerOpen = false;
 	}
 
 	function setBacklogMode(mode: BacklogFilter['mode']) {
@@ -147,14 +156,18 @@
 	}
 </script>
 
+<svelte:window
+	onpointerdown={tagPickerOpen ? onTagPickerPointerDown : undefined}
+	onkeydown={tagPickerOpen ? onTagPickerKeydown : undefined}
+/>
+
 <div class="pt-4 pb-8">
 	<div class="mb-4 flex flex-wrap items-center gap-2">
 		<div class="relative min-w-0 max-w-full">
 			<select
 				aria-label="Kanban board"
 				value={board.id}
-				onchange={(event) =>
-					kanbanStore.selectBoard((event.currentTarget as HTMLSelectElement).value)}
+				onchange={(event) => selectBoard((event.currentTarget as HTMLSelectElement).value)}
 				class="min-w-0 max-w-full appearance-none rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] py-2 pl-3 pr-8 text-sm font-semibold text-[var(--scrapscache-text)] outline-none"
 			>
 				{#each kanbanStore.boards as choice (choice.id)}
@@ -170,6 +183,8 @@
 			type="button"
 			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
 			onclick={() => {
+				backlogFilterOpen = false;
+				tagPickerOpen = false;
 				kanbanStore.createBoard();
 				renamingBoard = true;
 			}}
@@ -361,18 +376,42 @@
 			{/each}
 
 			{#if unusedTags.length > 0}
-				<div class="w-[min(19rem,calc(100vw-2rem))] shrink-0 pt-1">
-					<select
+				<div
+					bind:this={tagPickerRoot}
+					class="relative w-[min(19rem,calc(100vw-2rem))] shrink-0 pt-1"
+				>
+					<button
+						type="button"
+						class="flex w-full items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--scrapscache-border)] bg-transparent px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-text-muted)] outline-none hover:bg-black/[0.035] hover:text-[var(--scrapscache-text)] dark:hover:bg-white/[0.055]"
 						aria-label="Add a label column"
-						value=""
-						onchange={addTagColumn}
-						class="w-full rounded-xl border border-dashed border-[var(--scrapscache-border)] bg-transparent px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-text-muted)] outline-none hover:bg-black/[0.035] dark:hover:bg-white/[0.055]"
+						aria-haspopup="listbox"
+						aria-expanded={tagPickerOpen}
+						onclick={() => (tagPickerOpen = !tagPickerOpen)}
 					>
-						<option value="">+ Add label column</option>
-						{#each unusedTags as label (label.id)}
-							<option value={label.id}>{label.name}</option>
-						{/each}
-					</select>
+						<span>+ Add label column</span>
+						<ChevronDown class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+					</button>
+					{#if tagPickerOpen}
+						<ul
+							class="scrapscache-popover absolute inset-x-0 z-20 mt-1 max-h-64 overflow-y-auto py-1"
+							role="listbox"
+							aria-label="Labels"
+						>
+							{#each unusedTags as label (label.id)}
+								<li>
+									<button
+										type="button"
+										role="option"
+										aria-selected="false"
+										class="block w-full truncate px-3 py-2 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+										onclick={() => addTagColumn(label.id)}
+									>
+										{label.name}
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				</div>
 			{/if}
 		</div>

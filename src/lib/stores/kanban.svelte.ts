@@ -14,9 +14,9 @@ import {
 } from '$lib/syncTombstones';
 import { uid } from '$lib/utils';
 
-const BOARDS_KEY = 'gkc-kanban-boards-v1';
-const ACTIVE_BOARD_KEY = 'gkc-kanban-active-board-v1';
-const BOARD_TOMBSTONES_KEY = 'gkc-kanban-board-tombstones-v1';
+const BOARDS_KEY = 'scrapscache-kanban-boards-v1';
+const ACTIVE_BOARD_KEY = 'scrapscache-kanban-active-board-v1';
+const BOARD_TOMBSTONES_KEY = 'scrapscache-kanban-board-tombstones-v1';
 
 type StoredBoard = {
 	id?: unknown;
@@ -102,31 +102,55 @@ function readTombstones(): Record<string, number> {
 }
 
 export class KanbanStore {
-	boards = $state<KanbanBoard[]>(readBoards());
-	activeBoardId = $state<string>('');
-	boardTombstones = $state<Record<string, number>>(readTombstones());
+	#boards = $state<KanbanBoard[]>(readBoards());
+	#activeBoardId = $state<string>('');
+	#boardTombstones = $state<Record<string, number>>(readTombstones());
 	private pendingDeviceWrites: Promise<void> = Promise.resolve();
+	#persistable = false;
+
+	get boards() {
+		return this.#boards;
+	}
+	set boards(value: KanbanBoard[]) {
+		this.#boards = value;
+		this.#persist();
+	}
+
+	get activeBoardId() {
+		return this.#activeBoardId;
+	}
+	set activeBoardId(value: string) {
+		this.#activeBoardId = value;
+		this.#persist();
+	}
+
+	get boardTombstones() {
+		return this.#boardTombstones;
+	}
+	set boardTombstones(value: Record<string, number>) {
+		this.#boardTombstones = value;
+		this.#persist();
+	}
 
 	constructor() {
 		if (typeof localStorage !== 'undefined') {
 			const storedId = localStorage.getItem(ACTIVE_BOARD_KEY);
-			this.activeBoardId = this.boards.some((board) => board.id === storedId)
+			this.#activeBoardId = this.#boards.some((board) => board.id === storedId)
 				? storedId!
-				: this.boards[0].id;
+				: this.#boards[0].id;
 		} else {
-			this.activeBoardId = this.boards[0].id;
+			this.#activeBoardId = this.#boards[0].id;
 		}
+		this.#persistable = true;
+	}
 
-		$effect.root(() => {
-			$effect(() => {
-				if (typeof localStorage === 'undefined') return;
-				localStorage.setItem(BOARDS_KEY, JSON.stringify(this.boards));
-				localStorage.setItem(ACTIVE_BOARD_KEY, this.activeBoardId);
-				localStorage.setItem(BOARD_TOMBSTONES_KEY, JSON.stringify(this.boardTombstones));
-				const write = this.pendingDeviceWrites.then(() => this.persistSyncState());
-				this.pendingDeviceWrites = write.catch(() => undefined);
-			});
-		});
+	#persist() {
+		if (!this.#persistable || typeof localStorage === 'undefined') return;
+		localStorage.setItem(BOARDS_KEY, JSON.stringify(this.#boards));
+		localStorage.setItem(ACTIVE_BOARD_KEY, this.#activeBoardId);
+		localStorage.setItem(BOARD_TOMBSTONES_KEY, JSON.stringify(this.#boardTombstones));
+		const write = this.pendingDeviceWrites.then(() => this.persistSyncState());
+		this.pendingDeviceWrites = write.catch(() => undefined);
 	}
 
 	async hydrateFromDevice(remoteTombstones: Record<string, number> = {}): Promise<void> {

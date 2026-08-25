@@ -22,12 +22,12 @@
 
 	let {
 		noteId = $bindable(),
-		dismissTick = 0,
-		onClose
+		onClose,
+		registerClose
 	}: {
 		noteId: string | null;
-		dismissTick?: number;
 		onClose: () => void;
+		registerClose?: (close: () => void) => void;
 	} = $props();
 
 	const note = $derived(noteId ? notesStore.notes.find((n) => n.id === noteId) : null);
@@ -39,17 +39,24 @@
 
 	let taskFocusLine = $state<number | null>(null);
 
-	let title = $state('');
-	let body = $state('');
+	// Parent remounts this editor when the note id changes, so the initial
+	// draft is captured once per open note rather than synced from the store.
+	// svelte-ignore state_referenced_locally
+	let title = $state(note?.title ?? '');
+	// svelte-ignore state_referenced_locally
+	let body = $state(note?.body ?? '');
 	const links = $derived(extractHttpUrls(body));
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
 	let copyFlash = $state(false);
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
-	let images = $state<NoteImage[]>([]);
+	// svelte-ignore state_referenced_locally
+	let images = $state<NoteImage[]>(
+		note ? noteAttachments(note).map((attachment) => ({ ...attachment })) : []
+	);
 	let draftDirty = false;
-	let focusBodySignal = $state(0);
+	let bodyEditor = $state<{ focusDefault(): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let editorScroller = $state<HTMLDivElement | null>(null);
 	let revealTimer: ReturnType<typeof setTimeout> | null = null;
@@ -70,25 +77,6 @@
 	const editorDialogStyle = $derived(
 		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
 	);
-
-	let syncedId: string | null = null;
-	let seenDismissTick = 0;
-	$effect(() => {
-		if (dismissTick === seenDismissTick) return;
-		seenDismissTick = dismissTick;
-		if (isOpen) void close();
-	});
-	$effect(() => {
-		if (!note) return;
-		if (syncedId !== note.id) {
-			syncedId = note.id;
-			title = note.title;
-			body = note.body ?? '';
-			images = noteAttachments(note).map((attachment) => ({ ...attachment }));
-			taskFocusLine = null;
-			draftDirty = false;
-		}
-	});
 
 	function exitTaskFocus() {
 		taskFocusLine = null;
@@ -113,7 +101,7 @@
 			return;
 		}
 		if (taskFocusLine !== null) exitTaskFocus();
-		focusBodySignal++;
+		bodyEditor?.focusDefault();
 	}
 
 	function revealFocusedEditorField() {
@@ -143,6 +131,9 @@
 	}
 
 	onMount(() => {
+		registerClose?.(() => {
+			if (isOpen) void close();
+		});
 		const viewport = window.visualViewport;
 		const onViewportChange = () => {
 			if (!isOpen) return;
@@ -155,15 +146,30 @@
 				queueFocusedEditorReveal();
 			}
 		};
+		const onOuterScroll = () => lockPageScroll();
 		viewport?.addEventListener('resize', onViewportChange);
 		viewport?.addEventListener('scroll', onViewportChange);
 		window.addEventListener('resize', onViewportChange);
 		document.addEventListener('focusin', onFocusIn);
+		if (noteId) {
+			lockPageScroll();
+			const id = noteId;
+			void notesStore.ensureNoteAttachments(id).then(() => {
+				const hydrated = notesStore.notes.find((item) => item.id === id);
+				if (!hydrated) return;
+				images = mergeHydratedImages(images, noteAttachments(hydrated));
+			});
+			window.addEventListener('scroll', onOuterScroll, { capture: true, passive: false });
+			viewport?.addEventListener('scroll', onOuterScroll);
+		}
 		return () => {
+			registerClose?.(() => {});
 			viewport?.removeEventListener('resize', onViewportChange);
 			viewport?.removeEventListener('scroll', onViewportChange);
 			window.removeEventListener('resize', onViewportChange);
 			document.removeEventListener('focusin', onFocusIn);
+			window.removeEventListener('scroll', onOuterScroll, { capture: true });
+			viewport?.removeEventListener('scroll', onOuterScroll);
 			if (revealTimer !== null) clearTimeout(revealTimer);
 			if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 		};
@@ -248,39 +254,6 @@
 		editorScroller.scrollTop += movedBy;
 		lockPageScroll();
 	}
-
-	$effect(() => {
-		if (!isOpen) return;
-		lockPageScroll();
-		const viewport = window.visualViewport;
-		const onOuterScroll = () => lockPageScroll();
-		window.addEventListener('scroll', onOuterScroll, { capture: true, passive: false });
-		viewport?.addEventListener('scroll', onOuterScroll);
-		return () => {
-			window.removeEventListener('scroll', onOuterScroll, { capture: true });
-			viewport?.removeEventListener('scroll', onOuterScroll);
-		};
-	});
-
-	$effect(() => {
-		if (!isOpen) {
-			syncedId = null;
-			paletteOpen = false;
-			reminderOpen = false;
-			labelOpen = false;
-		}
-	});
-
-	$effect(() => {
-		const currentId = note?.id;
-		if (!currentId) return;
-		void notesStore.ensureNoteAttachments(currentId).then(() => {
-			if (syncedId !== currentId) return;
-			const hydrated = notesStore.notes.find((item) => item.id === currentId);
-			if (!hydrated) return;
-			images = mergeHydratedImages(images, noteAttachments(hydrated));
-		});
-	});
 
 	function focusTask(line: number) {
 		// The task row stays mounted, so the browser already owns the exact caret
@@ -500,17 +473,17 @@
 							onkeydown={(e) => {
 								if (e.key === 'Enter') {
 									e.preventDefault();
-									focusBodySignal++;
+									bodyEditor?.focusDefault();
 								}
 							}}
 							class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--scrapscache-text)] placeholder:text-[var(--scrapscache-text-muted)] outline-none"
 						/>
 
 						<BodyEditor
+							bind:this={bodyEditor}
 							bind:body
 							oninput={scheduleCommit}
 							placeholder="Take a note… type [ ] for a checklist, Tab for sub-task"
-							focusSignal={focusBodySignal}
 							focusLine={taskFocusLine}
 							onFocusTask={focusTask}
 							onExitTaskFocus={exitTaskFocus}

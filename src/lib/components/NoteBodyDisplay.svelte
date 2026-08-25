@@ -13,6 +13,7 @@
 	} from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { onMount } from 'svelte';
 
 	let { note }: { note: Note } = $props();
 
@@ -25,17 +26,18 @@
 	);
 	const files = $derived(attachments.filter((a) => !isImageAttachment(a)));
 	const links = $derived(extractHttpUrls(note.body ?? ''));
-	let contentElement: HTMLDivElement;
 	let focusedImageId = $state<string | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
+	let contentElement: HTMLDivElement | null = $state(null);
 
-	$effect(() => {
+	onMount(() => {
 		// Cards only need thumbs. Full bytes load on explicit open / editor focus.
+		const node = contentElement;
 		const needsThumbOrFile = (note.images ?? []).some((attachment) => {
 			if (isImageAttachment(attachment)) return !displayImageSrc(attachment);
 			return !attachment.dataUrl;
 		});
-		if (!contentElement || !needsThumbOrFile) return;
+		if (!node || !needsThumbOrFile) return;
 		const request = () => notesStore.requestVisibleNoteAttachments(note.id);
 		if (!('IntersectionObserver' in window)) {
 			const frame = requestAnimationFrame(request);
@@ -46,7 +48,7 @@
 			observer.disconnect();
 			request();
 		});
-		observer.observe(contentElement);
+		observer.observe(node);
 		return () => observer.disconnect();
 	});
 
@@ -185,9 +187,11 @@
 		}
 	}
 />
-<AttachmentFullscreen
-	attachment={focusedAttachment}
-	onClose={() => {
-		focusedAttachment = null;
-	}}
-/>
+{#if focusedAttachment}
+	<AttachmentFullscreen
+		attachment={focusedAttachment}
+		onClose={() => {
+			focusedAttachment = null;
+		}}
+	/>
+{/if}

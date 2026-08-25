@@ -166,9 +166,9 @@ export function syncControlKeys(accountId: string): {
 	migration: string;
 } {
 	return {
-		cursor: `gkc-sync-cursor:${accountId}`,
-		baseline: `gkc-sync-record-fingerprints:${accountId}`,
-		recordIds: `gkc-sync-record-ids:${accountId}`,
-		migration: `gkc-sync-slot-migration:${accountId}`
+		cursor: `scrapscache-sync-cursor:${accountId}`,
+		baseline: `scrapscache-sync-record-fingerprints:${accountId}`,
+		recordIds: `scrapscache-sync-record-ids:${accountId}`,
+		migration: `scrapscache-sync-slot-migration:${accountId}`
 	};
 }

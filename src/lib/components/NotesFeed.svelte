@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Note } from '$lib/types';
 	import type { Snippet } from 'svelte';
+	import { onMount } from 'svelte';
 	import NoteCard from './NoteCard.svelte';
 	import MasonryGrid from './MasonryGrid.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -28,21 +29,30 @@
 	let pageIndex = $state(0);
 	let renderedCount = $state(FIRST_BATCH);
 	const pageCount = $derived(Math.max(1, Math.ceil(notes.length / PAGE_SIZE)));
-	$effect.pre(() => {
-		if (pageIndex > pageCount - 1) pageIndex = pageCount - 1;
-	});
 	const safePageIndex = $derived(Math.min(pageIndex, pageCount - 1));
 	const visibleNotes = $derived(
 		notes.slice(safePageIndex * PAGE_SIZE, (safePageIndex + 1) * PAGE_SIZE)
 	);
 	const shownNotes = $derived(visibleNotes.slice(0, renderedCount));
 
-	$effect(() => {
-		if (renderedCount >= visibleNotes.length) return;
-		const frame = requestAnimationFrame(() => {
+	let streamFrame: number | undefined;
+
+	function pumpStream() {
+		if (streamFrame !== undefined) cancelAnimationFrame(streamFrame);
+		const tick = () => {
+			streamFrame = undefined;
+			if (renderedCount >= visibleNotes.length) return;
 			renderedCount += BATCH_STEP;
-		});
-		return () => cancelAnimationFrame(frame);
+			streamFrame = requestAnimationFrame(tick);
+		};
+		streamFrame = requestAnimationFrame(tick);
+	}
+
+	onMount(() => {
+		pumpStream();
+		return () => {
+			if (streamFrame !== undefined) cancelAnimationFrame(streamFrame);
+		};
 	});
 </script>
 
@@ -70,6 +80,8 @@
 				disabled={safePageIndex === 0}
 				onclick={() => {
 					pageIndex = Math.max(0, safePageIndex - 1);
+					renderedCount = FIRST_BATCH;
+					pumpStream();
 				}}
 				class="rounded-lg border border-[var(--scrapscache-border)] px-3 py-1.5 text-sm text-[var(--scrapscache-text)] disabled:opacity-40"
 				>Previous</button
@@ -82,6 +94,8 @@
 				disabled={safePageIndex >= pageCount - 1}
 				onclick={() => {
 					pageIndex = Math.min(pageCount - 1, safePageIndex + 1);
+					renderedCount = FIRST_BATCH;
+					pumpStream();
 				}}
 				class="rounded-lg border border-[var(--scrapscache-border)] px-3 py-1.5 text-sm text-[var(--scrapscache-text)] disabled:opacity-40"
 				>Next</button

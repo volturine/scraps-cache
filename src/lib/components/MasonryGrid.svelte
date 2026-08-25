@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Note } from '$lib/types';
 	import type { Snippet } from 'svelte';
+	import { onMount } from 'svelte';
 	import NoteCard from './NoteCard.svelte';
 
 	let {
@@ -86,14 +87,10 @@
 		return cols;
 	});
 
-	$effect(() => {
-		void columns;
-		void colCount;
+	onMount(() => {
 		const root = gridEl;
 		if (!root || typeof ResizeObserver === 'undefined') return;
 		const measure = () => {
-			const bal = root.querySelector<HTMLElement>(':scope > .masonry-balanced');
-			containerWidth = (bal ?? root).clientWidth;
 			const cards = root.querySelectorAll<HTMLElement>('[data-note-height]');
 			let changed = measuredHeights.size !== cards.length;
 			const next = new Map<string, number>();
@@ -108,14 +105,16 @@
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(root);
-		const bal = root.querySelector<HTMLElement>(':scope > .masonry-balanced');
-		if (bal) observer.observe(bal);
-		root.querySelectorAll<HTMLElement>('[data-note-height]').forEach((el) => observer.observe(el));
 		return () => observer.disconnect();
 	});
 </script>
 
-<div bind:this={gridEl} class="masonry-wrap {className}" style="--masonry-cols: {colCount}">
+<div
+	bind:this={gridEl}
+	class="masonry-wrap {className}"
+	style="--masonry-cols: {colCount}"
+	bind:clientWidth={containerWidth}
+>
 	{#if leading && leadSpan > 0}
 		<div
 			class="absolute top-0 left-0"

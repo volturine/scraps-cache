@@ -46,8 +46,8 @@ import {
 	markSyncOutbox
 } from '$lib/db/idb';
 
-const LS_SYNC_KEY = 'gkc-sync-account';
-const LS_SYNC_STATUS_KEY = 'gkc-sync-status';
+const LS_SYNC_KEY = 'scrapscache-sync-account';
+const LS_SYNC_STATUS_KEY = 'scrapscache-sync-status';
 
 export interface SyncAccount {
 	syncKey: string;

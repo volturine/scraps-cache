@@ -4,8 +4,7 @@ import { runInNewContext } from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { indexedDB } from 'fake-indexeddb';
 import { reminderWakeId } from './reminderNotify';
-
-const DB_NAME = 'google-keep-clone';
+import { DEVICE_DB_NAME } from '$lib/db/idb';
 
 function request<T>(operation: IDBRequest<T>): Promise<T> {
 	return new Promise((resolve, reject) => {
@@ -15,7 +14,7 @@ function request<T>(operation: IDBRequest<T>): Promise<T> {
 }
 
 async function seedNotes(notes: unknown[]): Promise<void> {
-	const opened = indexedDB.open(DB_NAME, 1);
+	const opened = indexedDB.open(DEVICE_DB_NAME, 1);
 	opened.onupgradeneeded = () => {
 		opened.result.createObjectStore('notes', { keyPath: 'id' });
 		opened.result.createObjectStore('sync-state');
@@ -31,9 +30,9 @@ async function seedNotes(notes: unknown[]): Promise<void> {
 }
 
 async function firedWakeIds(): Promise<string[]> {
-	const db = await request(indexedDB.open(DB_NAME));
+	const db = await request(indexedDB.open(DEVICE_DB_NAME));
 	const stored = await request(
-		db.transaction('sync-state').objectStore('sync-state').get('gkc-fired-reminders')
+		db.transaction('sync-state').objectStore('sync-state').get('scrapscache-fired-reminders')
 	);
 	db.close();
 	return Array.isArray(stored) ? stored : [];

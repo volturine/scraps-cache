@@ -1,4 +1,4 @@
-// Rune-based notes & labels store. Persists to IndexedDB via $effect.
+// Rune-based notes & labels store. Persists to IndexedDB from explicit write paths.
 import type { Note, Label, NoteColor, NoteField } from '$lib/types';
 import {
 	getAllNotesMetadata,
@@ -157,7 +157,7 @@ export class NotesStore {
 			a.name.localeCompare(b.name)
 		);
 		const seededFlag =
-			typeof localStorage !== 'undefined' ? localStorage.getItem('gkc-seeded') : null;
+			typeof localStorage !== 'undefined' ? localStorage.getItem('scrapscache-seeded') : null;
 
 		const tombstones = await hydrateTombstones().catch(() => ({
 			notes: this.deletedNoteIds,
@@ -169,7 +169,7 @@ export class NotesStore {
 		await kanbanStore.hydrateFromDevice(tombstones.boards);
 
 		if (notes.length === 0 && labels.length === 0 && !seededFlag && !syncStore.isLoggedIn) {
-			localStorage?.setItem('gkc-seeded', '1');
+			localStorage?.setItem('scrapscache-seeded', '1');
 			this.notes = this.seedNotes();
 			this.labels = [];
 			this.mirrorToLS();

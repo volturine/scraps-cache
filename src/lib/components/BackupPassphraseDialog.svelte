@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { portalToAppOverlay } from '$lib/appViewport';
+	import { onMount } from 'svelte';
 
 	let {
 		mode,
@@ -22,7 +23,7 @@
 	let passphraseInput: HTMLInputElement | null = $state(null);
 	const exporting = $derived(mode === 'export');
 
-	$effect(() => {
+	onMount(() => {
 		passphraseInput?.focus({ preventScroll: true });
 	});
 

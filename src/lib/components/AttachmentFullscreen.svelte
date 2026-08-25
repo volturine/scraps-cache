@@ -3,6 +3,7 @@
 	import { dataUrlToBlob } from '$lib/imageBlob';
 	import { ChevronLeft } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
+	import { onDestroy, onMount } from 'svelte';
 
 	let {
 		attachment = null,
@@ -29,20 +30,18 @@
 	const isPdf = $derived(mime === 'application/pdf');
 
 	const portal = portalToAppFloat;
+	let previewUrl: string | null = null;
 
-	$effect(() => {
+	function revokePreview() {
+		if (previewUrl) URL.revokeObjectURL(previewUrl);
+		previewUrl = null;
+	}
+
+	onMount(() => {
 		const dataUrl = attachment?.dataUrl;
 		const textFile = isText;
-		if (!dataUrl) {
-			sourceUrl = null;
-			textContent = null;
-			loading = false;
-			failed = false;
-			return;
-		}
-
+		if (!dataUrl) return;
 		let current = true;
-		let url: string | null = null;
 		loading = true;
 		failed = false;
 		sourceUrl = null;
@@ -53,8 +52,9 @@
 					const text = await blob.text();
 					if (current) textContent = text;
 				} else if (current) {
-					url = URL.createObjectURL(blob);
-					sourceUrl = url;
+					revokePreview();
+					previewUrl = URL.createObjectURL(blob);
+					sourceUrl = previewUrl;
 				}
 			})
 			.catch(() => {
@@ -63,12 +63,12 @@
 			.finally(() => {
 				if (current) loading = false;
 			});
-
 		return () => {
 			current = false;
-			if (url) URL.revokeObjectURL(url);
 		};
 	});
+
+	onDestroy(revokePreview);
 
 	function close() {
 		onClose();

@@ -238,7 +238,7 @@ describe('notes store sync apply', () => {
 		error.mockRestore();
 
 		expect(notesStore.deletedNoteIds.gone).toBeGreaterThan(0);
-		expect(await getSyncState('gkc-idb-note-tombstones')).toMatchObject({
+		expect(await getSyncState('scrapscache-idb-note-tombstones')).toMatchObject({
 			gone: expect.any(Number)
 		});
 		expect((await getAllNotesMetadata()).map(({ id }) => id)).toContain('gone');
