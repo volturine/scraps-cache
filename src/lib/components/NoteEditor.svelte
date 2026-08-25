@@ -309,6 +309,22 @@
 		if (event.pointerType === 'touch') event.preventDefault();
 	}
 
+	function eventInsideEditor(target: EventTarget | null): boolean {
+		return editorDialog != null && target instanceof Node && editorDialog.contains(target);
+	}
+
+	let backdropPressOutside = false;
+
+	function handleBackdropPointerDown(event: PointerEvent) {
+		backdropPressOutside = !eventInsideEditor(event.target);
+	}
+
+	function handleBackdropClick(event: MouseEvent) {
+		// A press that starts in the note and ends on the overlay still emits a click here.
+		if (!backdropPressOutside || eventInsideEditor(event.target)) return;
+		void close();
+	}
+
 	function bgColor(c: NoteColor): string {
 		return uiStore.effectiveDark ? NOTE_DARK_COLORS[c] : NOTE_COLORS[c];
 	}
@@ -387,11 +403,8 @@
 	<div
 		class="fixed inset-0 z-50"
 		role="presentation"
-		onclick={(e) => {
-			// Backdrop click always dismisses, including while a task is focused.
-			if (editorDialog && e.target instanceof Node && editorDialog.contains(e.target)) return;
-			void close();
-		}}
+		onpointerdown={handleBackdropPointerDown}
+		onclick={handleBackdropClick}
 	>
 		<div
 			class="absolute inset-0 flex items-start justify-center px-4 pb-[var(--app-sheet-pad-bottom)] md:items-center"
