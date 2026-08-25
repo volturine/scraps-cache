@@ -258,7 +258,7 @@ describe('BodyEditor native editing', () => {
 		expect(lineTexts(container)).toEqual(['Hello']);
 	});
 
-	it('indents every selected text segment', async () => {
+	it('indents every selected text segment and keeps the selection', async () => {
 		const { container } = render(BodyEditor, { props: { body: 'First\nSecond' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const rows = container.querySelectorAll('[data-line-text]');
@@ -268,6 +268,29 @@ describe('BodyEditor native editing', () => {
 		await tick();
 
 		expect(lineTexts(container)).toEqual(['  First', '  Second']);
+		expect(window.getSelection()?.toString()).toContain('First');
+		expect(window.getSelection()?.toString()).toContain('Second');
+		expect(window.getSelection()?.isCollapsed).toBe(false);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['    First', '    Second']);
+		expect(window.getSelection()?.toString()).toContain('First');
+		expect(window.getSelection()?.toString()).toContain('Second');
+	});
+
+	it('keeps a partial selection after indenting a line', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Hello world' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		select(line, 6, line, 11);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['  Hello world']);
+		expect(window.getSelection()?.toString()).toBe('world');
 	});
 
 	it('nests a checklist line under the previous task with Tab', async () => {

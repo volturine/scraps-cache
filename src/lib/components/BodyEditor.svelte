@@ -166,36 +166,56 @@
 		return { start, end, collapsed: start.global === end.global };
 	}
 
-	function focusAt(index: number, offset: number | null = 0, lineId: number | null = null) {
-		flushSync();
-		let resolved = index;
-		if (lineId !== null) {
-			const byId = lines.findIndex((line) => line.id === lineId);
-			if (byId >= 0) resolved = byId;
-		}
-		resolved = Math.max(0, Math.min(resolved, lines.length - 1));
+	function caretNode(index: number, offset: number): { node: Node; offset: number } | null {
+		const resolved = Math.max(0, Math.min(index, lines.length - 1));
 		const text = textElement(resolved);
-		if (!container || !text) return;
+		if (!text) return null;
+		const caret = Math.max(0, Math.min(offset, lines[resolved].text.length));
+		const textNode = text.firstChild;
+		if (textNode?.nodeType === Node.TEXT_NODE) return { node: textNode, offset: caret };
+		return { node: text, offset: 0 };
+	}
+
+	function selectAt(
+		startLine: number,
+		startOffset: number,
+		endLine = startLine,
+		endOffset = startOffset,
+		reversed = false
+	) {
+		flushSync();
+		const start = caretNode(startLine, startOffset);
+		const end = caretNode(endLine, endOffset);
+		if (!container || !start || !end) return;
 		try {
 			container.focus({ preventScroll: true });
 		} catch {
 			container.focus();
 		}
-		const caret = Math.max(
-			0,
-			Math.min(offset ?? lines[resolved].text.length, lines[resolved].text.length)
-		);
 		const selection = window.getSelection();
-		const range = document.createRange();
-		const textNode = text.firstChild;
-		if (textNode?.nodeType === Node.TEXT_NODE) range.setStart(textNode, caret);
-		else range.setStart(text, 0);
-		range.collapse(true);
-		selection?.removeAllRanges();
-		selection?.addRange(range);
+		if (reversed) selection?.setBaseAndExtent(end.node, end.offset, start.node, start.offset);
+		else selection?.setBaseAndExtent(start.node, start.offset, end.node, end.offset);
 		const scroller = container.closest('.scrollable') as HTMLElement | null;
-		const row = lineElement(resolved);
+		const row = lineElement(reversed ? startLine : endLine);
 		if (scroller && row) revealEditorField(scroller, row);
+	}
+
+	function focusAt(index: number, offset: number | null = 0, lineId: number | null = null) {
+		let resolved = index;
+		if (lineId !== null) {
+			const byId = lines.findIndex((line) => line.id === lineId);
+			if (byId >= 0) resolved = byId;
+		}
+		const caret = offset ?? lines[resolved]?.text.length ?? 0;
+		selectAt(resolved, caret);
+	}
+
+	function selectionIsReversed(): boolean {
+		const selection = window.getSelection();
+		if (!selection || selection.rangeCount === 0) return false;
+		const anchor = pointFromDom(selection.anchorNode, selection.anchorOffset);
+		const focus = pointFromDom(selection.focusNode, selection.focusOffset);
+		return !!anchor && !!focus && anchor.global > focus.global;
 	}
 
 	async function focusAfterRender(index: number, offset: number, lineId: number | null = null) {
@@ -504,18 +524,22 @@
 
 	function indentRange(range: EditorRange, delta: number) {
 		let changed = false;
-		let caretDelta = 0;
-		const caretLine = range.collapsed ? range.start.line : range.end.line;
+		let startDelta = 0;
+		let endDelta = 0;
+		const reversed = selectionIsReversed();
 		for (let index = range.start.line; index <= range.end.line; index++) {
 			const result = indentLine(index, delta);
-			if (index === caretLine) caretDelta = result.offsetDelta;
+			if (index === range.start.line) startDelta = result.offsetDelta;
+			if (index === range.end.line) endDelta = result.offsetDelta;
 			if (result.changed) changed = true;
 		}
 		if (!changed) return;
 		syncBody();
-		const caretOffset = (range.collapsed ? range.start.offset : range.end.offset) + caretDelta;
-		if (lines[caretLine]?.isCheck) focusTask(caretLine);
-		focusAt(caretLine, caretOffset, lines[caretLine]?.id ?? null);
+		const focusLine = reversed ? range.start.line : range.end.line;
+		if (lines[focusLine]?.isCheck) focusTask(focusLine);
+		const startOffset =
+			!range.collapsed && range.start.offset === 0 ? 0 : range.start.offset + startDelta;
+		selectAt(range.start.line, startOffset, range.end.line, range.end.offset + endDelta, reversed);
 	}
 
 	function previousTaskIndex(index: number): number {
