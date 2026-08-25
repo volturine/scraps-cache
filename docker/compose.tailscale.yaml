@@ -13,7 +13,7 @@
 services:
   tailscale:
     image: tailscale/tailscale:stable
-    hostname: ${TS_HOSTNAME:-scraps-cache}
+    hostname: ${TS_HOSTNAME:-scrapscache}
     restart: unless-stopped
     depends_on:
       - app
@@ -21,7 +21,7 @@ services:
       TS_AUTHKEY: ${TS_AUTHKEY:?Set TS_AUTHKEY in .env}
       TS_AUTH_ONCE: "true"
       TS_STATE_DIR: /var/lib/tailscale
-      TS_HOSTNAME: ${TS_HOSTNAME:-scraps-cache}
+      TS_HOSTNAME: ${TS_HOSTNAME:-scrapscache}
       TS_SERVE_CONFIG: /config/serve.json
       TS_USERSPACE: "true"
       TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:-}

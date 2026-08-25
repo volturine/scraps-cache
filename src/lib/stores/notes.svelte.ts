@@ -1142,7 +1142,7 @@ export class NotesStore {
 	private async withSyncLock<T>(run: () => Promise<T>): Promise<T> {
 		const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
 		if (!locks?.request) return run();
-		return locks.request('scraps-cache-sync', run);
+		return locks.request('scrapscache-sync', run);
 	}
 
 	// Core sync. Local IDB remains authoritative; photo bytes move in small fractions.

@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/volturine/scraps-cache/security/advisories/new
+    url: https://github.com/volturine/scrapscache/security/advisories/new
     about: Please report security issues privately — do not open a public issue.
   - name: Documentation
-    url: https://github.com/volturine/scraps-cache/blob/main/README.md
+    url: https://github.com/volturine/scrapscache/blob/master/README.md
     about: Start with the README and docs/ for setup and architecture.

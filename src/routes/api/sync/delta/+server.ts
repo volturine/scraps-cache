@@ -60,7 +60,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	});
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
 	const release = enterSyncRequest(
-		Math.max(1, Number(env.SCRAPS_CACHE_SYNC_MAX_CONCURRENT_REQUESTS) || 8)
+		Math.max(1, Number(env.SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS) || 8)
 	);
 	if (!release) {
 		return json({ error: 'Sync server is busy' }, { status: 503, headers: { 'retry-after': '2' } });

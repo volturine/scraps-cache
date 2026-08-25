@@ -137,7 +137,7 @@
 
 <div class="relative {className}" style="height: {ITEM_H * VISIBLE}px">
 	<div
-		class="pointer-events-none absolute inset-x-0 top-1/2 z-0 h-9 -translate-y-1/2 rounded-lg bg-[var(--scraps-cache-bg)]"
+		class="pointer-events-none absolute inset-x-0 top-1/2 z-0 h-9 -translate-y-1/2 rounded-lg bg-[var(--scrapscache-bg)]"
 		aria-hidden="true"
 	></div>
 	<div
@@ -161,10 +161,10 @@
 				aria-selected={item.value === value}
 				class="flex cursor-pointer items-center justify-center tabular-nums transition-opacity duration-75
 					{i === centerIndex
-					? 'text-base font-semibold text-[var(--scraps-cache-text)]'
+					? 'text-base font-semibold text-[var(--scrapscache-text)]'
 					: Math.abs(i - centerIndex) === 1
-						? 'text-sm font-medium text-[var(--scraps-cache-text-muted)]'
-						: 'text-sm text-[var(--scraps-cache-text-muted)] opacity-40'}"
+						? 'text-sm font-medium text-[var(--scrapscache-text-muted)]'
+						: 'text-sm text-[var(--scrapscache-text-muted)] opacity-40'}"
 				style="height: {ITEM_H}px; scroll-snap-align: center"
 				onclick={() => selectItem(item)}
 				onkeydown={(e) => handleOptionKeydown(e, item)}

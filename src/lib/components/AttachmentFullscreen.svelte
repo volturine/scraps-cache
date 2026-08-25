@@ -84,10 +84,10 @@
 {#if attachment}
 	<div {@attach portal}>
 		<div
-			class="fixed inset-0 z-[80] flex flex-col bg-[var(--scraps-cache-bg)] text-[var(--scraps-cache-text)]"
+			class="fixed inset-0 z-[80] flex flex-col bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
 		>
 			<header
-				class="flex shrink-0 items-center gap-3 border-b border-[var(--scraps-cache-border)] px-3 py-2"
+				class="flex shrink-0 items-center gap-3 border-b border-[var(--scrapscache-border)] px-3 py-2"
 			>
 				<button
 					type="button"
@@ -103,18 +103,18 @@
 			</header>
 
 			{#if loading}
-				<div class="grid flex-1 place-items-center text-sm text-[var(--scraps-cache-text-muted)]">
+				<div class="grid flex-1 place-items-center text-sm text-[var(--scrapscache-text-muted)]">
 					Opening file…
 				</div>
 			{:else if failed}
 				<div
-					class="grid flex-1 place-items-center p-6 text-sm text-[var(--scraps-cache-text-muted)]"
+					class="grid flex-1 place-items-center p-6 text-sm text-[var(--scrapscache-text-muted)]"
 				>
 					Could not open this attachment.
 				</div>
 			{:else if isText}
 				<pre
-					class="scrollable m-0 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm leading-relaxed text-[var(--scraps-cache-text)]">{textContent ??
+					class="scrollable m-0 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm leading-relaxed text-[var(--scrapscache-text)]">{textContent ??
 						''}</pre>
 			{:else if isAudio && sourceUrl}
 				<div class="grid flex-1 place-items-center p-6">

@@ -38,7 +38,7 @@ export class RetentionManager {
 
 	constructor(options: RetentionManagerOptions = {}) {
 		this.inactiveDays =
-			options.inactiveDays ?? parseRetentionInactiveDays(env.SCRAPS_CACHE_RETENTION_INACTIVE_DAYS);
+			options.inactiveDays ?? parseRetentionInactiveDays(env.SCRAPSCACHE_RETENTION_INACTIVE_DAYS);
 		this.getStore = options.store ? () => options.store! : () => getSyncStore();
 		this.now = options.now ?? Date.now;
 		this.status = {

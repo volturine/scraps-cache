@@ -113,7 +113,7 @@
 			<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
 				{#if note.title}
 					<h3
-						class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--scraps-cache-text)]"
+						class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
 					>
 						{note.title}
 					</h3>
@@ -126,7 +126,7 @@
 			<div class="flex shrink-0 flex-wrap gap-1 px-3 pb-3 pt-2">
 				{#each labelsForNote as label (label.id)}
 					<span
-						class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-black/5 text-[var(--scraps-cache-text-muted)] dark:bg-white/10"
+						class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-black/5 text-[var(--scrapscache-text-muted)] dark:bg-white/10"
 					>
 						{label.name}
 					</span>

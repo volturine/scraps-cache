@@ -19,21 +19,21 @@
 	aria-label={`Open ${card?.hostname ?? url}`}
 >
 	<div
-		class="grid h-14 w-14 shrink-0 place-items-center bg-black/[0.06] text-lg font-semibold uppercase text-[var(--scraps-cache-text-muted)] dark:bg-white/[0.08]"
+		class="grid h-14 w-14 shrink-0 place-items-center bg-black/[0.06] text-lg font-semibold uppercase text-[var(--scrapscache-text-muted)] dark:bg-white/[0.08]"
 		aria-hidden="true"
 	>
 		{card?.badge ?? '↗'}
 	</div>
 	<div class="min-w-0 flex-1 px-3 py-2.5">
-		<div class="truncate text-sm font-medium text-[var(--scraps-cache-text)]">
+		<div class="truncate text-sm font-medium text-[var(--scrapscache-text)]">
 			{card?.hostname ?? url}
 		</div>
-		<div class="mt-0.5 truncate text-xs text-[var(--scraps-cache-text-muted)]">
+		<div class="mt-0.5 truncate text-xs text-[var(--scrapscache-text-muted)]">
 			{card?.path || 'Open website'}
 		</div>
 	</div>
 	<div
-		class="grid w-10 shrink-0 place-items-center text-sm text-[var(--scraps-cache-text-muted)]"
+		class="grid w-10 shrink-0 place-items-center text-sm text-[var(--scrapscache-text-muted)]"
 		aria-hidden="true"
 	>
 		↗

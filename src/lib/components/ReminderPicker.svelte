@@ -147,41 +147,41 @@
 	}
 </script>
 
-<div class="scraps-cache-dialog w-80 p-5">
-	<div class="mb-3 text-base font-medium text-[var(--scraps-cache-text)]">Reminder</div>
+<div class="scrapscache-dialog w-80 p-5">
+	<div class="mb-3 text-base font-medium text-[var(--scrapscache-text)]">Reminder</div>
 
 	<div
-		class="mb-4 rounded-[var(--scraps-cache-radius-lg)] px-3 py-2.5 {uiStatus === 'active'
-			? 'scraps-cache-status-success'
+		class="mb-4 rounded-[var(--scrapscache-radius-lg)] px-3 py-2.5 {uiStatus === 'active'
+			? 'scrapscache-status-success'
 			: uiStatus === 'unsaved'
-				? 'scraps-cache-status-warning'
-				: 'scraps-cache-status-accent'}"
+				? 'scrapscache-status-warning'
+				: 'scrapscache-status-accent'}"
 	>
 		<div class="flex items-center justify-between gap-2">
 			<div
-				class="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--scraps-cache-text-muted)]"
+				class="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--scrapscache-text-muted)]"
 			>
 				Will remind you
 			</div>
 			{#if uiStatus === 'active'}
 				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scraps-cache-success)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scraps-cache-success-foreground)]"
+					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-success)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-success-foreground)]"
 					>Active</span
 				>
 			{:else if uiStatus === 'unsaved'}
 				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scraps-cache-warning)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scraps-cache-bg)]"
+					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-warning)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-bg)]"
 					>Edit</span
 				>
 			{:else}
 				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scraps-cache-accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scraps-cache-accent-foreground)]"
+					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-accent-foreground)]"
 					>New</span
 				>
 			{/if}
 		</div>
 		<div
-			class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--scraps-cache-text)]"
+			class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--scrapscache-text)]"
 		>
 			<AlarmClock class="h-4 w-4 shrink-0" aria-hidden="true" />
 			<span class="min-w-0 truncate">{remainingLabel}</span>
@@ -191,9 +191,9 @@
 		</div>
 	</div>
 
-	<div class="mb-4 border-t border-[var(--scraps-cache-border)] pt-4">
+	<div class="mb-4 border-t border-[var(--scrapscache-border)] pt-4">
 		<div
-			class="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--scraps-cache-text-muted)]"
+			class="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--scrapscache-text-muted)]"
 		>
 			Pick date & time
 		</div>
@@ -209,8 +209,8 @@
 			</button>
 			<button
 				type="button"
-				class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scraps-cache-text)] {monthYearOpen
-					? 'bg-[var(--scraps-cache-bg)]'
+				class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] {monthYearOpen
+					? 'bg-[var(--scrapscache-bg)]'
 					: ''}"
 				onclick={() => (monthYearOpen = !monthYearOpen)}
 				aria-label="Choose date"
@@ -266,7 +266,7 @@
 					ariaLabel="Hour"
 				/>
 				<div
-					class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scraps-cache-text)]"
+					class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
 					aria-hidden="true"
 				>
 					:
@@ -283,13 +283,13 @@
 	</div>
 
 	<div
-		class="flex items-center justify-between gap-3 border-t border-[var(--scraps-cache-border)] pt-4"
+		class="flex items-center justify-between gap-3 border-t border-[var(--scrapscache-border)] pt-4"
 	>
 		{#if showRemove}
 			<button
 				type="button"
 				onclick={clear}
-				class="scraps-cache-button scraps-cache-button-quiet shrink-0 px-3 py-2.5 text-sm font-medium"
+				class="scrapscache-button scrapscache-button-quiet shrink-0 px-3 py-2.5 text-sm font-medium"
 			>
 				Remove
 			</button>
@@ -299,9 +299,9 @@
 		<button
 			type="button"
 			onclick={primaryAction}
-			class="scraps-cache-button min-w-[7.5rem] shrink-0 px-6 py-2.5 text-sm font-medium {primaryIsSave
-				? 'scraps-cache-button-primary'
-				: 'scraps-cache-button-secondary'}"
+			class="scrapscache-button min-w-[7.5rem] shrink-0 px-6 py-2.5 text-sm font-medium {primaryIsSave
+				? 'scrapscache-button-primary'
+				: 'scrapscache-button-secondary'}"
 		>
 			{primaryIsSave ? 'Save' : 'Cancel'}
 		</button>

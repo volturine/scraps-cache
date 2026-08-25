@@ -1,5 +1,5 @@
 {
-	"name": "scraps-cache",
+	"name": "scrapscache",
 	"private": true,
 	"version": "0.0.1",
 	"description": "Offline-first notes with optional end-to-end encrypted cloud sync",
@@ -8,10 +8,10 @@
 	"homepage": "https://scrapscache.com",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/volturine/scraps-cache.git"
+		"url": "git+https://github.com/volturine/scrapscache.git"
 	},
 	"bugs": {
-		"url": "https://github.com/volturine/scraps-cache/issues"
+		"url": "https://github.com/volturine/scrapscache/issues"
 	},
 	"keywords": [
 		"notes",

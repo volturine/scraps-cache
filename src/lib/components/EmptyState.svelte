@@ -13,14 +13,14 @@
 </script>
 
 <div
-	class="notes-content mx-auto mt-10 flex max-w-sm flex-col items-center px-4 text-center text-[var(--scraps-cache-text-muted)]"
+	class="notes-content mx-auto mt-10 flex max-w-sm flex-col items-center px-4 text-center text-[var(--scrapscache-text-muted)]"
 >
 	<Icon class="h-6 w-6" strokeWidth={1.5} aria-hidden="true" />
 	<p class="mt-3 text-sm leading-6">{description}</p>
 	{#if actionLabel && href}
 		<a
 			{href}
-			class="mt-3 rounded-full border border-[var(--scraps-cache-border)] px-3 py-1.5 text-sm font-medium text-[var(--scraps-cache-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+			class="mt-3 rounded-full border border-[var(--scrapscache-border)] px-3 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 		>
 			{actionLabel}
 		</a>
@@ -28,7 +28,7 @@
 		<button
 			type="button"
 			onclick={onAction}
-			class="mt-3 rounded-full border border-[var(--scraps-cache-border)] px-3 py-1.5 text-sm font-medium text-[var(--scraps-cache-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+			class="mt-3 rounded-full border border-[var(--scrapscache-border)] px-3 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 		>
 			{actionLabel}
 		</button>

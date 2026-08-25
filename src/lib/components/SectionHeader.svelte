@@ -19,10 +19,10 @@
 
 <div class="{shell} {className}">
 	<div class="mb-3 flex items-center gap-3 px-2">
-		<h2 class="text-xs font-semibold uppercase tracking-wide text-[var(--scraps-cache-text-muted)]">
+		<h2 class="text-xs font-semibold uppercase tracking-wide text-[var(--scrapscache-text-muted)]">
 			{label}
 		</h2>
-		<span class="text-xs text-[var(--scraps-cache-text-muted)] opacity-60">{count}</span>
+		<span class="text-xs text-[var(--scrapscache-text-muted)] opacity-60">{count}</span>
 		{#if children}
 			<div class="flex-1"></div>
 			{@render children()}

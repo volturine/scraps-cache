@@ -503,7 +503,7 @@
 									focusBodySignal++;
 								}
 							}}
-							class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--scraps-cache-text)] placeholder:text-[var(--scraps-cache-text-muted)] outline-none"
+							class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--scrapscache-text)] placeholder:text-[var(--scrapscache-text-muted)] outline-none"
 						/>
 
 						<BodyEditor

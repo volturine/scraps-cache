@@ -108,78 +108,74 @@ export function renderMetrics(
 	}
 ): string {
 	const lines = [
-		'# TYPE scraps-cache_http_requests_total counter',
-		'# TYPE scraps-cache_http_request_duration_milliseconds_sum counter'
+		'# TYPE scrapscache_http_requests_total counter',
+		'# TYPE scrapscache_http_request_duration_milliseconds_sum counter'
 	];
 	for (const [key, metric] of http) {
 		const [route, status] = key.split('\u0000');
 		const labels = `route=${JSON.stringify(route)},status=${JSON.stringify(status)}`;
-		lines.push(line('scraps-cache_http_requests_total', metric.count, labels));
+		lines.push(line('scrapscache_http_requests_total', metric.count, labels));
 		lines.push(
-			line('scraps-cache_http_request_duration_milliseconds_sum', metric.durationMs, labels)
+			line('scrapscache_http_request_duration_milliseconds_sum', metric.durationMs, labels)
 		);
 	}
 	lines.push(
-		'# TYPE scraps-cache_rate_limited_total counter',
-		line('scraps-cache_rate_limited_total', rateLimited),
-		'# TYPE scraps-cache_sync_requests_total counter',
-		line('scraps-cache_sync_requests_total', syncRequests),
-		'# TYPE scraps-cache_sync_upload_envelopes_total counter',
-		line('scraps-cache_sync_upload_envelopes_total', syncUploadEnvelopes),
-		'# TYPE scraps-cache_sync_delete_slots_total counter',
-		line('scraps-cache_sync_delete_slots_total', syncDeleteSlots),
-		'# TYPE scraps-cache_sqlite_busy_total counter',
-		line('scraps-cache_sqlite_busy_total', sqliteBusy),
-		'# TYPE scraps-cache_sync_accounts gauge',
-		line('scraps-cache_sync_accounts', usage.accounts),
-		'# TYPE scraps-cache_sync_envelopes gauge',
-		line('scraps-cache_sync_envelopes', usage.envelopeCount),
-		'# TYPE scraps-cache_sync_ciphertext_bytes gauge',
-		line('scraps-cache_sync_ciphertext_bytes', usage.ciphertextBytes),
-		'# TYPE scraps-cache_sync_storage_gigabytes gauge',
-		line('scraps-cache_sync_storage_gigabytes', usage.gigabytes ?? 0),
-		'# TYPE scraps-cache_sync_stale_accounts gauge',
-		line('scraps-cache_sync_stale_accounts', usage.staleAccounts ?? 0)
+		'# TYPE scrapscache_rate_limited_total counter',
+		line('scrapscache_rate_limited_total', rateLimited),
+		'# TYPE scrapscache_sync_requests_total counter',
+		line('scrapscache_sync_requests_total', syncRequests),
+		'# TYPE scrapscache_sync_upload_envelopes_total counter',
+		line('scrapscache_sync_upload_envelopes_total', syncUploadEnvelopes),
+		'# TYPE scrapscache_sync_delete_slots_total counter',
+		line('scrapscache_sync_delete_slots_total', syncDeleteSlots),
+		'# TYPE scrapscache_sqlite_busy_total counter',
+		line('scrapscache_sqlite_busy_total', sqliteBusy),
+		'# TYPE scrapscache_sync_accounts gauge',
+		line('scrapscache_sync_accounts', usage.accounts),
+		'# TYPE scrapscache_sync_envelopes gauge',
+		line('scrapscache_sync_envelopes', usage.envelopeCount),
+		'# TYPE scrapscache_sync_ciphertext_bytes gauge',
+		line('scrapscache_sync_ciphertext_bytes', usage.ciphertextBytes),
+		'# TYPE scrapscache_sync_storage_gigabytes gauge',
+		line('scrapscache_sync_storage_gigabytes', usage.gigabytes ?? 0),
+		'# TYPE scrapscache_sync_stale_accounts gauge',
+		line('scrapscache_sync_stale_accounts', usage.staleAccounts ?? 0)
 	);
 	if (usage.activeByWindowDays) {
-		lines.push('# TYPE scraps-cache_sync_accounts_active gauge');
+		lines.push('# TYPE scrapscache_sync_accounts_active gauge');
 		for (const [windowDays, count] of Object.entries(usage.activeByWindowDays)) {
 			lines.push(
-				line(
-					'scraps-cache_sync_accounts_active',
-					count,
-					`window_days=${JSON.stringify(windowDays)}`
-				)
+				line('scrapscache_sync_accounts_active', count, `window_days=${JSON.stringify(windowDays)}`)
 			);
 		}
 	}
 	if (retention) {
 		lines.push(
-			'# TYPE scraps-cache_retention_enabled gauge',
-			line('scraps-cache_retention_enabled', retention.enabled ? 1 : 0),
-			'# TYPE scraps-cache_retention_inactive_days gauge',
-			line('scraps-cache_retention_inactive_days', retention.inactiveDays),
-			'# TYPE scraps-cache_retention_last_run_timestamp_seconds gauge',
-			line('scraps-cache_retention_last_run_timestamp_seconds', retention.lastRunAt / 1000),
-			'# TYPE scraps-cache_retention_deleted_accounts_total counter',
-			line('scraps-cache_retention_deleted_accounts_total', retention.deletedAccountsTotal)
+			'# TYPE scrapscache_retention_enabled gauge',
+			line('scrapscache_retention_enabled', retention.enabled ? 1 : 0),
+			'# TYPE scrapscache_retention_inactive_days gauge',
+			line('scrapscache_retention_inactive_days', retention.inactiveDays),
+			'# TYPE scrapscache_retention_last_run_timestamp_seconds gauge',
+			line('scrapscache_retention_last_run_timestamp_seconds', retention.lastRunAt / 1000),
+			'# TYPE scrapscache_retention_deleted_accounts_total counter',
+			line('scrapscache_retention_deleted_accounts_total', retention.deletedAccountsTotal)
 		);
 	}
 	lines.push(
-		'# TYPE scraps-cache_backup_last_attempt_timestamp_seconds gauge',
-		line('scraps-cache_backup_last_attempt_timestamp_seconds', backup.lastAttemptAt / 1000),
-		'# TYPE scraps-cache_backup_last_success_timestamp_seconds gauge',
-		line('scraps-cache_backup_last_success_timestamp_seconds', backup.lastSuccessAt / 1000),
-		'# TYPE scraps-cache_backup_failures_total counter',
-		line('scraps-cache_backup_failures_total', backup.failures),
-		'# TYPE scraps-cache_backup_duration_milliseconds gauge',
-		line('scraps-cache_backup_duration_milliseconds', backup.durationMs),
-		'# TYPE scraps-cache_reminder_wakes_sent_total counter',
-		line('scraps-cache_reminder_wakes_sent_total', reminderWakesSent),
-		'# TYPE scraps-cache_reminder_wakes_gone_total counter',
-		line('scraps-cache_reminder_wakes_gone_total', reminderWakesGone),
-		'# TYPE scraps-cache_reminder_wakes_failed_total counter',
-		line('scraps-cache_reminder_wakes_failed_total', reminderWakesFailed)
+		'# TYPE scrapscache_backup_last_attempt_timestamp_seconds gauge',
+		line('scrapscache_backup_last_attempt_timestamp_seconds', backup.lastAttemptAt / 1000),
+		'# TYPE scrapscache_backup_last_success_timestamp_seconds gauge',
+		line('scrapscache_backup_last_success_timestamp_seconds', backup.lastSuccessAt / 1000),
+		'# TYPE scrapscache_backup_failures_total counter',
+		line('scrapscache_backup_failures_total', backup.failures),
+		'# TYPE scrapscache_backup_duration_milliseconds gauge',
+		line('scrapscache_backup_duration_milliseconds', backup.durationMs),
+		'# TYPE scrapscache_reminder_wakes_sent_total counter',
+		line('scrapscache_reminder_wakes_sent_total', reminderWakesSent),
+		'# TYPE scrapscache_reminder_wakes_gone_total counter',
+		line('scrapscache_reminder_wakes_gone_total', reminderWakesGone),
+		'# TYPE scrapscache_reminder_wakes_failed_total counter',
+		line('scrapscache_reminder_wakes_failed_total', reminderWakesFailed)
 	);
 	return `${lines.join('\n')}\n`;
 }

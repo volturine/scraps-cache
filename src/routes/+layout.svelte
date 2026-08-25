@@ -169,7 +169,7 @@
 
 <div class="app-viewport" {@attach attachAppViewport}>
 	<div
-		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scraps-cache-bg)] text-[var(--scraps-cache-text)]"
+		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
 		{@attach mobile.current &&
 			attachSidebarSwipe({
 				getOpen: () => uiStore.sidebarOpen,
@@ -194,7 +194,7 @@
 					transition:fade={{ duration: 150 }}
 				></button>
 				<div
-					class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)]"
+					class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
 					transition:fly={{ x: -288, duration: 200 }}
 					role="navigation"
 					aria-label="Sidebar"
@@ -205,7 +205,7 @@
 			{/if}
 		{:else}
 			{#if uiStore.sidebarOpen}
-				<div class="w-64 shrink-0 border-r border-[var(--scraps-cache-border)]">
+				<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">
 					<Sidebar />
 				</div>
 			{/if}

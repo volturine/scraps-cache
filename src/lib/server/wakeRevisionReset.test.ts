@@ -14,7 +14,7 @@ const wake = (character: string, fireAt: number) => ({ id: character.repeat(43),
  */
 describe('wake revision across a relay sequence reset', () => {
 	it('accepts a wake snapshot republished at the post-reset cursor', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-wake-reset-'));
+		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-wake-reset-'));
 		const store = new SyncStore(directory);
 		try {
 			store.createAccount('account', 'credential');

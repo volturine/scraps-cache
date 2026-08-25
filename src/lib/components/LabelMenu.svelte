@@ -46,8 +46,8 @@
 	}
 </script>
 
-<div use:labelMenuInteractions class="scraps-cache-popover w-80 p-4">
-	<div class="mb-3 text-sm font-medium text-[var(--scraps-cache-text)]">Label as</div>
+<div use:labelMenuInteractions class="scrapscache-popover w-80 p-4">
+	<div class="mb-3 text-sm font-medium text-[var(--scrapscache-text)]">Label as</div>
 
 	<!-- Create new label -->
 	<div class="mb-3 flex gap-2">
@@ -57,13 +57,13 @@
 			bind:value={newName}
 			placeholder="Create new label…"
 			onkeydown={(e) => e.key === 'Enter' && createAndAssign()}
-			class="scraps-cache-input w-full rounded-full px-3 py-2 text-sm"
+			class="scrapscache-input w-full rounded-full px-3 py-2 text-sm"
 		/>
 		<button
 			type="button"
 			onclick={createAndAssign}
 			aria-disabled={!newName.trim()}
-			class="scraps-cache-button scraps-cache-button-secondary grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--scraps-cache-text-muted)]"
+			class="scrapscache-button scrapscache-button-secondary grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--scrapscache-text-muted)]"
 			aria-label="Create label"
 			title="Create label"
 		>
@@ -74,7 +74,7 @@
 	<!-- Label list with checkboxes -->
 	<div class="flex max-h-60 flex-col gap-1 overflow-y-auto sidebar-scroll">
 		{#if notesStore.labels.length === 0}
-			<div class="py-3 text-center text-xs text-[var(--scraps-cache-text-muted)]">
+			<div class="py-3 text-center text-xs text-[var(--scrapscache-text-muted)]">
 				No labels yet. Create one above.
 			</div>
 		{:else}
@@ -83,13 +83,13 @@
 					<button
 						type="button"
 						onclick={() => toggle(label.id)}
-						class="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<span
 							class="h-5 w-5 shrink-0 rounded border-2 border-black/30 dark:border-white/30 flex items-center justify-center text-xs {note.labels.includes(
 								label.id
 							)
-								? 'border-[var(--scraps-cache-accent)] bg-[var(--scraps-cache-accent)] text-[var(--scraps-cache-accent-foreground)]'
+								? 'border-[var(--scrapscache-accent)] bg-[var(--scrapscache-accent)] text-[var(--scrapscache-accent-foreground)]'
 								: ''}"
 						>
 							{#if note.labels.includes(label.id)}✓{/if}

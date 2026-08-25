@@ -31,28 +31,28 @@ describe('getVapidKeys', () => {
 		storeMock.setMeta.mockReset();
 		storeMock.countPushDevices.mockReset();
 		storeMock.countPushDevices.mockReturnValue(0);
-		setEnv('SCRAPS_CACHE_VAPID_PUBLIC_KEY', undefined);
-		setEnv('SCRAPS_CACHE_VAPID_PRIVATE_KEY', undefined);
+		setEnv('SCRAPSCACHE_VAPID_PUBLIC_KEY', undefined);
+		setEnv('SCRAPSCACHE_VAPID_PRIVATE_KEY', undefined);
 	});
 
 	afterEach(() => {
-		setEnv('SCRAPS_CACHE_VAPID_PUBLIC_KEY', undefined);
-		setEnv('SCRAPS_CACHE_VAPID_PRIVATE_KEY', undefined);
+		setEnv('SCRAPSCACHE_VAPID_PUBLIC_KEY', undefined);
+		setEnv('SCRAPSCACHE_VAPID_PRIVATE_KEY', undefined);
 		vi.restoreAllMocks();
 	});
 
 	it('returns env keys when both are configured', async () => {
-		setEnv('SCRAPS_CACHE_VAPID_PUBLIC_KEY', 'env-public');
-		setEnv('SCRAPS_CACHE_VAPID_PRIVATE_KEY', 'env-private');
+		setEnv('SCRAPSCACHE_VAPID_PUBLIC_KEY', 'env-public');
+		setEnv('SCRAPSCACHE_VAPID_PRIVATE_KEY', 'env-private');
 		const { getVapidKeys } = await importFreshWebPush();
 		expect(getVapidKeys()).toEqual({ publicKey: 'env-public', privateKey: 'env-private' });
 		expect(storeMock.setMeta).not.toHaveBeenCalled();
 	});
 
 	it('throws when only one VAPID env key is configured', async () => {
-		setEnv('SCRAPS_CACHE_VAPID_PUBLIC_KEY', 'env-public');
+		setEnv('SCRAPSCACHE_VAPID_PUBLIC_KEY', 'env-public');
 		const { getVapidKeys } = await importFreshWebPush();
-		expect(() => getVapidKeys()).toThrow('Both SCRAPS_CACHE_VAPID_PUBLIC_KEY');
+		expect(() => getVapidKeys()).toThrow('Both SCRAPSCACHE_VAPID_PUBLIC_KEY');
 	});
 
 	it('returns stored keys without regenerating', async () => {

@@ -46,7 +46,7 @@ For design detail, see [docs/security.md](docs/security.md).
 Prefer one of:
 
 1. **GitHub Security Advisories** — open a private report on
-   [volturine/scraps-cache](https://github.com/volturine/scraps-cache/security/advisories/new)
+   [volturine/scrapscache](https://github.com/volturine/scrapscache/security/advisories/new)
 2. **Email** — if advisories are unavailable, contact the maintainer through
    the GitHub profile listed on the repository
 

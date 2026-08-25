@@ -6,7 +6,7 @@ trash/archive — and a ciphertext-only relay that never sees your note contents
 
 Visit [scrapscache.com](https://scrapscache.com).
 
-[![CI/CD](https://github.com/volturine/scraps-cache/actions/workflows/ci-cd.yaml/badge.svg)](https://github.com/volturine/scraps-cache/actions/workflows/ci-cd.yaml)
+[![CI/CD](https://github.com/volturine/scrapscache/actions/workflows/ci-cd.yaml/badge.svg)](https://github.com/volturine/scrapscache/actions/workflows/ci-cd.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-24-brightgreen.svg)](.nvmrc)
 
@@ -40,8 +40,8 @@ Visit [scrapscache.com](https://scrapscache.com).
 Requires **Node.js 24** (see [`.nvmrc`](.nvmrc)).
 
 ```sh
-git clone https://github.com/volturine/scraps-cache.git
-cd scraps-cache
+git clone https://github.com/volturine/scrapscache.git
+cd scrapscache
 npm install
 npm run dev -- --host 0.0.0.0
 ```
@@ -59,7 +59,7 @@ The recommended production path pulls the multi-arch image from GitHub Container
 
 ```sh
 cp .env.example .env
-# Edit .env: set SCRAPS_CACHE_IMAGE, SCRAPS_CACHE_ADMIN_TOKEN, and SCRAPS_CACHE_ORIGIN for public HTTPS
+# Edit .env: set SCRAPSCACHE_IMAGE, SCRAPSCACHE_ADMIN_TOKEN, and SCRAPSCACHE_ORIGIN for public HTTPS
 docker compose --project-directory . -f docker/compose.production.yaml pull
 docker compose --project-directory . -f docker/compose.production.yaml up -d
 ```
@@ -140,7 +140,7 @@ Please file issues for bugs and ideas.
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup,
 coding guidelines, and PR expectations.
 
-- **Bugs / features** — [GitHub Issues](https://github.com/volturine/scraps-cache/issues)
+- **Bugs / features** — [GitHub Issues](https://github.com/volturine/scrapscache/issues)
 - **Security** — private report via [SECURITY.md](SECURITY.md) (do not open a public issue)
 
 ## License

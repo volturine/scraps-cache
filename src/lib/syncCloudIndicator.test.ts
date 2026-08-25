@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { attachSyncCloudIndicator, SYNC_ICON_ROTATION_MS } from './syncCloudIndicator';
 
-const ROOT_CLASS = 'scraps-cache-sync-active';
+const ROOT_CLASS = 'scrapscache-sync-active';
 
 function isSpinning(): boolean {
 	return document.documentElement.classList.contains(ROOT_CLASS);
 }
 
 function syncControl(): HTMLElement {
-	const control = document.querySelector<HTMLElement>('[data-scraps-cache-sync-control]');
+	const control = document.querySelector<HTMLElement>('[data-scrapscache-sync-control]');
 	if (!control) throw new Error('missing sync control');
 	return control;
 }
@@ -20,7 +20,7 @@ describe('sync cloud indicator', () => {
 		vi.useFakeTimers();
 		document.documentElement.classList.remove(ROOT_CLASS);
 		const control = document.createElement('button');
-		control.setAttribute('data-scraps-cache-sync-control', '');
+		control.setAttribute('data-scrapscache-sync-control', '');
 		document.body.append(control);
 		store = { onSyncStart: null, onSyncEnd: null };
 		attachSyncCloudIndicator(store);

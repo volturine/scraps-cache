@@ -19,7 +19,7 @@ function createStore(options?: ConstructorParameters<typeof SyncStore>[1]): {
 	store: SyncStore;
 	directory: string;
 } {
-	const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-sync-'));
+	const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
 	const store = new SyncStore(directory, options);
 	directories.push(directory);
 	stores.push(store);
@@ -666,7 +666,7 @@ describe('SQLite sync store', () => {
 	});
 
 	it('backfills last_seen_at from updated_at on existing databases', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-sync-'));
+		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
 		directories.push(directory);
 		const legacy = new Database(join(directory, 'sync.sqlite'));
 		legacy.exec(`
@@ -723,7 +723,7 @@ describe('SQLite sync store', () => {
 	});
 
 	it('imports the legacy JSON once and leaves it available for recovery', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-sync-'));
+		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
 		directories.push(directory);
 		const legacyFile = join(directory, 'users.json');
 		const legacy = JSON.stringify({
@@ -749,7 +749,7 @@ describe('SQLite sync store', () => {
 	});
 
 	it('skips garbage legacy entries instead of failing startup', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-sync-'));
+		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
 		directories.push(directory);
 		writeFileSync(
 			join(directory, 'users.json'),
@@ -795,7 +795,7 @@ describe('SQLite sync store', () => {
 			10
 		);
 
-		const snapshotDirectory = mkdtempSync(join(tmpdir(), 'scraps-cache-snapshot-'));
+		const snapshotDirectory = mkdtempSync(join(tmpdir(), 'scrapscache-snapshot-'));
 		directories.push(snapshotDirectory);
 		const snapshotPath = join(snapshotDirectory, 'snapshot.sqlite');
 		await store.backup(snapshotPath);
@@ -803,7 +803,7 @@ describe('SQLite sync store', () => {
 		// Later live writes must not appear in the already-taken snapshot.
 		store.sync('account', 2, [{ id: 'note-3', slot: slot('c'), ciphertext: 'cipher-c' }], [], 10);
 
-		const restoredDirectory = mkdtempSync(join(tmpdir(), 'scraps-cache-restored-'));
+		const restoredDirectory = mkdtempSync(join(tmpdir(), 'scrapscache-restored-'));
 		directories.push(restoredDirectory);
 		copyFileSync(snapshotPath, join(restoredDirectory, 'sync.sqlite'));
 		const restored = new SyncStore(restoredDirectory);

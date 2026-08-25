@@ -27,8 +27,8 @@ not learn note plaintext.
 ### Install and run
 
 ```sh
-git clone https://github.com/volturine/scraps-cache.git
-cd scraps-cache
+git clone https://github.com/volturine/scrapscache.git
+cd scrapscache
 npm install
 npm run dev -- --host 0.0.0.0
 ```

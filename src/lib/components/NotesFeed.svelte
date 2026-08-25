@@ -71,10 +71,10 @@
 				onclick={() => {
 					pageIndex = Math.max(0, safePageIndex - 1);
 				}}
-				class="rounded-lg border border-[var(--scraps-cache-border)] px-3 py-1.5 text-sm text-[var(--scraps-cache-text)] disabled:opacity-40"
+				class="rounded-lg border border-[var(--scrapscache-border)] px-3 py-1.5 text-sm text-[var(--scrapscache-text)] disabled:opacity-40"
 				>Previous</button
 			>
-			<span class="text-xs text-[var(--scraps-cache-text-muted)]">
+			<span class="text-xs text-[var(--scrapscache-text-muted)]">
 				{safePageIndex * PAGE_SIZE + 1}–{Math.min(notes.length, (safePageIndex + 1) * PAGE_SIZE)} of {notes.length}
 			</span>
 			<button
@@ -83,7 +83,7 @@
 				onclick={() => {
 					pageIndex = Math.min(pageCount - 1, safePageIndex + 1);
 				}}
-				class="rounded-lg border border-[var(--scraps-cache-border)] px-3 py-1.5 text-sm text-[var(--scraps-cache-text)] disabled:opacity-40"
+				class="rounded-lg border border-[var(--scrapscache-border)] px-3 py-1.5 text-sm text-[var(--scrapscache-text)] disabled:opacity-40"
 				>Next</button
 			>
 		</nav>

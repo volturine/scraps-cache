@@ -69,7 +69,7 @@
 	}
 </script>
 
-<div bind:this={contentElement} class="text-sm text-[var(--scraps-cache-text)]">
+<div bind:this={contentElement} class="text-sm text-[var(--scrapscache-text)]">
 	{#each segments as seg (seg.lineIndex)}
 		{#if seg.type === 'check'}
 			<div
@@ -161,10 +161,10 @@
 				aria-label={`Open ${file.name ?? 'file'}`}
 			>
 				<span
-					class="grid h-7 w-7 shrink-0 place-items-center rounded bg-black/10 text-[9px] font-bold text-[var(--scraps-cache-text)] dark:bg-white/10"
+					class="grid h-7 w-7 shrink-0 place-items-center rounded bg-black/10 text-[9px] font-bold text-[var(--scrapscache-text)] dark:bg-white/10"
 					>{fileIconLabel(file.mime, file.name)}</span
 				>
-				<span class="min-w-0 flex-1 truncate text-xs text-[var(--scraps-cache-text)]"
+				<span class="min-w-0 flex-1 truncate text-xs text-[var(--scrapscache-text)]"
 					>{file.name || 'File'}</span
 				>
 			</button>

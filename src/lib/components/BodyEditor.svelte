@@ -840,7 +840,7 @@
 	aria-multiline="true"
 	aria-label="Note body"
 	spellcheck="true"
-	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--scraps-cache-text)] outline-none"
+	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--scrapscache-text)] outline-none"
 	onbeforeinput={handleBeforeInput}
 	oninput={handleInput}
 	oncopy={handleCopy}
@@ -909,7 +909,7 @@
 					contenteditable="false"
 					data-add-subtask
 					aria-label="Add sub-task"
-					class="flex basis-full select-none items-center rounded px-1 py-1 pl-6 text-left text-xs text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scraps-cache-text)] dark:hover:bg-white/10"
+					class="flex basis-full select-none items-center rounded px-1 py-1 pl-6 text-left text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 				>
 					<span class="add-subtask-label" aria-hidden="true"></span>
@@ -922,7 +922,7 @@
 <style>
 	[data-line-text][data-placeholder]:empty::before {
 		content: attr(data-placeholder);
-		color: var(--scraps-cache-text-muted);
+		color: var(--scrapscache-text-muted);
 		pointer-events: none;
 	}
 

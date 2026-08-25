@@ -284,7 +284,7 @@
 		aria-label="Close sync dialog"
 	></button>
 	<div
-		class="scraps-cache-dialog relative w-full max-w-md p-6"
+		class="scrapscache-dialog relative w-full max-w-md p-6"
 		role="dialog"
 		tabindex="-1"
 		aria-modal="true"
@@ -294,7 +294,7 @@
 		<div class="mb-4 flex items-center justify-between">
 			<h2
 				id="sync-title"
-				class="flex items-center gap-2 text-lg font-medium text-[var(--scraps-cache-text)]"
+				class="flex items-center gap-2 text-lg font-medium text-[var(--scrapscache-text)]"
 			>
 				<Cloud class="h-5 w-5" aria-hidden="true" />
 				Sync
@@ -306,7 +306,7 @@
 
 		{#if mode === 'linked' && syncStore.account}
 			<div class="space-y-4">
-				<p class="text-sm text-[var(--scraps-cache-text-muted)]">
+				<p class="text-sm text-[var(--scrapscache-text-muted)]">
 					This device is linked. Connect another device with a one-time code that expires in 60
 					seconds.
 				</p>
@@ -314,9 +314,9 @@
 					{@const progress = syncStore.progress}
 					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
 					<div
-						class="rounded-[var(--scraps-cache-radius-md)] bg-[var(--scraps-cache-interactive-hover)] p-3 text-sm"
+						class="rounded-[var(--scrapscache-radius-md)] bg-[var(--scrapscache-interactive-hover)] p-3 text-sm"
 					>
-						<div class="mb-1 flex justify-between text-[var(--scraps-cache-text-muted)]">
+						<div class="mb-1 flex justify-between text-[var(--scrapscache-text-muted)]">
 							<span
 								>{progress.phase === 'upload'
 									? 'Encrypting & uploading'
@@ -327,43 +327,43 @@
 									: ''}</span
 							>
 						</div>
-						<div class="scraps-cache-progress-track h-2 overflow-hidden rounded-full">
+						<div class="scrapscache-progress-track h-2 overflow-hidden rounded-full">
 							<div
-								class="scraps-cache-progress-value h-full rounded-full transition-[width] duration-150"
+								class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
 								style={`width: ${progress.totalBytes ? percent : 100}%`}
 							></div>
 						</div>
 					</div>
-				{:else if syncing}<p class="text-sm text-[var(--scraps-cache-text-muted)]">Syncing…</p>{/if}
-				{#if info}<p class="text-sm text-[var(--scraps-cache-text-muted)]">{info}</p>{/if}
-				{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}
+				{:else if syncing}<p class="text-sm text-[var(--scrapscache-text-muted)]">Syncing…</p>{/if}
+				{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]">{info}</p>{/if}
+				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
 				<button
 					type="button"
 					onclick={() => void syncNow()}
 					disabled={loading || syncing}
-					class="scraps-cache-button scraps-cache-button-primary w-full px-3 py-2.5 text-sm font-medium"
+					class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
 					>{syncing ? 'Syncing…' : '🔄 Sync now'}</button
 				>
 				<button
 					type="button"
 					onclick={() => void startExistingConnection()}
 					disabled={loading || syncing}
-					class="scraps-cache-button scraps-cache-button-secondary w-full px-3 py-2.5 text-sm"
+					class="scrapscache-button scrapscache-button-secondary w-full px-3 py-2.5 text-sm"
 					>Connect another device</button
 				>
 				{#if syncStore.usage}
-					<div class="text-center text-xs text-[var(--scraps-cache-text-muted)]">
+					<div class="text-center text-xs text-[var(--scrapscache-text-muted)]">
 						{formatBytes(syncStore.usage.ciphertextBytes)} stored for this account
 					</div>
 				{/if}
 				<button
 					type="button"
 					onclick={unlinkDevice}
-					class="scraps-cache-button scraps-cache-button-destructive w-full text-sm"
+					class="scrapscache-button scrapscache-button-destructive w-full text-sm"
 					>Unlink this device</button
 				>
 				{#if deleteConfirm}
-					<div class="scraps-cache-status-danger rounded-[var(--scraps-cache-radius-md)] p-3">
+					<div class="scrapscache-status-danger rounded-[var(--scrapscache-radius-md)] p-3">
 						<p class="text-xs leading-relaxed">
 							Delete all encrypted cloud records? Notes stored on this device will remain.
 						</p>
@@ -374,14 +374,14 @@
 									deleteConfirm = false;
 								}}
 								disabled={loading}
-								class="flex-1 rounded border border-[var(--scraps-cache-border)] px-2 py-1.5 text-xs"
+								class="flex-1 rounded border border-[var(--scrapscache-border)] px-2 py-1.5 text-xs"
 								>Cancel</button
 							>
 							<button
 								type="button"
 								onclick={() => void deleteCloudData()}
 								disabled={loading}
-								class="scraps-cache-button scraps-cache-button-destructive-solid flex-1 px-2 py-1.5 text-xs font-medium"
+								class="scrapscache-button scrapscache-button-destructive-solid flex-1 px-2 py-1.5 text-xs font-medium"
 								>{loading ? 'Deleting…' : 'Delete cloud data'}</button
 							>
 						</div>
@@ -392,14 +392,14 @@
 						onclick={() => {
 							deleteConfirm = true;
 						}}
-						class="scraps-cache-button scraps-cache-button-destructive w-full text-xs"
+						class="scrapscache-button scrapscache-button-destructive w-full text-xs"
 						>Delete cloud data</button
 					>
 				{/if}
 			</div>
 		{:else if mode === 'menu'}
 			<div class="space-y-3">
-				<p class="text-sm text-[var(--scraps-cache-text-muted)]">
+				<p class="text-sm text-[var(--scrapscache-text-muted)]">
 					Create one private sync key, then connect your own devices by starting the connection on
 					both within 60 seconds.
 				</p>
@@ -410,7 +410,7 @@
 						error = '';
 						info = '';
 					}}
-					class="scraps-cache-button scraps-cache-button-primary w-full px-3 py-3 text-sm font-medium"
+					class="scrapscache-button scrapscache-button-primary w-full px-3 py-3 text-sm font-medium"
 					>Create sync key</button
 				><button
 					type="button"
@@ -419,33 +419,33 @@
 						error = '';
 						info = '';
 					}}
-					class="w-full rounded-lg border border-[var(--scraps-cache-border)] px-3 py-3 text-sm touch-manipulation"
+					class="w-full rounded-lg border border-[var(--scrapscache-border)] px-3 py-3 text-sm touch-manipulation"
 					>Connect to an existing sync</button
 				>
-				{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}
+				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
 			</div>
 		{:else if mode === 'register'}
 			<div class="space-y-3">
-				<p class="text-sm text-[var(--scraps-cache-text-muted)]">
+				<p class="text-sm text-[var(--scrapscache-text-muted)]">
 					Creates a private account on this device. Other devices join with a one-time code, not a
 					lifetime password.
 				</p>
-				{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}<button
+				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
 					type="button"
 					onclick={() => void create()}
 					disabled={loading}
-					class="scraps-cache-button scraps-cache-button-primary w-full px-3 py-2 text-sm font-medium"
+					class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
 					>{loading ? 'Creating…' : 'Create my sync key'}</button
 				><button
 					type="button"
 					onclick={() => (mode = 'menu')}
-					class="w-full text-xs text-[var(--scraps-cache-text-muted)] touch-manipulation"
+					class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
 					>← Back</button
 				>
 			</div>
 		{:else if mode === 'link'}
 			<div class="space-y-3">
-				<p class="text-sm text-[var(--scraps-cache-text-muted)]">
+				<p class="text-sm text-[var(--scrapscache-text-muted)]">
 					On your other device open Sync and choose Connect another device. Enter the one-time code
 					shown there.
 				</p>
@@ -456,18 +456,18 @@
 					placeholder="XXXX-XXXX-XXXX-XXXX"
 					maxlength="19"
 					spellcheck="false"
-					class="scraps-cache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
+					class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
 					onkeydown={(event) => event.key === 'Enter' && void beginLink()}
-				/>{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}<button
+				/>{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
 					type="button"
 					onclick={() => void beginLink()}
 					disabled={loading}
-					class="scraps-cache-button scraps-cache-button-primary w-full px-3 py-2 text-sm font-medium"
+					class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
 					>{loading ? 'Starting…' : 'Start connection'}</button
 				><button
 					type="button"
 					onclick={() => (mode = 'menu')}
-					class="w-full text-xs text-[var(--scraps-cache-text-muted)] touch-manipulation"
+					class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
 					>← Back</button
 				>
 			</div>
@@ -475,24 +475,24 @@
 			<div class="space-y-5">
 				{#if waiting?.role === 'existing'}
 					<div>
-						<p class="text-xs font-medium tracking-wide text-[var(--scraps-cache-text-muted)]">
+						<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
 							On the new device
 						</p>
-						<p class="mt-1 text-sm text-[var(--scraps-cache-text)]">Open Sync and type this code</p>
+						<p class="mt-1 text-sm text-[var(--scrapscache-text)]">Open Sync and type this code</p>
 					</div>
 					<div
-						class="rounded-xl border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-bg)] px-2 py-5"
+						class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] px-2 py-5"
 						aria-label="One-time pairing code"
 					>
 						<div class="flex items-center justify-center gap-1">
 							{#each pairingGroups(waiting.syncCode) as group, index (index)}
 								{#if index > 0}
-									<span class="px-0.5 text-[var(--scraps-cache-text-muted)]" aria-hidden="true"
+									<span class="px-0.5 text-[var(--scrapscache-text-muted)]" aria-hidden="true"
 										>·</span
 									>
 								{/if}
 								<span
-									class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--scraps-cache-text)]"
+									class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--scrapscache-text)]"
 									>{group}</span
 								>
 							{/each}
@@ -501,30 +501,30 @@
 					<button
 						type="button"
 						onclick={() => void copyCode()}
-						class="scraps-cache-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
-							? 'border-[var(--scraps-cache-success)] bg-[var(--scraps-cache-success)] text-[var(--scraps-cache-success-foreground)]'
-							: 'scraps-cache-button-secondary'}">{copyFlash ? 'Copied' : 'Copy code'}</button
+						class="scrapscache-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
+							? 'border-[var(--scrapscache-success)] bg-[var(--scrapscache-success)] text-[var(--scrapscache-success-foreground)]'
+							: 'scrapscache-button-secondary'}">{copyFlash ? 'Copied' : 'Copy code'}</button
 					>
 				{:else}
 					<div>
-						<p class="text-xs font-medium tracking-wide text-[var(--scraps-cache-text-muted)]">
+						<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
 							On the other device
 						</p>
-						<p class="mt-1 text-sm text-[var(--scraps-cache-text)]">
+						<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
 							Open Sync and choose Connect another device
 						</p>
 					</div>
 				{/if}
 				<div class="space-y-1.5">
 					<div
-						class="flex items-center justify-between text-xs text-[var(--scraps-cache-text-muted)]"
+						class="flex items-center justify-between text-xs text-[var(--scrapscache-text-muted)]"
 					>
 						<span>Expires in</span>
-						<span class="tabular-nums text-[var(--scraps-cache-text)]">{secondsLeft()}s</span>
+						<span class="tabular-nums text-[var(--scrapscache-text)]">{secondsLeft()}s</span>
 					</div>
-					<div class="scraps-cache-progress-track h-1 overflow-hidden rounded-full">
+					<div class="scrapscache-progress-track h-1 overflow-hidden rounded-full">
 						<div
-							class="scraps-cache-progress-value h-full rounded-full transition-[width] duration-1000 ease-linear"
+							class="scrapscache-progress-value h-full rounded-full transition-[width] duration-1000 ease-linear"
 							style={`width: ${expiryRatio() * 100}%`}
 						></div>
 					</div>
@@ -536,7 +536,7 @@
 						waiting = null;
 						mode = syncStore.isLoggedIn ? 'linked' : 'link';
 					}}
-					class="w-full text-sm text-[var(--scraps-cache-text-muted)] touch-manipulation"
+					class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
 					>Cancel</button
 				>
 			</div>
@@ -547,40 +547,40 @@
 					{@const progress = syncStore.progress}
 					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
 					<div
-						class="rounded-[var(--scraps-cache-radius-md)] bg-[var(--scraps-cache-interactive-hover)] p-3 text-sm"
+						class="rounded-[var(--scrapscache-radius-md)] bg-[var(--scrapscache-interactive-hover)] p-3 text-sm"
 					>
-						<div class="mb-1 flex justify-between text-[var(--scraps-cache-text-muted)]">
+						<div class="mb-1 flex justify-between text-[var(--scrapscache-text-muted)]">
 							<span>{progress.phase === 'upload' ? 'Uploading' : 'Downloading'}</span><span
 								>{formatBytes(progress.loadedBytes)}{progress.totalBytes
 									? ` / ${formatBytes(progress.totalBytes)} (${percent}%)`
 									: ''}</span
 							>
 						</div>
-						<div class="scraps-cache-progress-track h-2 overflow-hidden rounded-full">
+						<div class="scrapscache-progress-track h-2 overflow-hidden rounded-full">
 							<div
-								class="scraps-cache-progress-value h-full rounded-full transition-[width] duration-150"
+								class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
 								style={`width: ${progress.totalBytes ? percent : 100}%`}
 							></div>
 						</div>
 					</div>
 				{:else if syncing || loading}
-					<p class="text-sm text-[var(--scraps-cache-text-muted)]">{info || 'Working…'}</p>
+					<p class="text-sm text-[var(--scrapscache-text-muted)]">{info || 'Working…'}</p>
 				{/if}
 				<button
 					type="button"
 					onclick={() => void choose(true)}
 					disabled={loading || syncing}
-					class="scraps-cache-button scraps-cache-button-primary w-full px-3 py-3 text-left text-sm font-medium"
+					class="scrapscache-button scrapscache-button-primary w-full px-3 py-3 text-left text-sm font-medium"
 					>Keep and merge local notes</button
 				>
 				<button
 					type="button"
 					onclick={() => void choose(false)}
 					disabled={loading || syncing}
-					class="scraps-cache-button scraps-cache-button-destructive w-full border border-[var(--scraps-cache-danger)] px-3 py-3 text-left text-sm font-medium"
+					class="scrapscache-button scrapscache-button-destructive w-full border border-[var(--scrapscache-danger)] px-3 py-3 text-left text-sm font-medium"
 					>Discard local notes and download synced notes</button
 				>
-				{#if error}<p class="text-sm text-[var(--scraps-cache-danger)]">{error}</p>{/if}
+				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
 			</div>
 		{/if}
 	</div>

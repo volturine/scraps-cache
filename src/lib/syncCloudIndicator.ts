@@ -1,7 +1,7 @@
 /** DOM-only cloud indicator: spins for max(sync time, one rotation).
  * Instant syncs hold the class until one CSS turn finishes (1s in app.css). */
 
-const ROOT_CLASS = 'scraps-cache-sync-active';
+const ROOT_CLASS = 'scrapscache-sync-active';
 export const SYNC_ICON_ROTATION_MS = 1000;
 
 let inFlight = 0;
@@ -11,9 +11,7 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null;
 function setSpin(on: boolean): void {
 	if (typeof document === 'undefined') return;
 	document.documentElement.classList.toggle(ROOT_CLASS, on);
-	for (const control of document.querySelectorAll<HTMLElement>(
-		'[data-scraps-cache-sync-control]'
-	)) {
+	for (const control of document.querySelectorAll<HTMLElement>('[data-scrapscache-sync-control]')) {
 		control.setAttribute('aria-label', on ? 'Sync settings, syncing' : 'Sync settings');
 		control.setAttribute('aria-busy', String(on));
 	}

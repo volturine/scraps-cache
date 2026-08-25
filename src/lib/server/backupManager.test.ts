@@ -27,7 +27,7 @@ function tempDirectory(prefix: string): string {
 }
 
 function createStore(): SyncStore {
-	const store = new SyncStore(tempDirectory('scraps-cache-sync-'));
+	const store = new SyncStore(tempDirectory('scrapscache-sync-'));
 	stores.push(store);
 	return store;
 }
@@ -63,7 +63,7 @@ describe('BackupManager', () => {
 			10
 		);
 
-		const backupDirectory = tempDirectory('scraps-cache-backups-');
+		const backupDirectory = tempDirectory('scrapscache-backups-');
 		const manager = new BackupManager({
 			directory: backupDirectory,
 			retain: 2,
@@ -75,14 +75,14 @@ describe('BackupManager', () => {
 		expect(status.enabled).toBe(true);
 		expect(status.failures).toBe(0);
 		expect(status.lastError).toBeNull();
-		expect(status.lastFile).toMatch(/[/\\]scraps-cache-sync-.*\.sqlite$/);
+		expect(status.lastFile).toMatch(/[/\\]scrapscache-sync-.*\.sqlite$/);
 		expect(existsSync(status.lastFile!)).toBe(true);
 		const leftoverTemps = readdirSync(backupDirectory).filter((name) =>
-			name.startsWith('.scraps-cache-sync-')
+			name.startsWith('.scrapscache-sync-')
 		);
 		expect(leftoverTemps).toEqual([]);
 
-		const restoredDirectory = tempDirectory('scraps-cache-restored-');
+		const restoredDirectory = tempDirectory('scrapscache-restored-');
 		copyFileSync(status.lastFile!, join(restoredDirectory, 'sync.sqlite'));
 		const restored = new SyncStore(restoredDirectory);
 		stores.push(restored);
@@ -97,7 +97,7 @@ describe('BackupManager', () => {
 		const store = createStore();
 		store.setMeta('vapid-public-v1', 'public-key-value');
 		store.setMeta('vapid-private-v1', 'private-key-secret');
-		const backupDirectory = tempDirectory('scraps-cache-backups-');
+		const backupDirectory = tempDirectory('scrapscache-backups-');
 		const manager = new BackupManager({ directory: backupDirectory, source: store });
 		managers.push(manager);
 
@@ -124,7 +124,7 @@ describe('BackupManager', () => {
 	it('prunes older snapshots beyond the retention count', async () => {
 		const store = createStore();
 		store.createAccount('account', 'credential');
-		const backupDirectory = tempDirectory('scraps-cache-backups-');
+		const backupDirectory = tempDirectory('scrapscache-backups-');
 		const manager = new BackupManager({
 			directory: backupDirectory,
 			retain: 2,
@@ -139,7 +139,7 @@ describe('BackupManager', () => {
 		}
 
 		const snapshots = readdirSync(backupDirectory)
-			.filter((name) => /^scraps-cache-sync-.*\.sqlite$/.test(name))
+			.filter((name) => /^scrapscache-sync-.*\.sqlite$/.test(name))
 			.sort();
 		expect(snapshots).toHaveLength(2);
 		expect(manager.getStatus().lastFile).toBe(join(backupDirectory, snapshots.at(-1)!));
@@ -147,7 +147,7 @@ describe('BackupManager', () => {
 
 	it('does not start a second backup while one is already running', async () => {
 		const store = createStore();
-		const backupDirectory = tempDirectory('scraps-cache-backups-');
+		const backupDirectory = tempDirectory('scrapscache-backups-');
 		let release!: () => void;
 		const gate = new Promise<void>((resolve) => {
 			release = resolve;
@@ -183,7 +183,7 @@ describe('BackupManager', () => {
 	});
 
 	it('cleans temporary files and records failures when verification fails', async () => {
-		const backupDirectory = tempDirectory('scraps-cache-backups-');
+		const backupDirectory = tempDirectory('scrapscache-backups-');
 		const manager = new BackupManager({
 			directory: backupDirectory,
 			source: {
@@ -205,7 +205,7 @@ describe('BackupManager', () => {
 	});
 
 	it('records a directory failure instead of throwing out of start', () => {
-		const blocker = join(tempDirectory('scraps-cache-backup-block-'), 'file');
+		const blocker = join(tempDirectory('scrapscache-backup-block-'), 'file');
 		writeFileSync(blocker, 'not a directory');
 		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const manager = new BackupManager({ directory: join(blocker, 'backups') });
@@ -216,20 +216,20 @@ describe('BackupManager', () => {
 		error.mockRestore();
 	});
 
-	it('warns when SCRAPS_CACHE_BACKUP_RETAIN is invalid', () => {
+	it('warns when SCRAPSCACHE_BACKUP_RETAIN is invalid', () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-		const previous = env.SCRAPS_CACHE_BACKUP_RETAIN;
-		env.SCRAPS_CACHE_BACKUP_RETAIN = '0';
+		const previous = env.SCRAPSCACHE_BACKUP_RETAIN;
+		env.SCRAPSCACHE_BACKUP_RETAIN = '0';
 		try {
 			const manager = new BackupManager({
-				directory: tempDirectory('scraps-cache-backups-'),
+				directory: tempDirectory('scrapscache-backups-'),
 				source: { async backup() {} }
 			});
 			managers.push(manager);
 			expect(warn).toHaveBeenCalledWith(expect.stringContaining('backup_env_invalid'));
 		} finally {
-			if (previous === undefined) delete env.SCRAPS_CACHE_BACKUP_RETAIN;
-			else env.SCRAPS_CACHE_BACKUP_RETAIN = previous;
+			if (previous === undefined) delete env.SCRAPSCACHE_BACKUP_RETAIN;
+			else env.SCRAPSCACHE_BACKUP_RETAIN = previous;
 			warn.mockRestore();
 		}
 	});

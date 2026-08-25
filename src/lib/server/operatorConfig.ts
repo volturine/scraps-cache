@@ -5,7 +5,7 @@ export const ACTIVITY_WINDOWS_DAYS = [1, 7, 30] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function parseRetentionInactiveDays(
-	value = env.SCRAPS_CACHE_RETENTION_INACTIVE_DAYS
+	value = env.SCRAPSCACHE_RETENTION_INACTIVE_DAYS
 ): number {
 	const parsed = Number(value);
 	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;

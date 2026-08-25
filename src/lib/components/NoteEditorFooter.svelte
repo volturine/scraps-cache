@@ -294,7 +294,7 @@
 				class="flex items-center gap-2 rounded-lg border border-black/10 bg-black/5 px-2 py-1.5 dark:border-white/10 dark:bg-white/5"
 			>
 				<span
-					class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-black/10 text-[10px] font-bold tracking-wide text-[var(--scraps-cache-text)] dark:bg-white/10"
+					class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-black/10 text-[10px] font-bold tracking-wide text-[var(--scrapscache-text)] dark:bg-white/10"
 					aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span
 				>
 				<button
@@ -306,16 +306,16 @@
 					}}
 					aria-label={`Open ${file.name ?? 'file'}`}
 				>
-					<div class="truncate text-sm text-[var(--scraps-cache-text)]">
+					<div class="truncate text-sm text-[var(--scrapscache-text)]">
 						{file.name || 'Attachment'}
 					</div>
-					<div class="text-[10px] text-[var(--scraps-cache-text-muted)]">
+					<div class="text-[10px] text-[var(--scrapscache-text-muted)]">
 						{formatBytes(dataUrlByteLength(file.dataUrl))}
 					</div>
 				</button>
 				<button
 					type="button"
-					class="shrink-0 rounded-full px-1.5 py-0.5 text-xs text-[var(--scraps-cache-text-muted)] touch-manipulation"
+					class="shrink-0 rounded-full px-1.5 py-0.5 text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
 					onclick={() => removeAttachment(file.id)}
 					aria-label="Remove file"
 				>
@@ -343,7 +343,7 @@
 		}}
 	>
 		<div
-			class="scraps-cache-dialog w-full max-w-sm p-4 text-[var(--scraps-cache-text)]"
+			class="scrapscache-dialog w-full max-w-sm p-4 text-[var(--scrapscache-text)]"
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="photo-quality-title"
@@ -351,7 +351,7 @@
 			<div class="mb-3 flex items-start justify-between gap-3">
 				<div>
 					<h2 id="photo-quality-title" class="text-base font-semibold">Photo quality</h2>
-					<p class="mt-0.5 text-xs text-[var(--scraps-cache-text-muted)]">
+					<p class="mt-0.5 text-xs text-[var(--scrapscache-text-muted)]">
 						Choose once for {filesAwaitingQuality.length === 1
 							? 'this attachment'
 							: `these ${filesAwaitingQuality.length} attachments`}.
@@ -369,7 +369,7 @@
 			<div class="grid grid-cols-2 gap-2">
 				<button
 					type="button"
-					class="scraps-cache-button scraps-cache-button-primary min-h-20 px-3 py-3 text-left"
+					class="scrapscache-button scrapscache-button-primary min-h-20 px-3 py-3 text-left"
 					onclick={() => chooseImageQuality('compressed')}
 				>
 					<span class="block text-sm font-semibold">Compressed</span>
@@ -379,11 +379,11 @@
 				</button>
 				<button
 					type="button"
-					class="scraps-cache-button scraps-cache-button-secondary min-h-20 px-3 py-3 text-left"
+					class="scrapscache-button scrapscache-button-secondary min-h-20 px-3 py-3 text-left"
 					onclick={() => chooseImageQuality('hd')}
 				>
 					<span class="block text-sm font-semibold">HD</span>
-					<span class="mt-1 block text-[11px] leading-4 text-[var(--scraps-cache-text-muted)]">
+					<span class="mt-1 block text-[11px] leading-4 text-[var(--scrapscache-text-muted)]">
 						Sharper image · larger file
 					</span>
 				</button>

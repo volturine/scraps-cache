@@ -117,12 +117,12 @@
 </script>
 
 <div
-	class="reminder-calendar w-full select-none rounded-2xl border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3 py-3"
+	class="reminder-calendar w-full select-none rounded-2xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3 py-3"
 >
 	<div class="mb-2 flex items-center justify-between">
 		<button
 			type="button"
-			class="rounded-full p-1.5 text-[var(--scraps-cache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
+			class="rounded-full p-1.5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
 			aria-label="Previous month"
 			onclick={() => shiftMonth(-1)}
 		>
@@ -131,7 +131,7 @@
 		<span class="text-sm font-semibold">{monthLabel}</span>
 		<button
 			type="button"
-			class="rounded-full p-1.5 text-[var(--scraps-cache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
+			class="rounded-full p-1.5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
 			aria-label="Next month"
 			onclick={() => shiftMonth(1)}
 		>
@@ -140,7 +140,7 @@
 	</div>
 
 	<div
-		class="grid grid-cols-7 text-center text-xs font-medium text-[var(--scraps-cache-text-muted)]"
+		class="grid grid-cols-7 text-center text-xs font-medium text-[var(--scrapscache-text-muted)]"
 	>
 		{#each WEEKDAYS as label, i (i)}
 			<span>{label}</span>
@@ -164,11 +164,11 @@
 				type="button"
 				class="relative mx-auto flex h-8 w-8 flex-col items-center justify-center rounded-full
 					{endpoint
-					? 'bg-[var(--scraps-cache-accent)] text-[var(--scraps-cache-accent-foreground)]'
+					? 'bg-[var(--scrapscache-accent)] text-[var(--scrapscache-accent-foreground)]'
 					: isInRange(key)
-						? 'bg-[color-mix(in_srgb,var(--scraps-cache-accent)_18%,transparent)]'
+						? 'bg-[color-mix(in_srgb,var(--scrapscache-accent)_18%,transparent)]'
 						: isToday
-							? 'font-bold ring-1 ring-[var(--scraps-cache-border)]'
+							? 'font-bold ring-1 ring-[var(--scrapscache-border)]'
 							: 'hover:bg-black/5 dark:hover:bg-white/10'}"
 				aria-pressed={endpoint}
 				aria-label="{monthLabel} {day}{count ? `, ${count} reminder${count === 1 ? '' : 's'}` : ''}"
@@ -183,8 +183,8 @@
 				{#if count > 0}
 					<span
 						class="absolute bottom-1 h-1 w-1 rounded-full {endpoint
-							? 'bg-[var(--scraps-cache-accent-foreground)]'
-							: 'bg-[var(--scraps-cache-accent)]'}"
+							? 'bg-[var(--scrapscache-accent-foreground)]'
+							: 'bg-[var(--scrapscache-accent)]'}"
 					></span>
 				{/if}
 			</button>
@@ -192,18 +192,18 @@
 	</div>
 
 	<div
-		class="mt-2 flex items-center justify-between gap-2 border-t border-[var(--scraps-cache-border)] pt-3 text-xs"
+		class="mt-2 flex items-center justify-between gap-2 border-t border-[var(--scrapscache-border)] pt-3 text-xs"
 	>
 		<div class="flex flex-1 items-center">
 			<button
 				type="button"
-				class="rounded-full px-2 py-0.5 font-medium leading-5 text-[var(--scraps-cache-text-muted)] hover:bg-black/5 hover:text-[var(--scraps-cache-text)] dark:hover:bg-white/10"
+				class="rounded-full px-2 py-0.5 font-medium leading-5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
 				onclick={filterToday}
 			>
 				Today
 			</button>
 		</div>
-		<span class="shrink-0 truncate px-2 leading-5 text-[var(--scraps-cache-text-muted)]">
+		<span class="shrink-0 truncate px-2 leading-5 text-[var(--scrapscache-text-muted)]">
 			{#if pickingEnd}
 				Pick an end day
 			{:else if selected && selected.from !== selected.to}
@@ -215,7 +215,7 @@
 		<div class="flex flex-1 items-center justify-end">
 			<button
 				type="button"
-				class="rounded-full px-2 py-0.5 leading-5 text-[var(--scraps-cache-text-muted)] hover:bg-black/5 hover:text-[var(--scraps-cache-text)] disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-white/10"
+				class="rounded-full px-2 py-0.5 leading-5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 hover:text-[var(--scrapscache-text)] disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-white/10"
 				disabled={!selected}
 				onclick={() => (selected = null)}
 			>

@@ -128,7 +128,7 @@ describe('client sync against the sqlite relay', () => {
 	});
 
 	it('lets a second device download photos after the first device is wiped', async () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-sync-'));
+		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
 		directories.push(directory);
 		const relay = new RelayStore(directory);
 		relays.push(relay);
@@ -166,7 +166,7 @@ describe('client sync against the sqlite relay', () => {
 	});
 
 	it('keeps the previous photo on the relay until the replacement bytes are stored', async () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-sync-'));
+		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
 		directories.push(directory);
 		const relay = new RelayStore(directory);
 		relays.push(relay);

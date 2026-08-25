@@ -14,9 +14,9 @@ let warnedDefaultSubject = false;
 let warnedKeyRegeneration = false;
 
 function vapidSubject(): string {
-	const subject = env.SCRAPS_CACHE_VAPID_SUBJECT?.trim();
+	const subject = env.SCRAPSCACHE_VAPID_SUBJECT?.trim();
 	if (subject && (/^mailto:/i.test(subject) || /^https:/i.test(subject))) return subject;
-	const origin = env.SCRAPS_CACHE_ORIGIN?.trim() || env.ORIGIN?.trim();
+	const origin = env.SCRAPSCACHE_ORIGIN?.trim() || env.ORIGIN?.trim();
 	if (origin && /^https:/i.test(origin)) return origin.replace(/\/$/, '');
 	if (!warnedDefaultSubject) {
 		warnedDefaultSubject = true;
@@ -24,11 +24,11 @@ function vapidSubject(): string {
 			JSON.stringify({
 				level: 'warn',
 				event: 'vapid_subject_default',
-				message: 'SCRAPS_CACHE_VAPID_SUBJECT is not configured; using placeholder mailto subject'
+				message: 'SCRAPSCACHE_VAPID_SUBJECT is not configured; using placeholder mailto subject'
 			})
 		);
 	}
-	return 'mailto:scraps-cache@localhost';
+	return 'mailto:scrapscache@localhost';
 }
 
 function warnKeyRegeneration(registeredDevices: number): void {
@@ -46,11 +46,11 @@ function warnKeyRegeneration(registeredDevices: number): void {
 }
 
 export function getVapidKeys(): { publicKey: string; privateKey: string } {
-	const fromEnvPublic = env.SCRAPS_CACHE_VAPID_PUBLIC_KEY?.trim();
-	const fromEnvPrivate = env.SCRAPS_CACHE_VAPID_PRIVATE_KEY?.trim();
+	const fromEnvPublic = env.SCRAPSCACHE_VAPID_PUBLIC_KEY?.trim();
+	const fromEnvPrivate = env.SCRAPSCACHE_VAPID_PRIVATE_KEY?.trim();
 	if (Boolean(fromEnvPublic) !== Boolean(fromEnvPrivate)) {
 		throw new Error(
-			'Both SCRAPS_CACHE_VAPID_PUBLIC_KEY and SCRAPS_CACHE_VAPID_PRIVATE_KEY are required'
+			'Both SCRAPSCACHE_VAPID_PUBLIC_KEY and SCRAPSCACHE_VAPID_PRIVATE_KEY are required'
 		);
 	}
 	if (fromEnvPublic && fromEnvPrivate) {

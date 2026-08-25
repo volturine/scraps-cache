@@ -10,7 +10,7 @@
 	<button
 		type="button"
 		onclick={startNewNote}
-		class="flex h-[var(--app-fab-size)] w-[var(--app-fab-size)] items-center justify-center rounded-full border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] shadow-lg"
+		class="flex h-[var(--app-fab-size)] w-[var(--app-fab-size)] items-center justify-center rounded-full border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] shadow-lg"
 		aria-label="New note"
 		title="New note"
 	>

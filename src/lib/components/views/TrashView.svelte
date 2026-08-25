@@ -26,7 +26,7 @@
 	{:else}
 		<SectionHeader label="Trash" count={trashed.length}>
 			{#if confirmEmpty}
-				<span class="text-xs text-[var(--scraps-cache-text-muted)]">Delete all?</span>
+				<span class="text-xs text-[var(--scrapscache-text-muted)]">Delete all?</span>
 				<button
 					type="button"
 					onclick={emptyTrash}
@@ -36,14 +36,14 @@
 				<button
 					type="button"
 					onclick={() => (confirmEmpty = false)}
-					class="rounded-full px-3 py-1 text-xs text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					class="rounded-full px-3 py-1 text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 					>No</button
 				>
 			{:else}
 				<button
 					type="button"
 					onclick={() => (confirmEmpty = true)}
-					class="rounded-full px-3 py-1 text-xs text-[var(--scraps-cache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					class="rounded-full px-3 py-1 text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 					>Empty</button
 				>
 			{/if}

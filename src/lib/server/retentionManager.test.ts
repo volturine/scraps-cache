@@ -10,7 +10,7 @@ const directories: string[] = [];
 const managers: RetentionManager[] = [];
 
 function createStore(): SyncStore {
-	const directory = mkdtempSync(join(tmpdir(), 'scraps-cache-retention-'));
+	const directory = mkdtempSync(join(tmpdir(), 'scrapscache-retention-'));
 	const store = new SyncStore(directory);
 	directories.push(directory);
 	stores.push(store);

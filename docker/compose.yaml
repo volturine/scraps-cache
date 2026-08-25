@@ -1,4 +1,4 @@
-name: scraps-cache
+name: scrapscache
 
 services:
   app:
@@ -6,31 +6,31 @@ services:
       # Requires: docker compose --project-directory . -f docker/compose.yaml …
       context: .
       dockerfile: docker/Dockerfile
-    image: scraps-cache:latest
+    image: scrapscache:latest
     restart: unless-stopped
     init: true
     ports:
-      - "${SCRAPS_CACHE_PORT:-3000}:3000"
+      - "${SCRAPSCACHE_PORT:-3000}:3000"
     environment:
-      ORIGIN: "${SCRAPS_CACHE_ORIGIN:-http://localhost:3000}"
-      SCRAPS_CACHE_ORIGIN: "${SCRAPS_CACHE_ORIGIN:-http://localhost:3000}"
-      SCRAPS_CACHE_VAPID_PUBLIC_KEY: "${SCRAPS_CACHE_VAPID_PUBLIC_KEY:-}"
-      SCRAPS_CACHE_VAPID_PRIVATE_KEY: "${SCRAPS_CACHE_VAPID_PRIVATE_KEY:-}"
-      SCRAPS_CACHE_VAPID_SUBJECT: "${SCRAPS_CACHE_VAPID_SUBJECT:-}"
-      BODY_SIZE_LIMIT: "${SCRAPS_CACHE_BODY_SIZE_LIMIT:-110M}"
-      ADDRESS_HEADER: "${SCRAPS_CACHE_ADDRESS_HEADER:-}"
-      XFF_DEPTH: "${SCRAPS_CACHE_XFF_DEPTH:-1}"
-      SCRAPS_CACHE_SYNC_DATA_DIR: /data
-      SCRAPS_CACHE_BACKUP_DIR: /backups
-      SCRAPS_CACHE_BACKUP_INTERVAL_HOURS: "${SCRAPS_CACHE_BACKUP_INTERVAL_HOURS:-24}"
-      SCRAPS_CACHE_BACKUP_RETAIN: "${SCRAPS_CACHE_BACKUP_RETAIN:-2}"
-      SCRAPS_CACHE_ADMIN_TOKEN: "${SCRAPS_CACHE_ADMIN_TOKEN:-development-only-admin-token}"
-      SCRAPS_CACHE_SYNC_MAX_ACCOUNT_BYTES: "${SCRAPS_CACHE_SYNC_MAX_ACCOUNT_BYTES:-1000000000}"
-      SCRAPS_CACHE_SYNC_MAX_ACCOUNT_ENVELOPES: "${SCRAPS_CACHE_SYNC_MAX_ACCOUNT_ENVELOPES:-50000}"
-      SCRAPS_CACHE_RETENTION_INACTIVE_DAYS: "${SCRAPS_CACHE_RETENTION_INACTIVE_DAYS:-0}"
+      ORIGIN: "${SCRAPSCACHE_ORIGIN:-http://localhost:3000}"
+      SCRAPSCACHE_ORIGIN: "${SCRAPSCACHE_ORIGIN:-http://localhost:3000}"
+      SCRAPSCACHE_VAPID_PUBLIC_KEY: "${SCRAPSCACHE_VAPID_PUBLIC_KEY:-}"
+      SCRAPSCACHE_VAPID_PRIVATE_KEY: "${SCRAPSCACHE_VAPID_PRIVATE_KEY:-}"
+      SCRAPSCACHE_VAPID_SUBJECT: "${SCRAPSCACHE_VAPID_SUBJECT:-}"
+      BODY_SIZE_LIMIT: "${SCRAPSCACHE_BODY_SIZE_LIMIT:-110M}"
+      ADDRESS_HEADER: "${SCRAPSCACHE_ADDRESS_HEADER:-}"
+      XFF_DEPTH: "${SCRAPSCACHE_XFF_DEPTH:-1}"
+      SCRAPSCACHE_SYNC_DATA_DIR: /data
+      SCRAPSCACHE_BACKUP_DIR: /backups
+      SCRAPSCACHE_BACKUP_INTERVAL_HOURS: "${SCRAPSCACHE_BACKUP_INTERVAL_HOURS:-24}"
+      SCRAPSCACHE_BACKUP_RETAIN: "${SCRAPSCACHE_BACKUP_RETAIN:-2}"
+      SCRAPSCACHE_ADMIN_TOKEN: "${SCRAPSCACHE_ADMIN_TOKEN:-development-only-admin-token}"
+      SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES: "${SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES:-1000000000}"
+      SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES: "${SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES:-50000}"
+      SCRAPSCACHE_RETENTION_INACTIVE_DAYS: "${SCRAPSCACHE_RETENTION_INACTIVE_DAYS:-0}"
     volumes:
-      - scraps-cache-sync-data:/data
-      - scraps-cache-backup-snapshots:/backups
+      - scrapscache-sync-data:/data
+      - scrapscache-backup-snapshots:/backups
     read_only: true
     tmpfs:
       - /tmp
@@ -38,5 +38,5 @@ services:
       - no-new-privileges:true
 
 volumes:
-  scraps-cache-sync-data:
-  scraps-cache-backup-snapshots:
+  scrapscache-sync-data:
+  scrapscache-backup-snapshots:

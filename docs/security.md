@@ -76,7 +76,7 @@ the long-term attachment format.
 - **Operator status** — anonymous aggregates only (storage, account counts,
   activity windows). No account IDs, ciphertext, or credentials
 - **Account retention** — optional; a daily sweep deletes unused relay accounts
-  after `SCRAPS_CACHE_RETENTION_INACTIVE_DAYS` with no authenticated activity.
+  after `SCRAPSCACHE_RETENTION_INACTIVE_DAYS` with no authenticated activity.
   Disabled by default. Sweep logs report counts only
 - **No remote link previews** — URL cards are local hostname badges only;
   opening a link is an explicit user action
@@ -126,11 +126,11 @@ app is in use; browser storage isolation is the boundary.
 
 ## Operator checklist
 
-1. Terminate **HTTPS** at a reverse proxy; set `SCRAPS_CACHE_ORIGIN` to the public URL.
-2. Set a strong random **`SCRAPS_CACHE_ADMIN_TOKEN`**.
-3. Pin **`SCRAPS_CACHE_IMAGE`** to a release tag or digest.
+1. Terminate **HTTPS** at a reverse proxy; set `SCRAPSCACHE_ORIGIN` to the public URL.
+2. Set a strong random **`SCRAPSCACHE_ADMIN_TOKEN`**.
+3. Pin **`SCRAPSCACHE_IMAGE`** to a release tag or digest.
 4. Configure trusted proxy headers only when appropriate
-   (`SCRAPS_CACHE_ADDRESS_HEADER` / `SCRAPS_CACHE_XFF_DEPTH`).
+   (`SCRAPSCACHE_ADDRESS_HEADER` / `SCRAPSCACHE_XFF_DEPTH`).
 5. Enable **encrypted Restic** backups for the SQLite snapshots if the relay
    matters to you (ciphertext still deserves availability protection).
 6. Run the monthly restore drill documented in

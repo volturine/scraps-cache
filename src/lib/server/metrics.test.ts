@@ -15,11 +15,11 @@ describe('renderMetrics', () => {
 			},
 			{ enabled: true, inactiveDays: 365, lastRunAt: 2_000, deletedAccountsTotal: 0 }
 		);
-		expect(body).toContain('scraps-cache_sync_storage_gigabytes 1.5');
-		expect(body).toContain('scraps-cache_sync_stale_accounts 2');
-		expect(body).toContain('scraps-cache_sync_accounts_active{window_days="1"} 1');
-		expect(body).toContain('scraps-cache_retention_enabled 1');
-		expect(body).toContain('scraps-cache_retention_inactive_days 365');
+		expect(body).toContain('scrapscache_sync_storage_gigabytes 1.5');
+		expect(body).toContain('scrapscache_sync_stale_accounts 2');
+		expect(body).toContain('scrapscache_sync_accounts_active{window_days="1"} 1');
+		expect(body).toContain('scrapscache_retention_enabled 1');
+		expect(body).toContain('scrapscache_retention_inactive_days 365');
 		expect(body).not.toMatch(/account-[a-z0-9]+|credential/i);
 	});
 
@@ -39,7 +39,7 @@ describe('renderMetrics', () => {
 		const families = new Set(
 			[...body.matchAll(/^(?:# TYPE ([\w]+)|([\w]+)(?:\{.*\})? \d)/gm)]
 				.map((match) => match[1] ?? match[2])
-				.filter((name) => name.startsWith('scraps-cache_'))
+				.filter((name) => name.startsWith('scrapscache_'))
 		);
 		const typed = new Set([...body.matchAll(/^# TYPE ([\w]+) /gm)].map((match) => match[1]));
 		expect(typed).toEqual(families);

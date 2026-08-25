@@ -122,7 +122,7 @@ export async function showReminderNotification(
 	if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
 	const payload: NotificationOptions = {
 		body: formatReminder(alert.reminder),
-		tag: `scraps-cache-reminder:${alert.wakeId}`,
+		tag: `scrapscache-reminder:${alert.wakeId}`,
 		icon: '/icon-192.png',
 		data: { type: 'reminder', noteId: alert.noteId, wakeId: alert.wakeId }
 	};

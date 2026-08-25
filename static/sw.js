@@ -2,7 +2,7 @@
 // JS/CSS must not be cache-first forever: hashed builds change filenames, but
 // a stale shell HTML or long-lived module cache leaves phones on old UI bugs.
 
-const CACHE_NAME = 'scraps-cache-v2';
+const CACHE_NAME = 'scrapscache-v2';
 const APP_SHELL = [
 	'/',
 	'/manifest.json',
@@ -156,7 +156,7 @@ async function loadLocalReminderState() {
 function showGenericReminder(wakeId) {
 	return self.registration.showNotification('Reminder', {
 		body: 'Open Scraps Cache to check your notes.',
-		tag: 'scraps-cache-reminder:' + wakeId,
+		tag: 'scrapscache-reminder:' + wakeId,
 		renotify: false,
 		icon: '/icon-192.png',
 		data: { type: 'reminder', wakeId }
@@ -243,7 +243,7 @@ async function showReminderWake(wake) {
 	if (matching) {
 		await self.registration.showNotification(reminderPreview(matching), {
 			body: formatWhen(wake.fireAt),
-			tag: 'scraps-cache-reminder:' + wake.id,
+			tag: 'scrapscache-reminder:' + wake.id,
 			renotify: false,
 			icon: '/icon-192.png',
 			data: { type: 'reminder', noteId: matching.id, wakeId: wake.id }

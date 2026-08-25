@@ -54,7 +54,7 @@
 				const encrypted = await encryptBackup(data, passphrase);
 				downloadJSON(
 					encrypted,
-					`scraps-cache-backup-${new Date().toISOString().slice(0, 10)}.scraps-cache-backup`
+					`scrapscache-backup-${new Date().toISOString().slice(0, 10)}.scraps-cache-backup`
 				);
 				backupDialogMode = null;
 				return;
@@ -151,20 +151,20 @@
 	</button>
 
 	<div
-		class="flex h-10 min-h-10 max-h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] px-3"
+		class="flex h-10 min-h-10 max-h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3"
 	>
-		<Search class="h-4 w-4 shrink-0 text-[var(--scraps-cache-text-muted)]" aria-hidden="true" />
+		<Search class="h-4 w-4 shrink-0 text-[var(--scrapscache-text-muted)]" aria-hidden="true" />
 		<input
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
 			type="text"
 			placeholder="Search"
-			class="h-full min-w-0 flex-1 appearance-none bg-transparent text-sm text-[var(--scraps-cache-text)] focus:outline-none placeholder:text-[var(--scraps-cache-text-muted)]"
+			class="h-full min-w-0 flex-1 appearance-none bg-transparent text-sm text-[var(--scrapscache-text)] focus:outline-none placeholder:text-[var(--scrapscache-text-muted)]"
 		/>
 		{#if uiStore.searchInput}
 			<button
 				type="button"
-				class="icon-btn h-6 w-6 min-h-0 shrink-0 appearance-none p-0 text-[var(--scraps-cache-text-muted)]"
+				class="icon-btn h-6 w-6 min-h-0 shrink-0 appearance-none p-0 text-[var(--scrapscache-text-muted)]"
 				onclick={() => uiStore.clearSearch()}
 				aria-label="Clear search"
 			>
@@ -181,9 +181,9 @@
 			syncOpen = true;
 		}}
 		aria-label="Sync settings"
-		data-scraps-cache-sync-control
+		data-scrapscache-sync-control
 	>
-		<Cloud class="h-5 w-5" data-scraps-cache-sync-icon aria-hidden="true" />
+		<Cloud class="h-5 w-5" data-scrapscache-sync-icon aria-hidden="true" />
 	</button>
 
 	<button
@@ -210,12 +210,12 @@
 		</button>
 		{#if settingsOpen}
 			<div
-				class="absolute right-0 top-12 z-30 w-64 overflow-hidden rounded-lg border border-[var(--scraps-cache-border)] bg-[var(--scraps-cache-surface)] pt-1 shadow-lg"
+				class="absolute right-0 top-12 z-30 w-64 overflow-hidden rounded-lg border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] pt-1 shadow-lg"
 			>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
 					<div
-						class="space-y-2 px-3 py-2 text-xs text-[var(--scraps-cache-text-muted)]"
+						class="space-y-2 px-3 py-2 text-xs text-[var(--scrapscache-text-muted)]"
 						role="status"
 						aria-live="polite"
 					>
@@ -241,7 +241,7 @@
 						onclick={() => {
 							uiStore.toggleDark();
 						}}
-						class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						{#if uiStore.effectiveDark}
 							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -254,7 +254,7 @@
 					<button
 						type="button"
 						onclick={startBackupExport}
-						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Export backup
@@ -262,18 +262,18 @@
 					<button
 						type="button"
 						onclick={() => fileInputEl?.click()}
-						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Import backup
 					</button>
 					<ReminderNotificationSettings />
-					<div class="border-t border-[var(--scraps-cache-border)]"></div>
+					<div class="border-t border-[var(--scrapscache-border)]"></div>
 					<a
-						href="https://github.com/volturine/scraps-cache/issues/new/choose"
+						href="https://github.com/volturine/scrapscache/issues/new/choose"
 						target="_blank"
 						rel="noreferrer"
-						class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scraps-cache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Report an issue

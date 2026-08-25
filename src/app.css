@@ -17,31 +17,31 @@
 	--note-brown: #d6c5b0;
 	--note-gray: #f0f0f0;
 
-	--scraps-cache-bg: #ffffff;
-	--scraps-cache-surface: #f8f9fa;
-	--scraps-cache-text: #202124;
-	--scraps-cache-text-muted: #5f6368;
-	--scraps-cache-border: #e0e0e0;
-	--scraps-cache-accent: #2563eb;
-	--scraps-cache-accent-hover: #1d4ed8;
-	--scraps-cache-accent-foreground: #ffffff;
-	--scraps-cache-focus: #1d4ed8;
-	--scraps-cache-success: #15803d;
-	--scraps-cache-success-foreground: #ffffff;
-	--scraps-cache-success-subtle: #dcfce7;
-	--scraps-cache-warning: #b45309;
-	--scraps-cache-warning-subtle: #fef3c7;
-	--scraps-cache-danger: #dc2626;
-	--scraps-cache-danger-foreground: #ffffff;
-	--scraps-cache-danger-subtle: #fee2e2;
-	--scraps-cache-interactive-hover: rgba(0, 0, 0, 0.05);
-	--scraps-cache-interactive-active: rgba(0, 0, 0, 0.1);
-	--scraps-cache-radius-sm: 0.375rem;
-	--scraps-cache-radius-md: 0.5rem;
-	--scraps-cache-radius-lg: 0.75rem;
-	--scraps-cache-radius-xl: 1rem;
-	--scraps-cache-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.14);
-	--scraps-cache-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.24);
+	--scrapscache-bg: #ffffff;
+	--scrapscache-surface: #f8f9fa;
+	--scrapscache-text: #202124;
+	--scrapscache-text-muted: #5f6368;
+	--scrapscache-border: #e0e0e0;
+	--scrapscache-accent: #2563eb;
+	--scrapscache-accent-hover: #1d4ed8;
+	--scrapscache-accent-foreground: #ffffff;
+	--scrapscache-focus: #1d4ed8;
+	--scrapscache-success: #15803d;
+	--scrapscache-success-foreground: #ffffff;
+	--scrapscache-success-subtle: #dcfce7;
+	--scrapscache-warning: #b45309;
+	--scrapscache-warning-subtle: #fef3c7;
+	--scrapscache-danger: #dc2626;
+	--scrapscache-danger-foreground: #ffffff;
+	--scrapscache-danger-subtle: #fee2e2;
+	--scrapscache-interactive-hover: rgba(0, 0, 0, 0.05);
+	--scrapscache-interactive-active: rgba(0, 0, 0, 0.1);
+	--scrapscache-radius-sm: 0.375rem;
+	--scrapscache-radius-md: 0.5rem;
+	--scrapscache-radius-lg: 0.75rem;
+	--scrapscache-radius-xl: 1rem;
+	--scrapscache-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.14);
+	--scrapscache-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.24);
 
 	/* Published by attachAppViewport(); CSS env() is the pre-JS default. */
 	--app-inset-top: env(safe-area-inset-top, 0px);
@@ -87,31 +87,31 @@
 	--note-brown: #4f4a44;
 	--note-gray: #3c3c3c;
 
-	--scraps-cache-bg: #1a1a1a;
-	--scraps-cache-surface: #242424;
-	--scraps-cache-text: #e8eaed;
-	--scraps-cache-text-muted: #9aa0a6;
-	--scraps-cache-border: #3c4043;
-	--scraps-cache-accent: #60a5fa;
-	--scraps-cache-accent-hover: #93c5fd;
-	--scraps-cache-accent-foreground: #172554;
-	--scraps-cache-focus: #93c5fd;
-	--scraps-cache-success: #4ade80;
-	--scraps-cache-success-foreground: #052e16;
-	--scraps-cache-success-subtle: #14351f;
-	--scraps-cache-warning: #fbbf24;
-	--scraps-cache-warning-subtle: #3d2e0b;
-	--scraps-cache-danger: #f87171;
-	--scraps-cache-danger-foreground: #450a0a;
-	--scraps-cache-danger-subtle: #3b1717;
-	--scraps-cache-interactive-hover: rgba(255, 255, 255, 0.08);
-	--scraps-cache-interactive-active: rgba(255, 255, 255, 0.12);
-	--scraps-cache-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
-	--scraps-cache-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.55);
+	--scrapscache-bg: #1a1a1a;
+	--scrapscache-surface: #242424;
+	--scrapscache-text: #e8eaed;
+	--scrapscache-text-muted: #9aa0a6;
+	--scrapscache-border: #3c4043;
+	--scrapscache-accent: #60a5fa;
+	--scrapscache-accent-hover: #93c5fd;
+	--scrapscache-accent-foreground: #172554;
+	--scrapscache-focus: #93c5fd;
+	--scrapscache-success: #4ade80;
+	--scrapscache-success-foreground: #052e16;
+	--scrapscache-success-subtle: #14351f;
+	--scrapscache-warning: #fbbf24;
+	--scrapscache-warning-subtle: #3d2e0b;
+	--scrapscache-danger: #f87171;
+	--scrapscache-danger-foreground: #450a0a;
+	--scrapscache-danger-subtle: #3b1717;
+	--scrapscache-interactive-hover: rgba(255, 255, 255, 0.08);
+	--scrapscache-interactive-active: rgba(255, 255, 255, 0.12);
+	--scrapscache-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
+	--scrapscache-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.55);
 }
 
 html {
-	background-color: var(--scraps-cache-bg);
+	background-color: var(--scrapscache-bg);
 	color-scheme: light;
 }
 html.dark {
@@ -201,7 +201,7 @@ body {
 	overflow-y: auto;
 	overscroll-behavior-x: none;
 	overscroll-behavior-y: auto;
-	background-color: var(--scraps-cache-bg);
+	background-color: var(--scrapscache-bg);
 }
 
 /* Focus is communicated by the control state/caret without an extra browser ring. */
@@ -212,105 +212,105 @@ body {
 /* Shared interactive primitives. Components compose sizing and layout around these roles.
  * Button treatments: primary = accent action, secondary = outlined choice,
  * quiet = low-emphasis action, destructive = irreversible action. */
-.scraps-cache-dialog,
-.scraps-cache-popover {
-	border: 1px solid var(--scraps-cache-border);
-	background: var(--scraps-cache-surface);
+.scrapscache-dialog,
+.scrapscache-popover {
+	border: 1px solid var(--scrapscache-border);
+	background: var(--scrapscache-surface);
 }
-.scraps-cache-dialog {
-	border-radius: var(--scraps-cache-radius-xl);
-	box-shadow: var(--scraps-cache-elevation-dialog);
+.scrapscache-dialog {
+	border-radius: var(--scrapscache-radius-xl);
+	box-shadow: var(--scrapscache-elevation-dialog);
 }
-.scraps-cache-popover {
-	border-radius: var(--scraps-cache-radius-lg);
-	box-shadow: var(--scraps-cache-elevation-popover);
+.scrapscache-popover {
+	border-radius: var(--scrapscache-radius-lg);
+	box-shadow: var(--scrapscache-elevation-popover);
 }
-.scraps-cache-button,
-.scraps-cache-input {
-	border-radius: var(--scraps-cache-radius-md);
+.scrapscache-button,
+.scrapscache-input {
+	border-radius: var(--scrapscache-radius-md);
 	transition:
 		background-color 120ms ease,
 		border-color 120ms ease,
 		color 120ms ease;
 }
-.scraps-cache-input {
-	color: var(--scraps-cache-text);
-	caret-color: var(--scraps-cache-focus);
+.scrapscache-input {
+	color: var(--scrapscache-text);
+	caret-color: var(--scrapscache-focus);
 }
-.scraps-cache-button {
+.scrapscache-button {
 	border: 1px solid transparent;
 	touch-action: manipulation;
 }
-.scraps-cache-button:disabled,
-.scraps-cache-button[aria-disabled='true'],
-.scraps-cache-input:disabled {
+.scrapscache-button:disabled,
+.scrapscache-button[aria-disabled='true'],
+.scrapscache-input:disabled {
 	opacity: 0.55;
 }
-.scraps-cache-button-primary {
-	background: var(--scraps-cache-accent);
-	color: var(--scraps-cache-accent-foreground);
+.scrapscache-button-primary {
+	background: var(--scrapscache-accent);
+	color: var(--scrapscache-accent-foreground);
 }
-.scraps-cache-button-primary:hover:not(:disabled) {
-	background: var(--scraps-cache-accent-hover);
+.scrapscache-button-primary:hover:not(:disabled) {
+	background: var(--scrapscache-accent-hover);
 }
-.scraps-cache-button-secondary {
-	border-color: var(--scraps-cache-border);
-	background: var(--scraps-cache-bg);
-	color: var(--scraps-cache-text);
+.scrapscache-button-secondary {
+	border-color: var(--scrapscache-border);
+	background: var(--scrapscache-bg);
+	color: var(--scrapscache-text);
 }
-.scraps-cache-button-quiet {
-	color: var(--scraps-cache-text-muted);
+.scrapscache-button-quiet {
+	color: var(--scrapscache-text-muted);
 }
-.scraps-cache-button-secondary:hover:not(:disabled),
-.scraps-cache-button-quiet:hover:not(:disabled) {
-	background: var(--scraps-cache-interactive-hover);
-	color: var(--scraps-cache-text);
+.scrapscache-button-secondary:hover:not(:disabled),
+.scrapscache-button-quiet:hover:not(:disabled) {
+	background: var(--scrapscache-interactive-hover);
+	color: var(--scrapscache-text);
 }
-.scraps-cache-button-destructive {
-	color: var(--scraps-cache-danger);
+.scrapscache-button-destructive {
+	color: var(--scrapscache-danger);
 }
-.scraps-cache-button-destructive-solid {
-	background: var(--scraps-cache-danger);
-	color: var(--scraps-cache-danger-foreground);
+.scrapscache-button-destructive-solid {
+	background: var(--scrapscache-danger);
+	color: var(--scrapscache-danger-foreground);
 }
-.scraps-cache-button-destructive-solid:hover:not(:disabled) {
+.scrapscache-button-destructive-solid:hover:not(:disabled) {
 	filter: brightness(0.92);
 }
-.scraps-cache-input {
-	border: 1px solid var(--scraps-cache-border);
-	background: var(--scraps-cache-bg);
-	color: var(--scraps-cache-text);
+.scrapscache-input {
+	border: 1px solid var(--scrapscache-border);
+	background: var(--scrapscache-bg);
+	color: var(--scrapscache-text);
 }
-.scraps-cache-input[aria-invalid='true'] {
-	border-color: var(--scraps-cache-danger);
+.scrapscache-input[aria-invalid='true'] {
+	border-color: var(--scrapscache-danger);
 }
-.scraps-cache-status-success,
-.scraps-cache-status-warning,
-.scraps-cache-status-accent,
-.scraps-cache-status-danger {
+.scrapscache-status-success,
+.scrapscache-status-warning,
+.scrapscache-status-accent,
+.scrapscache-status-danger {
 	border: 1px solid currentColor;
 }
-.scraps-cache-status-success {
-	background: var(--scraps-cache-success-subtle);
-	color: var(--scraps-cache-success);
+.scrapscache-status-success {
+	background: var(--scrapscache-success-subtle);
+	color: var(--scrapscache-success);
 }
-.scraps-cache-status-warning {
-	background: var(--scraps-cache-warning-subtle);
-	color: var(--scraps-cache-warning);
+.scrapscache-status-warning {
+	background: var(--scrapscache-warning-subtle);
+	color: var(--scrapscache-warning);
 }
-.scraps-cache-status-accent {
-	background: color-mix(in srgb, var(--scraps-cache-accent) 14%, var(--scraps-cache-surface));
-	color: var(--scraps-cache-accent);
+.scrapscache-status-accent {
+	background: color-mix(in srgb, var(--scrapscache-accent) 14%, var(--scrapscache-surface));
+	color: var(--scrapscache-accent);
 }
-.scraps-cache-status-danger {
-	background: var(--scraps-cache-danger-subtle);
-	color: var(--scraps-cache-danger);
+.scrapscache-status-danger {
+	background: var(--scrapscache-danger-subtle);
+	color: var(--scrapscache-danger);
 }
-.scraps-cache-progress-track {
-	background: var(--scraps-cache-interactive-active);
+.scrapscache-progress-track {
+	background: var(--scrapscache-interactive-active);
 }
-.scraps-cache-progress-value {
-	background: var(--scraps-cache-accent);
+.scrapscache-progress-value {
+	background: var(--scrapscache-accent);
 }
 
 /* Respect system motion preferences while retaining the final UI state. */
@@ -326,8 +326,8 @@ body {
 }
 
 body {
-	background-color: var(--scraps-cache-bg);
-	color: var(--scraps-cache-text);
+	background-color: var(--scrapscache-bg);
+	color: var(--scrapscache-text);
 	font-family: 'Google Sans', 'Roboto', system-ui, Arial, sans-serif;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
@@ -470,7 +470,7 @@ body {
 	font-size: 1.375rem;
 	font-weight: 700;
 	line-height: 1;
-	color: var(--scraps-cache-success);
+	color: var(--scrapscache-success);
 }
 .labels-edit-add:disabled {
 	opacity: 0.35;
@@ -479,11 +479,11 @@ body {
 	width: 100%;
 	min-width: 0;
 	border-radius: 0.375rem;
-	border: 1px solid var(--scraps-cache-border);
-	background: var(--scraps-cache-bg);
+	border: 1px solid var(--scrapscache-border);
+	background: var(--scrapscache-bg);
 	padding: 0.375rem 0.5rem;
 	font-size: 0.875rem;
-	color: var(--scraps-cache-text);
+	color: var(--scrapscache-text);
 }
 .labels-edit-delete {
 	display: inline-flex;
@@ -492,10 +492,10 @@ body {
 	width: 2rem;
 	height: 2rem;
 	flex-shrink: 0;
-	color: var(--scraps-cache-text-muted);
+	color: var(--scrapscache-text-muted);
 }
 .labels-edit-delete:hover {
-	color: var(--scraps-cache-danger);
+	color: var(--scrapscache-danger);
 }
 
 /* Hide scrollbar on the sidebar for a cleaner look. */
@@ -584,13 +584,13 @@ body {
 
 @media (hover: hover) and (pointer: fine) {
 	.icon-btn:hover {
-		background-color: var(--scraps-cache-interactive-hover);
+		background-color: var(--scrapscache-interactive-hover);
 	}
 }
 
 @media (hover: hover) and (pointer: fine) {
 	.icon-btn:active {
-		background-color: var(--scraps-cache-interactive-active);
+		background-color: var(--scrapscache-interactive-active);
 	}
 }
 
@@ -613,12 +613,12 @@ body {
 
 /* Cloud sync spin — class on <html> so Svelte re-renders don't reset the animation.
  * Own keyframes: Tailwind tree-shakes its `spin` keyframes unless `animate-spin` is used. */
-@keyframes scraps-cache-spin {
+@keyframes scrapscache-spin {
 	to {
 		transform: rotate(360deg);
 	}
 }
-html.scraps-cache-sync-active [data-scraps-cache-sync-icon] {
+html.scrapscache-sync-active [data-scrapscache-sync-icon] {
 	/* Keep in lockstep with SYNC_ICON_ROTATION_MS — one full turn. */
-	animation: scraps-cache-spin 1s linear infinite;
+	animation: scrapscache-spin 1s linear infinite;
 }

@@ -27,7 +27,7 @@
 	}
 </script>
 
-<section class="border-t border-[var(--scraps-cache-border)]" aria-label="Notifications">
+<section class="border-t border-[var(--scrapscache-border)]" aria-label="Notifications">
 	{#if permission === 'default'}
 		<button
 			type="button"
@@ -35,24 +35,23 @@
 			class="flex h-8 w-full items-center gap-2.5 px-3 text-left hover:bg-black/5 dark:hover:bg-white/10"
 			aria-label="Turn on notifications"
 		>
-			<Bell class="h-4 w-4 shrink-0 text-[var(--scraps-cache-text)]" aria-hidden="true" />
-			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--scraps-cache-text)]"
+			<Bell class="h-4 w-4 shrink-0 text-[var(--scrapscache-text)]" aria-hidden="true" />
+			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--scrapscache-text)]"
 				>Notifications</span
 			>
-			<span class="shrink-0 text-xs font-medium text-[var(--scraps-cache-text-muted)]">Not set</span
-			>
+			<span class="shrink-0 text-xs font-medium text-[var(--scrapscache-text-muted)]">Not set</span>
 			<ChevronRight
-				class="h-4 w-4 shrink-0 text-[var(--scraps-cache-text-muted)]"
+				class="h-4 w-4 shrink-0 text-[var(--scrapscache-text-muted)]"
 				aria-hidden="true"
 			/>
 		</button>
 	{:else}
 		<div class="flex h-8 items-center gap-2.5 px-3">
-			<Bell class="h-4 w-4 shrink-0 text-[var(--scraps-cache-text)]" aria-hidden="true" />
-			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--scraps-cache-text)]"
+			<Bell class="h-4 w-4 shrink-0 text-[var(--scrapscache-text)]" aria-hidden="true" />
+			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--scrapscache-text)]"
 				>Notifications</span
 			>
-			<span class="shrink-0 text-xs font-medium text-[var(--scraps-cache-text-muted)]">
+			<span class="shrink-0 text-xs font-medium text-[var(--scrapscache-text-muted)]">
 				{permission === 'granted'
 					? 'Enabled'
 					: permission === 'denied'

@@ -14,7 +14,7 @@ export function timingSafeStringEqual(left: string, right: string): boolean {
 
 export function isAdminAuthorized(
 	request: Request,
-	expected = env.SCRAPS_CACHE_ADMIN_TOKEN
+	expected = env.SCRAPSCACHE_ADMIN_TOKEN
 ): boolean {
 	if (!expected) return false;
 	return timingSafeStringEqual(request.headers.get('authorization') ?? '', `Bearer ${expected}`);

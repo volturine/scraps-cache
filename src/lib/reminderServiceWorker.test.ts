@@ -45,7 +45,7 @@ function loadServiceWorker(
 ) {
 	const listeners = new Map<string, (event: unknown) => void>();
 	const self = {
-		location: { origin: 'https://scraps-cache.example' },
+		location: { origin: 'https://scrapscache.example' },
 		registration: { showNotification },
 		clients,
 		addEventListener(type: string, listener: (event: unknown) => void) {
@@ -120,7 +120,7 @@ describe('reminder service worker', () => {
 		expect(show).toHaveBeenCalledWith(
 			'Pick up groceries',
 			expect.objectContaining({
-				tag: `scraps-cache-reminder:${id}`,
+				tag: `scrapscache-reminder:${id}`,
 				data: { type: 'reminder', noteId: note.id, wakeId: id }
 			})
 		);
@@ -140,7 +140,7 @@ describe('reminder service worker', () => {
 				'Reminder',
 				expect.objectContaining({
 					body: 'Open Scraps Cache to check your notes.',
-					tag: `scraps-cache-reminder:${id}`
+					tag: `scrapscache-reminder:${id}`
 				})
 			]);
 		}
@@ -166,13 +166,13 @@ describe('reminder service worker', () => {
 		expect(show).toHaveBeenCalledTimes(malformed.length);
 		for (const call of show.mock.calls) {
 			expect(call[0]).toBe('Reminder');
-			expect(call[1]).toMatchObject({ tag: 'scraps-cache-reminder:unknown' });
+			expect(call[1]).toMatchObject({ tag: 'scrapscache-reminder:unknown' });
 		}
 	});
 
 	it('focuses a matching window and posts the note to open on notificationclick', async () => {
 		const client = {
-			url: 'https://scraps-cache.example/',
+			url: 'https://scrapscache.example/',
 			postMessage: vi.fn(),
 			focus: vi.fn(async () => client)
 		};

@@ -67,12 +67,12 @@ export class BackupManager {
 	private status: BackupStatus;
 
 	constructor(options: BackupManagerOptions = {}) {
-		this.directory = options.directory ?? env.SCRAPS_CACHE_BACKUP_DIR ?? '';
+		this.directory = options.directory ?? env.SCRAPSCACHE_BACKUP_DIR ?? '';
 		this.intervalMs =
 			positiveNumber(
 				options.intervalHours !== undefined
 					? String(options.intervalHours)
-					: env.SCRAPS_CACHE_BACKUP_INTERVAL_HOURS,
+					: env.SCRAPSCACHE_BACKUP_INTERVAL_HOURS,
 				24
 			) *
 			60 *
@@ -80,8 +80,8 @@ export class BackupManager {
 			1000;
 		if (options.intervalHours === undefined) {
 			warnInvalidEnv(
-				'SCRAPS_CACHE_BACKUP_INTERVAL_HOURS',
-				env.SCRAPS_CACHE_BACKUP_INTERVAL_HOURS,
+				'SCRAPSCACHE_BACKUP_INTERVAL_HOURS',
+				env.SCRAPSCACHE_BACKUP_INTERVAL_HOURS,
 				24
 			);
 		}
@@ -89,13 +89,13 @@ export class BackupManager {
 			1,
 			Math.floor(
 				positiveNumber(
-					options.retain !== undefined ? String(options.retain) : env.SCRAPS_CACHE_BACKUP_RETAIN,
+					options.retain !== undefined ? String(options.retain) : env.SCRAPSCACHE_BACKUP_RETAIN,
 					2
 				)
 			)
 		);
 		if (options.retain === undefined) {
-			warnInvalidEnv('SCRAPS_CACHE_BACKUP_RETAIN', env.SCRAPS_CACHE_BACKUP_RETAIN, 2);
+			warnInvalidEnv('SCRAPSCACHE_BACKUP_RETAIN', env.SCRAPSCACHE_BACKUP_RETAIN, 2);
 		}
 		this.source = options.source ?? {
 			backup: (destination) => getSyncStore().backup(destination)
@@ -147,8 +147,8 @@ export class BackupManager {
 		this.status.lastAttemptAt = Date.now();
 		const startedAt = Date.now();
 		const stamp = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
-		const temporary = join(this.directory, `.scraps-cache-sync-${stamp}.tmp.sqlite`);
-		const destination = join(this.directory, `scraps-cache-sync-${stamp}.sqlite`);
+		const temporary = join(this.directory, `.scrapscache-sync-${stamp}.tmp.sqlite`);
+		const destination = join(this.directory, `scrapscache-sync-${stamp}.sqlite`);
 		try {
 			mkdirSync(this.directory, { recursive: true });
 			await this.source.backup(temporary);
@@ -207,7 +207,7 @@ export class BackupManager {
 
 	private prune(): void {
 		const files = readdirSync(this.directory)
-			.filter((file) => /^scraps-cache-sync-.*\.sqlite$/.test(file))
+			.filter((file) => /^scrapscache-sync-.*\.sqlite$/.test(file))
 			.sort()
 			.reverse();
 		for (const file of files.slice(this.retain)) {

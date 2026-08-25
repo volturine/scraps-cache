@@ -885,13 +885,13 @@ export class SyncStore {
 let singleton: SyncStore | undefined;
 
 export function getSyncStore(): SyncStore {
-	singleton ??= new SyncStore(env.SCRAPS_CACHE_SYNC_DATA_DIR || 'sync-data', {
+	singleton ??= new SyncStore(env.SCRAPSCACHE_SYNC_DATA_DIR || 'sync-data', {
 		maxAccountBytes: positiveInteger(
-			env.SCRAPS_CACHE_SYNC_MAX_ACCOUNT_BYTES,
+			env.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES,
 			DEFAULT_MAX_ACCOUNT_BYTES
 		),
 		maxAccountEnvelopes: positiveInteger(
-			env.SCRAPS_CACHE_SYNC_MAX_ACCOUNT_ENVELOPES,
+			env.SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES,
 			DEFAULT_MAX_ACCOUNT_ENVELOPES
 		)
 	});

@@ -27,7 +27,7 @@ Contributor-oriented notes for working on Scraps Cache. Also read
 ## Local sync data
 
 By default the Node process stores the relay database under `sync-data/`
-(gitignored). Override with `SCRAPS_CACHE_SYNC_DATA_DIR`.
+(gitignored). Override with `SCRAPSCACHE_SYNC_DATA_DIR`.
 
 When developing sync features, use two browser profiles (or a normal window +
 a private window) against the same origin and exercise pairing in the Sync UI.
@@ -64,7 +64,7 @@ weekly.
 
 - CSP is strict in production config; if a new asset source is required, update
   `svelte.config.js` deliberately and document why.
-- Admin endpoints need `SCRAPS_CACHE_ADMIN_TOKEN` once you leave the dev Compose
+- Admin endpoints need `SCRAPSCACHE_ADMIN_TOKEN` once you leave the dev Compose
   default.
 - Structured logs on API errors include `requestId` — pass `x-request-id` from
   clients when correlating.
