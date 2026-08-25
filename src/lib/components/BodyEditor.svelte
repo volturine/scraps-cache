@@ -69,6 +69,7 @@
 	let handledFocusSignal = 0;
 	let lastBody = '';
 	let composing = false;
+	let applyingEdit = false;
 
 	$effect(() => {
 		if (body === lastBody) return;
@@ -142,18 +143,44 @@
 		const text = row.querySelector('[data-line-text]') as HTMLElement | null;
 		if (!text) return null;
 
+		if (node === row) {
+			const local = offset >= row.childNodes.length ? lines[line].text.length : 0;
+			return { line, offset: local, global: globalOffset(line, local) };
+		}
+
 		let local = 0;
 		try {
-			const range = document.createRange();
-			range.selectNodeContents(text);
-			if (text.contains(node) || node === text) range.setEnd(node, offset);
-			else if (node.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING)
+			if (text === node || text.contains(node)) {
+				const range = document.createRange();
+				range.selectNodeContents(text);
+				range.setEnd(node, offset);
+				local = Math.min(lines[line].text.length, range.toString().length);
+			} else if (row.contains(node)) {
+				const position = text.compareDocumentPosition(node);
+				local = position & Node.DOCUMENT_POSITION_FOLLOWING ? lines[line].text.length : 0;
+			} else if (node.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING) {
 				local = lines[line].text.length;
-			local = Math.min(lines[line].text.length, range.toString().length || local);
+			}
 		} catch {
 			local = 0;
 		}
 		return { line, offset: local, global: globalOffset(line, local) };
+	}
+
+	function intersectingLines(selection: Selection): number[] {
+		if (!container || selection.rangeCount === 0) return [];
+		const nativeRange = selection.getRangeAt(0);
+		const indices: number[] = [];
+		for (const row of container.querySelectorAll('[data-editor-line]')) {
+			try {
+				if (!nativeRange.intersectsNode(row)) continue;
+			} catch {
+				continue;
+			}
+			const index = Number((row as HTMLElement).dataset.editorLine);
+			if (Number.isInteger(index)) indices.push(index);
+		}
+		return indices;
 	}
 
 	function editorRange(): EditorRange | null {
@@ -161,8 +188,26 @@
 		if (!selection || selection.rangeCount === 0) return null;
 		const anchor = pointFromDom(selection.anchorNode, selection.anchorOffset);
 		const focus = pointFromDom(selection.focusNode, selection.focusOffset);
-		if (!anchor || !focus) return null;
-		const [start, end] = anchor.global <= focus.global ? [anchor, focus] : [focus, anchor];
+		let start: EditorPoint | null = null;
+		let end: EditorPoint | null = null;
+		if (anchor && focus) {
+			[start, end] = anchor.global <= focus.global ? [anchor, focus] : [focus, anchor];
+		}
+		const collapsed = !!start && !!end && start.global === end.global;
+		if (!collapsed) {
+			const indices = intersectingLines(selection);
+			if (indices.length > 0) {
+				const first = indices[0];
+				const last = indices[indices.length - 1];
+				if (!start || first < start.line)
+					start = { line: first, offset: 0, global: globalOffset(first, 0) };
+				if (!end || last > end.line) {
+					const offset = lines[last]?.text.length ?? 0;
+					end = { line: last, offset, global: globalOffset(last, offset) };
+				}
+			}
+		}
+		if (!start || !end) return null;
 		return { start, end, collapsed: start.global === end.global };
 	}
 
@@ -290,6 +335,7 @@
 	}
 
 	function handleInput(rawEvent: Event) {
+		if (applyingEdit) return;
 		const event = rawEvent as InputEvent;
 		if (composing || event.isComposing) return;
 		readDomIntoLines();
@@ -342,6 +388,10 @@
 	}
 
 	function handleBeforeInput(rawEvent: Event) {
+		if (applyingEdit) {
+			rawEvent.preventDefault();
+			return;
+		}
 		const event = rawEvent as InputEvent;
 		const range = editorRange();
 		if (!range || range.collapsed) return;
@@ -523,23 +573,51 @@
 	}
 
 	function indentRange(range: EditorRange, delta: number) {
+		const reversed = selectionIsReversed();
+		let startLine = range.start.line;
+		let endLine = range.end.line;
+		let startOffset = range.start.offset;
+		let endOffset = range.end.offset;
+		const selection = window.getSelection();
+		if (!range.collapsed && selection) {
+			const indices = intersectingLines(selection);
+			if (indices.length > 0) {
+				const first = indices[0];
+				const last = indices[indices.length - 1];
+				if (first < startLine) {
+					startLine = first;
+					startOffset = 0;
+				}
+				if (last > endLine) {
+					endLine = last;
+					endOffset = lines[last]?.text.length ?? 0;
+				}
+			}
+		}
+
 		let changed = false;
 		let startDelta = 0;
 		let endDelta = 0;
-		const reversed = selectionIsReversed();
-		for (let index = range.start.line; index <= range.end.line; index++) {
+		for (let index = startLine; index <= endLine; index++) {
 			const result = indentLine(index, delta);
-			if (index === range.start.line) startDelta = result.offsetDelta;
-			if (index === range.end.line) endDelta = result.offsetDelta;
+			if (index === startLine) startDelta = result.offsetDelta;
+			if (index === endLine) endDelta = result.offsetDelta;
 			if (result.changed) changed = true;
 		}
 		if (!changed) return;
-		syncBody();
-		const focusLine = reversed ? range.start.line : range.end.line;
-		if (lines[focusLine]?.isCheck) focusTask(focusLine);
-		const startOffset =
-			!range.collapsed && range.start.offset === 0 ? 0 : range.start.offset + startDelta;
-		selectAt(range.start.line, startOffset, range.end.line, range.end.offset + endDelta, reversed);
+		// Drop the native range before the DOM rewrite. Updating text nodes while
+		// they are still selected makes contenteditable treat the indent as a delete.
+		selection?.removeAllRanges();
+		applyingEdit = true;
+		try {
+			syncBody();
+			const focusLine = reversed ? startLine : endLine;
+			if (lines[focusLine]?.isCheck) focusTask(focusLine);
+			const restoreStart = !range.collapsed && startOffset === 0 ? 0 : startOffset + startDelta;
+			selectAt(startLine, restoreStart, endLine, endOffset + endDelta, reversed);
+		} finally {
+			applyingEdit = false;
+		}
 	}
 
 	function previousTaskIndex(index: number): number {

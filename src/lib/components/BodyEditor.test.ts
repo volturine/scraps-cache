@@ -258,6 +258,31 @@ describe('BodyEditor native editing', () => {
 		expect(lineTexts(container)).toEqual(['Hello']);
 	});
 
+	it('indents a selection that spans whole editor rows', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'First\nSecond\nThird' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const rows = [...container.querySelectorAll('[data-editor-line]')];
+		const range = document.createRange();
+		range.setStart(rows[0], 0);
+		range.setEnd(rows[1], rows[1].childNodes.length);
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['  First', '  Second', 'Third']);
+		expect(window.getSelection()?.isCollapsed).toBe(false);
+		expect(window.getSelection()?.toString()).toContain('First');
+		expect(window.getSelection()?.toString()).toContain('Second');
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['    First', '    Second', 'Third']);
+	});
+
 	it('indents every selected text segment and keeps the selection', async () => {
 		const { container } = render(BodyEditor, { props: { body: 'First\nSecond' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
