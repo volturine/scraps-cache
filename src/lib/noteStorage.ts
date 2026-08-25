@@ -1,8 +1,8 @@
 import type { Label, Note, NoteImage } from './types';
 
 /** Canonical fast-boot mirrors. IndexedDB remains the durable device store. */
-export const NOTES_MIRROR_KEY = 'gkc-notes-mirror';
-export const LABELS_MIRROR_KEY = 'gkc-labels-mirror';
+export const NOTES_MIRROR_KEY = 'scrapscache-notes-mirror';
+export const LABELS_MIRROR_KEY = 'scrapscache-labels-mirror';
 
 type MirroredImage = Omit<NoteImage, 'dataUrl' | 'thumbUrl'>;
 type MirroredNote = Omit<Note, 'images'> & { images?: MirroredImage[] };

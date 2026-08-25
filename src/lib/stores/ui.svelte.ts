@@ -27,7 +27,7 @@ function applyDocumentTheme(dark: boolean) {
 	document.body.style.backgroundColor = bg;
 }
 
-const LS_KEY = 'gkc-ui-state';
+const LS_KEY = 'scrapscache-ui-state';
 
 const VIEWS: readonly View[] = ['notes', 'kanban', 'reminders', 'archive', 'trash', 'label'];
 

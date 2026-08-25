@@ -15,7 +15,7 @@ import {
 import { publishReminderWakes, registerReminderDevice } from '$lib/reminderWake';
 
 const MAX_TIMER_MS = 60_000;
-const FIRED_REMINDERS_MIRROR_KEY = 'gkc-fired-reminders-mirror';
+const FIRED_REMINDERS_MIRROR_KEY = 'scrapscache-fired-reminders-mirror';
 
 function readFiredReminderMirror(): string[] {
 	if (typeof localStorage === 'undefined') return [];

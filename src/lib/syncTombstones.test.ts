@@ -33,11 +33,11 @@ describe('tombstone hydration', () => {
 	});
 
 	it('does not re-import legacy tombstones after they were legitimately emptied', async () => {
-		localStorage.setItem('gkc-note-tombstones', JSON.stringify({ 'note-1': 100 }));
+		localStorage.setItem('scrapscache-note-tombstones', JSON.stringify({ 'note-1': 100 }));
 		expect((await hydrateTombstones()).notes).toEqual({ 'note-1': 100 });
 
 		await writeTombstones({});
-		localStorage.setItem('gkc-note-tombstones', JSON.stringify({ 'note-1': 100 }));
+		localStorage.setItem('scrapscache-note-tombstones', JSON.stringify({ 'note-1': 100 }));
 		resetTombstoneCaches();
 
 		expect((await hydrateTombstones()).notes).toEqual({});

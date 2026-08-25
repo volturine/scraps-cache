@@ -186,7 +186,7 @@
 			<AlarmClock class="h-4 w-4 shrink-0" aria-hidden="true" />
 			<span class="min-w-0 truncate">{remainingLabel}</span>
 		</div>
-		<div class="mt-1 text-[11px] leading-snug text-[var(--gkc-text-muted)]">
+		<div class="mt-1 text-[11px] leading-snug text-[var(--scrapscache-text-muted)]">
 			Closed-app alerts need Sync on this device.
 		</div>
 	</div>

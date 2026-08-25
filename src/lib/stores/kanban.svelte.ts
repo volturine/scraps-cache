@@ -14,9 +14,9 @@ import {
 } from '$lib/syncTombstones';
 import { uid } from '$lib/utils';
 
-const BOARDS_KEY = 'gkc-kanban-boards-v1';
-const ACTIVE_BOARD_KEY = 'gkc-kanban-active-board-v1';
-const BOARD_TOMBSTONES_KEY = 'gkc-kanban-board-tombstones-v1';
+const BOARDS_KEY = 'scrapscache-kanban-boards-v1';
+const ACTIVE_BOARD_KEY = 'scrapscache-kanban-active-board-v1';
+const BOARD_TOMBSTONES_KEY = 'scrapscache-kanban-board-tombstones-v1';
 
 type StoredBoard = {
 	id?: unknown;

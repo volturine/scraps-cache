@@ -6,7 +6,7 @@ import type { LinkPreview } from '$lib/linkPreview';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
 
-const DB_NAME = 'google-keep-clone';
+const DB_NAME = 'scrapscache';
 const DB_VERSION = 6;
 const NOTES_STORE = 'notes';
 const LABELS_STORE = 'labels';
@@ -528,7 +528,7 @@ export async function setSyncState<T>(key: string, value: T): Promise<void> {
 	});
 }
 
-const FIRED_REMINDERS_KEY = 'gkc-fired-reminders';
+const FIRED_REMINDERS_KEY = 'scrapscache-fired-reminders';
 
 export async function getFiredReminderKeys(): Promise<string[]> {
 	const stored = await getSyncState<unknown>(FIRED_REMINDERS_KEY);
@@ -573,7 +573,7 @@ export async function deleteSyncState(key: string): Promise<void> {
  * after a sync snapshot could sort below it and get acknowledged without its
  * content ever uploading.
  */
-const OUTBOX_GENERATION_KEY = 'gkc-outbox-generation';
+const OUTBOX_GENERATION_KEY = 'scrapscache-outbox-generation';
 let outboxGenerationCache: number | null = null;
 
 async function loadOutboxGeneration(db: IDBPDatabase): Promise<number> {

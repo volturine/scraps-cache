@@ -2,7 +2,7 @@ import { relayReminderWakes, type ReminderNote, type ReminderWake } from '$lib/r
 import { syncStore, type SyncAccount } from '$lib/stores/sync.svelte';
 import { uid } from '$lib/utils';
 
-const DEVICE_KEY = 'gkc-push-device';
+const DEVICE_KEY = 'scrapscache-push-device';
 let cachedVapidKey: string | null = null;
 
 export function reminderPushSupported(): boolean {

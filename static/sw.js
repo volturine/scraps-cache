@@ -94,10 +94,10 @@ self.addEventListener('fetch', (event) => {
 	);
 });
 
-const NOTES_DB = 'google-keep-clone';
+const NOTES_DB = 'scrapscache';
 const NOTES_STORE = 'notes';
 const SYNC_STATE_STORE = 'sync-state';
-const FIRED_KEY = 'gkc-fired-reminders';
+const FIRED_KEY = 'scrapscache-fired-reminders';
 const WAKE_ID_RE = /^[A-Za-z0-9_-]{43}$/;
 const WAKE_DOMAIN = 'scraps-cache-reminder-wake:v1\0';
 

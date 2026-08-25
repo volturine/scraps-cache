@@ -2,13 +2,13 @@
 // tombstone is cleared. localStorage is only a first-paint cache during hydrate.
 import { getSyncState, setSyncState } from '$lib/db/idb';
 
-const NOTE_LS = 'gkc-note-tombstones';
-const LABEL_LS = 'gkc-label-tombstones';
-const NOTE_IDB = 'gkc-idb-note-tombstones';
-const LABEL_IDB = 'gkc-idb-label-tombstones';
-const BOARD_IDB = 'gkc-idb-board-tombstones';
-const MIGRATED_IDB = 'gkc-idb-tombstones-migrated';
-const BOARDS_IDB = 'gkc-idb-kanban-boards';
+const NOTE_LS = 'scrapscache-note-tombstones';
+const LABEL_LS = 'scrapscache-label-tombstones';
+const NOTE_IDB = 'scrapscache-idb-note-tombstones';
+const LABEL_IDB = 'scrapscache-idb-label-tombstones';
+const BOARD_IDB = 'scrapscache-idb-board-tombstones';
+const MIGRATED_IDB = 'scrapscache-idb-tombstones-migrated';
+const BOARDS_IDB = 'scrapscache-idb-kanban-boards';
 
 export type Tombstones = Record<string, number>;
 
