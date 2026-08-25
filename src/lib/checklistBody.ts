@@ -4,6 +4,7 @@ import type { Note } from './types';
 export const CHECK_RE = /^(\s*)(?:[-*•]\s+)?\[([xX ]?)\]\s*(.*)$/;
 
 export const MAX_CHECK_INDENT = 4;
+export const MAX_TEXT_INDENT = 20;
 
 export type BodySegment =
 	| { type: 'text'; text: string; lineIndex: number }
@@ -29,7 +30,7 @@ export function indentLevelFromWhitespace(ws: string): number {
 		}
 		i += 1;
 	}
-	return Math.min(MAX_CHECK_INDENT, indent);
+	return indent;
 }
 
 export const TEXT_INDENT_UNIT = '  ';
@@ -43,7 +44,7 @@ export function checkIndentPrefix(indent: number): string {
 export function adjustTextIndent(
 	text: string,
 	delta: number,
-	maxIndent = MAX_CHECK_INDENT
+	maxIndent = MAX_TEXT_INDENT
 ): { text: string; offsetDelta: number } {
 	if (delta > 0) {
 		const level = indentLevelFromWhitespace(text.match(/^\s*/)?.[0] ?? '');
@@ -66,7 +67,7 @@ export function parseCheckLine(
 	const m = line.match(CHECK_RE);
 	if (!m) return null;
 	return {
-		indent: indentLevelFromWhitespace(m[1] ?? ''),
+		indent: Math.min(MAX_CHECK_INDENT, indentLevelFromWhitespace(m[1] ?? '')),
 		checked: m[2].trim().toLowerCase() === 'x',
 		text: m[3] ?? ''
 	};

@@ -305,6 +305,73 @@ describe('BodyEditor native editing', () => {
 		expect(window.getSelection()?.toString()).toContain('Second');
 	});
 
+	it('does not indent the previous line when the range starts on a row boundary', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'a\nb\nc' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const rows = [...container.querySelectorAll('[data-editor-line]')];
+		const texts = [...container.querySelectorAll('[data-line-text]')];
+		const range = document.createRange();
+		// Shift+ArrowUp from C to the start of B lands here: B's row start is the
+		// same DOM point as the end of A, which intersectsNode treats as selecting A.
+		range.setStart(rows[1], 0);
+		range.setEnd(textNode(texts[2]), 'c'.length);
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['a', '  b', '  c']);
+	});
+
+	it('does not indent a line whose only selected point is its trailing boundary', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'a\nb\nc' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const texts = [...container.querySelectorAll('[data-line-text]')];
+		const range = document.createRange();
+		range.setStart(textNode(texts[0]), 'a'.length);
+		range.setEnd(textNode(texts[2]), 'c'.length);
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['a', '  b', '  c']);
+	});
+
+	it('indents a reversed keyboard selection of later lines only', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'a\nb\nc' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const texts = [...container.querySelectorAll('[data-line-text]')];
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.setBaseAndExtent(textNode(texts[2]), 'c'.length, textNode(texts[1]), 0);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['a', '  b', '  c']);
+		expect(window.getSelection()?.toString()).toContain('b');
+		expect(window.getSelection()?.toString()).toContain('c');
+		expect(window.getSelection()?.toString()).not.toContain('a');
+	});
+
+	it('indents a text segment more than four times', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Hello' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+
+		for (let step = 0; step < 5; step++) {
+			await fireEvent.keyDown(editor, { key: 'Tab' });
+			await tick();
+		}
+
+		expect(lineTexts(container)).toEqual([`${'  '.repeat(5)}Hello`]);
+	});
+
 	it('keeps a partial selection after indenting a line', async () => {
 		const { container } = render(BodyEditor, { props: { body: 'Hello world' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
