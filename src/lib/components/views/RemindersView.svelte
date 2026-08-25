@@ -32,35 +32,39 @@
 			return key >= sel.from && key <= to;
 		});
 	});
-	const embedCalendar = $derived(
-		uiStore.layout === 'grid' && !compact.current && visible.length > 0
+	const embedCalendar = $derived(uiStore.layout === 'grid' && !compact.current);
+	const emptyDescription = $derived(
+		reminders.length === 0
+			? 'Create a note, then add a reminder when you need to return to it.'
+			: selectedDay || uiStore.search
+				? 'No reminders match the current filters.'
+				: 'Create a note, then add a reminder when you need to return to it.'
 	);
 </script>
 
 <div class="pt-4 pb-8">
 	{#if embedCalendar}
-		<NotesFeed notes={visible} onOpen={openEditor}>
-			{#snippet leading()}
-				<ReminderCalendar notes={reminders} bind:selected={selectedDay} />
-			{/snippet}
-		</NotesFeed>
+		<div class="relative">
+			<NotesFeed notes={visible} onOpen={openEditor}>
+				{#snippet leading()}
+					<ReminderCalendar notes={reminders} bind:selected={selectedDay} />
+				{/snippet}
+			</NotesFeed>
+			{#if visible.length === 0}
+				<div
+					class="flex justify-center px-4 py-10 md:absolute md:inset-y-0 md:right-0 md:left-[min(32rem,58%)] md:items-center md:py-0"
+				>
+					<EmptyState icon={AlarmClock} description={emptyDescription} />
+				</div>
+			{/if}
+		</div>
 	{:else}
-		<div class={uiStore.layout === 'list' ? notesShellClass() : 'md:max-w-[22rem]'}>
+		<div class={uiStore.layout === 'list' ? notesShellClass() : 'w-full'}>
 			<ReminderCalendar notes={reminders} bind:selected={selectedDay} />
 		</div>
 		<div class="mt-4">
-			{#if reminders.length === 0}
-				<EmptyState
-					icon={AlarmClock}
-					description="Create a note, then add a reminder when you need to return to it."
-				/>
-			{:else if visible.length === 0}
-				<EmptyState
-					icon={AlarmClock}
-					description={selectedDay || uiStore.search
-						? 'No reminders match the current filters.'
-						: 'Create a note, then add a reminder when you need to return to it.'}
-				/>
+			{#if visible.length === 0}
+				<EmptyState icon={AlarmClock} description={emptyDescription} />
 			{:else}
 				<NotesFeed notes={visible} onOpen={openEditor} />
 			{/if}
