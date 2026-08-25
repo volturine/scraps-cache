@@ -145,8 +145,6 @@ export class KanbanStore {
 		localStorage.setItem(BOARDS_KEY, JSON.stringify(this.#boards));
 		localStorage.setItem(ACTIVE_BOARD_KEY, this.#activeBoardId);
 		localStorage.setItem(BOARD_TOMBSTONES_KEY, JSON.stringify(this.#boardTombstones));
-		const write = this.pendingDeviceWrites.then(() => this.persistSyncState());
-		this.pendingDeviceWrites = write.catch(() => undefined);
 	}
 
 	async hydrateFromDevice(remoteTombstones: Record<string, number> = {}): Promise<void> {
@@ -156,9 +154,7 @@ export class KanbanStore {
 		const tombstones = { ...this.boardTombstones, ...remoteTombstones };
 		this.boardTombstones = tombstones;
 		this.boards = mergeKanbanBoards(fromLs, fromIdb, tombstones);
-		if (!this.boards.length) {
-			this.boards = [createKanbanBoard()];
-		}
+		if (!this.boards.length) this.boards = [createKanbanBoard()];
 		if (!this.boards.some((board) => board.id === this.activeBoardId))
 			this.activeBoardId = this.boards[0].id;
 		const idbById = new Map(fromIdb.map((board) => [board.id, board]));
@@ -166,10 +162,8 @@ export class KanbanStore {
 			const current = idbById.get(board.id);
 			return !current || current.updatedAt < board.updatedAt;
 		});
-		if (recovered.length) {
-			await this.persistSyncState();
-			this.requestSync(recovered.map((board) => `board:${board.id}`));
-		}
+		if (recovered.length) this.requestSync(recovered.map((board) => `board:${board.id}`));
+		await this.pendingDeviceWrites;
 	}
 
 	get activeBoard(): KanbanBoard {

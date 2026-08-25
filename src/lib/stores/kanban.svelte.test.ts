@@ -1,11 +1,21 @@
+import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createKanbanBoard } from '$lib/kanban';
+import { getSyncOutboxKeys } from '$lib/db/idb';
 import { loadBoardsFromDevice } from '$lib/syncTombstones';
 import { KanbanStore } from './kanban.svelte';
 
 describe('kanban persist during sync', () => {
 	beforeEach(() => {
 		localStorage.clear();
+	});
+
+	it('does not persist boards to IndexedDB until a durable mutation', async () => {
+		const store = new KanbanStore();
+		store.selectBoard(store.boards[0].id);
+		await tick();
+		expect(await loadBoardsFromDevice(null)).toBeNull();
+		expect(await getSyncOutboxKeys()).toEqual([]);
 	});
 
 	it('writes $state boards to IndexedDB without throwing DataCloneError', async () => {

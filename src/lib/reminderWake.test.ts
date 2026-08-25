@@ -79,6 +79,52 @@ describe('reminder wake requests', () => {
 		).toHaveLength(1);
 	});
 
+	it('registers again when the push endpoint changes', async () => {
+		syncStore.account = createSyncIdentity();
+		const key = new Uint8Array([1, 2, 3]);
+		const subscription = {
+			options: { applicationServerKey: key.buffer },
+			endpoint: 'https://push.example/device-a',
+			toJSON: () => ({
+				endpoint: 'https://push.example/device-a',
+				keys: { p256dh: 'public-key', auth: 'auth-key' }
+			})
+		};
+		const registration = {
+			pushManager: {
+				getSubscription: vi.fn(async () => subscription)
+			}
+		};
+		vi.stubGlobal('Notification', { permission: 'granted' });
+		vi.stubGlobal('PushManager', function PushManager() {});
+		vi.stubGlobal('navigator', {
+			serviceWorker: {
+				getRegistration: vi.fn(async () => registration),
+				ready: Promise.resolve(registration)
+			}
+		});
+		const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
+			const path = String(input);
+			return path.endsWith('/vapid')
+				? new Response(JSON.stringify({ publicKey: 'AQID' }))
+				: new Response(JSON.stringify({ ok: true }));
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		expect(await registerReminderDevice()).toBe(true);
+		subscription.endpoint = 'https://push.example/device-b';
+		subscription.toJSON = () => ({
+			endpoint: 'https://push.example/device-b',
+			keys: { p256dh: 'public-key', auth: 'auth-key' }
+		});
+		expect(await registerReminderDevice()).toBe(true);
+		expect(
+			fetchMock.mock.calls.filter(
+				([input, init]) => String(input).endsWith('/wakes') && init?.method === 'POST'
+			)
+		).toHaveLength(2);
+	});
+
 	it('does not wait for a service worker that never registers', async () => {
 		const getRegistration = vi.fn(async () => undefined);
 		const ready = new Promise<never>(() => {});

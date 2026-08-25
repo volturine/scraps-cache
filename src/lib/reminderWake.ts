@@ -4,13 +4,10 @@ import { uid } from '$lib/utils';
 
 const DEVICE_KEY = 'scrapscache-push-device';
 let cachedVapidKey: string | null = null;
-let registeredAccountId: string | null = null;
-let registrationFlight: { accountId: string; promise: Promise<boolean> } | null = null;
-const publishedWakeSignatures = new Map<string, string>();
-const wakePublishFlights = new Map<
-	string,
-	{ signature: string; promise: Promise<ReminderWake[] | null> }
->();
+let registeredDevice: { accountId: string; endpoint: string } | null = null;
+let registrationFlight: { key: string; promise: Promise<boolean> } | null = null;
+let publishedWakes: { accountId: string; signature: string } | null = null;
+let publishFlight: { key: string; promise: Promise<ReminderWake[] | null> } | null = null;
 
 export function reminderPushSupported(): boolean {
 	return (
@@ -109,15 +106,20 @@ async function subscriptionBody(): Promise<{
 	};
 }
 
-/** Register this device without changing the account's authoritative wake list. */
-export async function registerReminderDevice(force = false): Promise<boolean> {
+/** Register this account + push endpoint on the relay. No-op when already registered. */
+export async function registerReminderDevice(): Promise<boolean> {
 	const account = syncStore.account;
 	if (!account) return false;
-	if (!force && registeredAccountId === account.accountId) return true;
-	if (registrationFlight?.accountId === account.accountId) return registrationFlight.promise;
+	const subscription = await subscriptionBody();
+	if (!subscription) return false;
+	if (
+		registeredDevice?.accountId === account.accountId &&
+		registeredDevice.endpoint === subscription.endpoint
+	)
+		return true;
+	const key = `${account.accountId}\0${subscription.endpoint}`;
+	if (registrationFlight?.key === key) return registrationFlight.promise;
 	const promise = (async () => {
-		const subscription = await subscriptionBody();
-		if (!subscription) return false;
 		try {
 			const response = await fetch('/api/sync/push/wakes', {
 				method: 'POST',
@@ -129,27 +131,29 @@ export async function registerReminderDevice(force = false): Promise<boolean> {
 					subscription
 				})
 			});
-			if (response.ok) registeredAccountId = account.accountId;
+			if (response.ok)
+				registeredDevice = { accountId: account.accountId, endpoint: subscription.endpoint };
 			return response.ok;
 		} catch {
 			return false;
 		}
 	})();
-	registrationFlight = { accountId: account.accountId, promise };
+	registrationFlight = { key, promise };
 	return promise.finally(() => {
 		if (registrationFlight?.promise === promise) registrationFlight = null;
 	});
 }
 
-/** Replace account wakes only from note state that completed a cloud sync. */
+/** Make the relay wake list match this snapshot. No-op when it already does. */
 export async function publishReminderWakes(notes: ReminderNote[]): Promise<ReminderWake[] | null> {
 	const account = syncStore.account;
 	if (!account) return null;
 	const wakes = relayReminderWakes(notes, Date.now());
 	const signature = JSON.stringify(wakes);
-	if (publishedWakeSignatures.get(account.accountId) === signature) return wakes;
-	const active = wakePublishFlights.get(account.accountId);
-	if (active?.signature === signature) return active.promise;
+	if (publishedWakes?.accountId === account.accountId && publishedWakes.signature === signature)
+		return wakes;
+	const key = `${account.accountId}\0${signature}`;
+	if (publishFlight?.key === key) return publishFlight.promise;
 	const promise = (async () => {
 		const revision = await syncStore.committedRevision();
 		if (revision === null) return null;
@@ -165,17 +169,15 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 				})
 			});
 			if (!response.ok) return null;
-			publishedWakeSignatures.set(account.accountId, signature);
+			publishedWakes = { accountId: account.accountId, signature };
 			return wakes;
 		} catch {
 			return null;
 		}
 	})();
-	wakePublishFlights.set(account.accountId, { signature, promise });
+	publishFlight = { key, promise };
 	return promise.finally(() => {
-		if (wakePublishFlights.get(account.accountId)?.promise === promise) {
-			wakePublishFlights.delete(account.accountId);
-		}
+		if (publishFlight?.promise === promise) publishFlight = null;
 	});
 }
 
@@ -186,7 +188,8 @@ export async function unregisterReminderDevice(account: SyncAccount | null): Pro
 		await subscription?.unsubscribe().catch(() => false);
 	}
 	if (!account) return;
-	if (registeredAccountId === account.accountId) registeredAccountId = null;
+	if (registeredDevice?.accountId === account.accountId) registeredDevice = null;
+	if (publishedWakes?.accountId === account.accountId) publishedWakes = null;
 	let response: Response;
 	try {
 		response = await fetch('/api/sync/push/wakes', {
