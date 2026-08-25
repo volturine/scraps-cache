@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { flushSync, tick } from 'svelte';
 	import {
+		adjustTextIndent,
 		CHECK_RE,
 		formatCheckLine,
 		parseCheckLine,
@@ -477,18 +478,44 @@
 		if (event.pointerId === checklistPointerId) checklistPointerId = null;
 	}
 
-	function indentLine(index: number, delta: number): boolean {
+	function indentLine(index: number, delta: number): { changed: boolean; offsetDelta: number } {
 		const line = lines[index];
-		if (!line?.isCheck) return false;
-		const next = Math.max(0, Math.min(MAX_TASK_INDENT, line.indent + delta));
-		if (next === line.indent) return false;
-		if (delta > 0) {
-			const previous = [...lines.slice(0, index)].reverse().find((candidate) => candidate.isCheck);
-			line.indent = Math.min(next, previous ? previous.indent + 1 : 0, MAX_TASK_INDENT);
-		} else {
-			line.indent = next;
+		if (!line) return { changed: false, offsetDelta: 0 };
+		if (line.isCheck) {
+			const previousIndent = line.indent;
+			const next = Math.max(0, Math.min(MAX_TASK_INDENT, line.indent + delta));
+			if (delta > 0) {
+				const previous = [...lines.slice(0, index)]
+					.reverse()
+					.find((candidate) => candidate.isCheck);
+				line.indent = Math.min(next, previous ? previous.indent + 1 : 0, MAX_TASK_INDENT);
+			} else {
+				line.indent = next;
+			}
+			return { changed: line.indent !== previousIndent, offsetDelta: 0 };
 		}
-		return true;
+		const indented = adjustTextIndent(line.text, delta);
+		if (indented.offsetDelta === 0 && indented.text === line.text) {
+			return { changed: false, offsetDelta: 0 };
+		}
+		line.text = indented.text;
+		return { changed: true, offsetDelta: indented.offsetDelta };
+	}
+
+	function indentRange(range: EditorRange, delta: number) {
+		let changed = false;
+		let caretDelta = 0;
+		const caretLine = range.collapsed ? range.start.line : range.end.line;
+		for (let index = range.start.line; index <= range.end.line; index++) {
+			const result = indentLine(index, delta);
+			if (index === caretLine) caretDelta = result.offsetDelta;
+			if (result.changed) changed = true;
+		}
+		if (!changed) return;
+		syncBody();
+		const caretOffset = (range.collapsed ? range.start.offset : range.end.offset) + caretDelta;
+		if (lines[caretLine]?.isCheck) focusTask(caretLine);
+		focusAt(caretLine, caretOffset, lines[caretLine]?.id ?? null);
 	}
 
 	function previousTaskIndex(index: number): number {
@@ -579,17 +606,16 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
-		const range = editorRange();
-		if (!range) return;
-		if (event.key === 'Tab' && range.collapsed && lines[range.start.line]?.isCheck) {
+		if (event.key === 'Tab' && !event.altKey && !event.metaKey) {
+			if (composing) return;
 			event.preventDefault();
-			if (indentLine(range.start.line, event.shiftKey ? -1 : 1)) {
-				syncBody();
-				focusTask(range.start.line);
-				focusAt(range.start.line, range.start.offset, lines[range.start.line].id);
-			}
+			const range = editorRange();
+			if (!range) return;
+			indentRange(range, event.shiftKey || event.ctrlKey ? -1 : 1);
 			return;
 		}
+		const range = editorRange();
+		if (!range) return;
 		if (event.key === 'Enter' || event.key === 'NumpadEnter') {
 			event.preventDefault();
 			handleEnter(range);

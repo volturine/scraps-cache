@@ -221,6 +221,73 @@ describe('BodyEditor native editing', () => {
 		).toHaveLength(0);
 	});
 
+	it('indents the current text segment with Tab and outdents with Control+Tab', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Hello' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+
+		const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+		editor.dispatchEvent(tab);
+		await tick();
+
+		expect(tab.defaultPrevented).toBe(true);
+		expect(lineTexts(container)).toEqual(['  Hello']);
+		expect(document.activeElement).toBe(editor);
+
+		const controlTab = new KeyboardEvent('keydown', {
+			key: 'Tab',
+			ctrlKey: true,
+			bubbles: true,
+			cancelable: true
+		});
+		editor.dispatchEvent(controlTab);
+		await tick();
+
+		expect(controlTab.defaultPrevented).toBe(true);
+		expect(lineTexts(container)).toEqual(['Hello']);
+	});
+
+	it('outdents a text segment with Shift+Tab', async () => {
+		const { container } = render(BodyEditor, { props: { body: '  Hello' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(container.querySelector('[data-line-text]') as HTMLElement, 2);
+
+		await fireEvent.keyDown(editor, { key: 'Tab', shiftKey: true });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Hello']);
+	});
+
+	it('indents every selected text segment', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'First\nSecond' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const rows = container.querySelectorAll('[data-line-text]');
+		select(rows[0], 0, rows[1], 'Second'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['  First', '  Second']);
+	});
+
+	it('nests a checklist line under the previous task with Tab', async () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] parent\n[ ] child' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const rows = container.querySelectorAll('[data-line-text]');
+		select(rows[1], 0);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['parent', 'child']);
+		expect(
+			container.querySelector('[data-editor-line="1"] [data-checklist-toggle]')?.className
+		).toContain('checklist-toggle-sub');
+		expect(container.querySelector('[data-editor-line="1"]')?.getAttribute('style')).toContain(
+			'padding-left'
+		);
+	});
+
 	it('restores a single copied checklist line as a task', async () => {
 		const { container } = render(BodyEditor, { props: { body: '' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
