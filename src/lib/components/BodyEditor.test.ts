@@ -221,6 +221,121 @@ describe('BodyEditor native editing', () => {
 		).toHaveLength(0);
 	});
 
+	it('indents the current text segment with Tab and outdents with Control+Tab', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Hello' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+
+		const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+		editor.dispatchEvent(tab);
+		await tick();
+
+		expect(tab.defaultPrevented).toBe(true);
+		expect(lineTexts(container)).toEqual(['  Hello']);
+		expect(document.activeElement).toBe(editor);
+
+		const controlTab = new KeyboardEvent('keydown', {
+			key: 'Tab',
+			ctrlKey: true,
+			bubbles: true,
+			cancelable: true
+		});
+		editor.dispatchEvent(controlTab);
+		await tick();
+
+		expect(controlTab.defaultPrevented).toBe(true);
+		expect(lineTexts(container)).toEqual(['Hello']);
+	});
+
+	it('outdents a text segment with Shift+Tab', async () => {
+		const { container } = render(BodyEditor, { props: { body: '  Hello' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(container.querySelector('[data-line-text]') as HTMLElement, 2);
+
+		await fireEvent.keyDown(editor, { key: 'Tab', shiftKey: true });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Hello']);
+	});
+
+	it('indents a selection that spans whole editor rows', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'First\nSecond\nThird' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const rows = [...container.querySelectorAll('[data-editor-line]')];
+		const range = document.createRange();
+		range.setStart(rows[0], 0);
+		range.setEnd(rows[1], rows[1].childNodes.length);
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['  First', '  Second', 'Third']);
+		expect(window.getSelection()?.isCollapsed).toBe(false);
+		expect(window.getSelection()?.toString()).toContain('First');
+		expect(window.getSelection()?.toString()).toContain('Second');
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['    First', '    Second', 'Third']);
+	});
+
+	it('indents every selected text segment and keeps the selection', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'First\nSecond' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const rows = container.querySelectorAll('[data-line-text]');
+		select(rows[0], 0, rows[1], 'Second'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['  First', '  Second']);
+		expect(window.getSelection()?.toString()).toContain('First');
+		expect(window.getSelection()?.toString()).toContain('Second');
+		expect(window.getSelection()?.isCollapsed).toBe(false);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['    First', '    Second']);
+		expect(window.getSelection()?.toString()).toContain('First');
+		expect(window.getSelection()?.toString()).toContain('Second');
+	});
+
+	it('keeps a partial selection after indenting a line', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Hello world' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		select(line, 6, line, 11);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['  Hello world']);
+		expect(window.getSelection()?.toString()).toBe('world');
+	});
+
+	it('nests a checklist line under the previous task with Tab', async () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] parent\n[ ] child' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const rows = container.querySelectorAll('[data-line-text]');
+		select(rows[1], 0);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['parent', 'child']);
+		expect(
+			container.querySelector('[data-editor-line="1"] [data-checklist-toggle]')?.className
+		).toContain('checklist-toggle-sub');
+		expect(container.querySelector('[data-editor-line="1"]')?.getAttribute('style')).toContain(
+			'padding-left'
+		);
+	});
+
 	it('restores a single copied checklist line as a task', async () => {
 		const { container } = render(BodyEditor, { props: { body: '' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;

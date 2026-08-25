@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatCheckLine, parseBody, parseCheckLine, toggleLineAt } from './checklistBody';
+import {
+	adjustTextIndent,
+	formatCheckLine,
+	parseBody,
+	parseCheckLine,
+	toggleLineAt
+} from './checklistBody';
 
 describe('checklist indent / sub-tasks', () => {
 	it('parses indented checklist lines as nested tasks', () => {
@@ -21,6 +27,26 @@ describe('checklist indent / sub-tasks', () => {
 	it('preserves indent when toggling and completes the parent', () => {
 		const body = ['[ ] a', '  [ ] b'].join('\n');
 		expect(toggleLineAt(body, 1)).toBe(['[x] a', '  [x] b'].join('\n'));
+	});
+});
+
+describe('plain-text segment indent', () => {
+	it('indents and outdents a line by two spaces', () => {
+		expect(adjustTextIndent('Hello', 1)).toEqual({ text: '  Hello', offsetDelta: 2 });
+		expect(adjustTextIndent('  Hello', -1)).toEqual({ text: 'Hello', offsetDelta: -2 });
+	});
+
+	it('outdents a leading tab or leftover space', () => {
+		expect(adjustTextIndent('\tHello', -1)).toEqual({ text: 'Hello', offsetDelta: -1 });
+		expect(adjustTextIndent(' Hello', -1)).toEqual({ text: 'Hello', offsetDelta: -1 });
+	});
+
+	it('stops at the maximum indent and at the left edge', () => {
+		expect(adjustTextIndent('Hello', -1)).toEqual({ text: 'Hello', offsetDelta: 0 });
+		expect(adjustTextIndent('        Hello', 1, 4)).toEqual({
+			text: '        Hello',
+			offsetDelta: 0
+		});
 	});
 });
 

@@ -32,9 +32,32 @@ export function indentLevelFromWhitespace(ws: string): number {
 	return Math.min(MAX_CHECK_INDENT, indent);
 }
 
+export const TEXT_INDENT_UNIT = '  ';
+
 export function checkIndentPrefix(indent: number): string {
 	const n = Math.max(0, Math.min(MAX_CHECK_INDENT, indent));
-	return '  '.repeat(n);
+	return TEXT_INDENT_UNIT.repeat(n);
+}
+
+/** Add or remove one indent level of leading whitespace on a plain-text line. */
+export function adjustTextIndent(
+	text: string,
+	delta: number,
+	maxIndent = MAX_CHECK_INDENT
+): { text: string; offsetDelta: number } {
+	if (delta > 0) {
+		const level = indentLevelFromWhitespace(text.match(/^\s*/)?.[0] ?? '');
+		if (level >= maxIndent) return { text, offsetDelta: 0 };
+		return { text: `${TEXT_INDENT_UNIT}${text}`, offsetDelta: TEXT_INDENT_UNIT.length };
+	}
+	if (delta < 0) {
+		if (text.startsWith('\t')) return { text: text.slice(1), offsetDelta: -1 };
+		if (text.startsWith(TEXT_INDENT_UNIT)) {
+			return { text: text.slice(TEXT_INDENT_UNIT.length), offsetDelta: -TEXT_INDENT_UNIT.length };
+		}
+		if (text.startsWith(' ')) return { text: text.slice(1), offsetDelta: -1 };
+	}
+	return { text, offsetDelta: 0 };
 }
 
 export function parseCheckLine(
