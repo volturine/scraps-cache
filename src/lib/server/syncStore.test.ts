@@ -256,11 +256,18 @@ describe('SQLite sync store', () => {
 		const uploaded = store.sync(
 			'account',
 			0,
-			[{ id: 'photo', slot: slot('a'), ciphertext: 'opaque' }],
+			[{ id: 'photo', slot: slot('a'), ciphertext: 'opaque', tag: slot('b') }],
 			[],
 			10
 		);
-		store.sync('account', uploaded.cursor, [], [{ id: 'photo', slot: slot('a') }], 10);
+		const deleted = store.sync(
+			'account',
+			uploaded.cursor,
+			[],
+			[{ id: 'photo', slot: slot('a') }],
+			10
+		);
+		const digestAfterDelete = deleted.usage.tagDigest;
 
 		const raw = new Database(join(directory, 'sync.sqlite'));
 		const { deletedAt } = raw
@@ -270,6 +277,37 @@ describe('SQLite sync store', () => {
 
 		expect(store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS - 1)).toBe(0);
 		expect(store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS)).toBe(1);
+		expect(store.sync('account', deleted.cursor, [], [], 10).usage.tagDigest).toBe(
+			digestAfterDelete
+		);
+	});
+
+	it('repairs a drifted bundle digest during detailed slot verification', () => {
+		const { store, directory } = createStore();
+		store.createAccount('account', 'credential');
+		const uploaded = store.sync(
+			'account',
+			0,
+			[
+				{ id: 'note', slot: slot('a'), ciphertext: 'cipher-note', tag: slot('b') },
+				{ id: 'photo', slot: slot('c'), ciphertext: 'cipher-photo', tag: slot('d') }
+			],
+			[],
+			10
+		);
+		const expectedDigest = uploaded.usage.tagDigest;
+		const raw = new Database(join(directory, 'sync.sqlite'));
+		try {
+			raw
+				.prepare('UPDATE accounts SET tag_digest = ? WHERE account_id = ?')
+				.run(slot('f'), 'account');
+		} finally {
+			raw.close();
+		}
+
+		expect(store.sync('account', uploaded.cursor, [], [], 10).usage.tagDigest).toBe(slot('f'));
+		expect(store.listAccountSlotsWithTags('account').slots).toHaveLength(2);
+		expect(store.sync('account', uploaded.cursor, [], [], 10).usage.tagDigest).toBe(expectedDigest);
 	});
 
 	it('returns the current slot and rejects a stale conditional replacement', () => {

@@ -24,7 +24,7 @@ import {
 	type SyncRecord,
 	type SyncRecordPayload
 } from '$lib/syncRecords';
-import { sha256 } from '$lib/syncHash';
+import { EMPTY_TAG_DIGEST, recordTag, sha256, tagContribution, xorHex } from '$lib/syncHash';
 import {
 	createOneTimePairingCode,
 	createPairingRequestKey,
@@ -43,11 +43,29 @@ import {
 	getOutboxGeneration,
 	getSyncOutboxKeys,
 	getSyncState,
-	markSyncOutbox
+	markSyncOutbox,
+	namespaceHasData,
+	setSyncState,
+	unlinkProfileToNamespace,
+	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
+import {
+	adoptLocalDatasetInto,
+	getLastActiveProfileId,
+	loadProfiles,
+	nextProfileName,
+	pickBootProfile,
+	profileForSyncKey,
+	removeProfileRecord,
+	saveProfile,
+	setLastActiveProfileId,
+	type StoredProfile
+} from '$lib/profiles';
 
-const LS_SYNC_KEY = 'gkc-sync-account';
-const LS_SYNC_STATUS_KEY = 'gkc-sync-status';
+const LS_SYNC_STATUS_PREFIX = 'gkc-sync-status';
+const LS_LEGACY_ACCOUNT_KEY = 'gkc-sync-account';
+/** Encrypted profile-name record; the name follows its sync key across devices. */
+export const PROFILE_META_KEY = 'profile-meta';
 
 export interface SyncAccount {
 	syncKey: string;
@@ -69,6 +87,8 @@ type LinkPoll =
 	| { state: 'connected'; expiresAt: number; peerPublicKey: string; grant: { ciphertext: string } }
 	| { state: 'expired' | 'not-found' };
 
+type ServerSlot = { id: string; tag: string | null };
+
 interface SyncStatus {
 	lastSync: number;
 }
@@ -88,6 +108,8 @@ export interface SyncUsage {
 	envelopeCount: number;
 	maxBytes: number;
 	maxEnvelopes: number;
+	/** XOR-bundle of stored record tags; opaque without the sync key. */
+	tagDigest?: string;
 }
 
 type SyncResult = {
@@ -134,6 +156,9 @@ export class SyncStore {
 	lastError = $state<string | null>(null);
 	progress = $state<SyncProgress | null>(null);
 	usage = $state<SyncUsage | null>(null);
+	/** Saved sync keys on this device; the one matching `account` is active. */
+	profiles = $state<StoredProfile[]>([]);
+	private profilesReady: Promise<void> | null = null;
 	private bootstrapRequested = false;
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
 
@@ -145,22 +170,135 @@ export class SyncStore {
 
 	constructor() {
 		if (typeof localStorage === 'undefined') return;
-		try {
-			const rawAccount = localStorage.getItem(LS_SYNC_KEY);
-			if (rawAccount) {
-				const parsed: unknown = JSON.parse(rawAccount);
-				if (isSyncAccount(parsed)) this.account = identityFromSyncKey(parsed.syncKey);
-				else localStorage.removeItem(LS_SYNC_KEY);
-			}
-			const rawStatus = localStorage.getItem(LS_SYNC_STATUS_KEY);
-			if (rawStatus) this.lastSync = Number((JSON.parse(rawStatus) as SyncStatus).lastSync) || 0;
-		} catch (err) {
-			console.error('[sync] could not restore local status:', err);
-		}
+		void this.ensureProfilesLoaded();
 	}
 
 	get isLoggedIn(): boolean {
 		return this.account !== null;
+	}
+
+	get activeProfile(): StoredProfile | null {
+		return this.account
+			? (profileForSyncKey(this.profiles, this.account.syncKey) ?? this.profiles[0] ?? null)
+			: null;
+	}
+
+	/** Namespace this window reads and writes right now. */
+	get activePid(): string {
+		return this.activeProfile?.id ?? LOCAL_PROFILE_ID;
+	}
+
+	/**
+	 * Per-window boot: restore the keyring, adopt installs that predate
+	 * profiles, and activate the last-used profile. Windows opened later start
+	 * on the same default profile but can switch independently.
+	 */
+	ensureProfilesLoaded(): Promise<void> {
+		this.profilesReady ??= (async () => {
+			try {
+				let profiles = await loadProfiles();
+				const rawLegacy = localStorage.getItem(LS_LEGACY_ACCOUNT_KEY);
+				try {
+					const parsed: unknown = rawLegacy ? JSON.parse(rawLegacy) : null;
+					if (isSyncAccount(parsed) && !profiles.some((p) => p.syncKey === parsed.syncKey)) {
+						const adopted: StoredProfile = {
+							id: randomOpaqueId(),
+							name: nextProfileName(profiles),
+							syncKey: parsed.syncKey,
+							createdAt: Date.now()
+						};
+						await saveProfile(adopted);
+						profiles = [...profiles, adopted];
+					}
+				} catch {
+					/* unreadable legacy mirror is ignored */
+				}
+				this.profiles = profiles.sort((a, b) => a.createdAt - b.createdAt);
+				if (this.profiles.length) localStorage.removeItem(LS_LEGACY_ACCOUNT_KEY);
+
+				const pointerId = getLastActiveProfileId();
+				const pointed =
+					pointerId != null
+						? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
+						: null;
+				const chosen = pointed ?? pickBootProfile(this.profiles);
+				if (chosen) {
+					await this.healStrandedLocalData(chosen.id);
+					this.activateProfile(chosen);
+				} else this.restoreStatus(LOCAL_PROFILE_ID);
+			} catch (err) {
+				console.error('[sync] could not load saved profiles:', err);
+			}
+		})();
+		return this.profilesReady;
+	}
+
+	/**
+	 * Upgrades that predate namespacing landed all device data in the local
+	 * no-key namespace while the keyring was still empty, so the adopted
+	 * profile booted on an empty namespace with a stale "already synced"
+	 * control plane. When the active profile holds no notes but the local
+	 * namespace does, hand the rows over before first paint.
+	 */
+	private async healStrandedLocalData(activePid: string): Promise<void> {
+		if (activePid === LOCAL_PROFILE_ID) return;
+		try {
+			// Any data type counts: notes, labels, boards, tombstones, reminders,
+			// pending uploads — a notes-only check strands label-only installs.
+			const [activeHasData, localHasData] = await Promise.all([
+				namespaceHasData(activePid),
+				namespaceHasData(LOCAL_PROFILE_ID)
+			]);
+			if (!activeHasData && localHasData) {
+				console.error('[sync] adopting pre-upgrade data into the active profile');
+				await adoptLocalDatasetInto(activePid);
+				// The rescued rows match this device's stale baseline, but the relay
+				// copy may be incomplete or gone (cloud deletes, resets, earlier
+				// partial uploads). Force a full bootstrap so the account ends up
+				// holding exactly what this profile now holds locally.
+				const profile = this.profiles.find((entry) => entry.id === activePid);
+				if (profile)
+					await this.clearAccountControlPlane(identityFromSyncKey(profile.syncKey).accountId);
+			}
+		} catch (err) {
+			console.error('[sync] could not check for stranded pre-upgrade data:', err);
+		}
+	}
+
+	/** Persist a keyring entry and surface it in the reactive profile list. */
+	async addKeyringEntry(profile: StoredProfile): Promise<void> {
+		await saveProfile(profile);
+		this.profiles = [...this.profiles, profile].sort((a, b) => a.createdAt - b.createdAt);
+	}
+
+	async renameProfile(id: string, name: string): Promise<StoredProfile | null> {
+		const trimmed = name.trim().slice(0, 60);
+		const profile = this.profiles.find((entry) => entry.id === id);
+		if (!profile || !trimmed || profile.name === trimmed) return profile ?? null;
+		const updated = { ...profile, name: trimmed };
+		await saveProfile(updated);
+		this.profiles = this.profiles.map((entry) => (entry.id === id ? updated : entry));
+		// The name travels inside its own account's encrypted records so every
+		// device holding this sync key converges on one local label. Inactive
+		// keys get their namespace's outbox marked so the upload happens on the
+		// next activation.
+		if (this.activeProfile?.id === id) await this.queueOutbox([PROFILE_META_KEY]);
+		else await markSyncOutbox(id, [PROFILE_META_KEY]);
+		return updated;
+	}
+
+	/** Remove a non-active keyring entry together with its namespaced dataset. */
+	async removeProfile(id: string): Promise<boolean> {
+		if (this.activeProfile?.id === id) return false;
+		if (!this.profiles.some((entry) => entry.id === id)) return false;
+		try {
+			await removeProfileRecord(id);
+		} catch (err) {
+			console.error('[sync] could not remove profile:', err);
+			return false;
+		}
+		this.profiles = this.profiles.filter((entry) => entry.id !== id);
+		return true;
 	}
 
 	requestAutoSync(keys: Iterable<string> = []): void {
@@ -171,8 +309,9 @@ export class SyncStore {
 
 	async queueOutbox(keys: Iterable<string> = []): Promise<void> {
 		const pendingKeys = [...new Set(keys)];
+		const pid = this.activePid;
 		const write = this.pendingOutboxWrites.then(async () => {
-			await markSyncOutbox(pendingKeys);
+			await markSyncOutbox(pid, pendingKeys);
 		});
 		this.pendingOutboxWrites = write.catch(() => undefined);
 		await write;
@@ -183,26 +322,36 @@ export class SyncStore {
 		await this.pendingOutboxWrites;
 	}
 
-	private saveAccount(): void {
+	private restoreStatus(pid: string): void {
 		if (typeof localStorage === 'undefined') return;
 		try {
-			if (this.account) localStorage.setItem(LS_SYNC_KEY, JSON.stringify(this.account));
-			else localStorage.removeItem(LS_SYNC_KEY);
-		} catch (err) {
-			console.error('[sync] could not save account:', err);
+			const raw = localStorage.getItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`);
+			this.lastSync = raw ? Number((JSON.parse(raw) as SyncStatus).lastSync) || 0 : 0;
+		} catch {
+			this.lastSync = 0;
 		}
 	}
 
 	private saveStatus(): void {
 		if (typeof localStorage === 'undefined') return;
 		try {
-			localStorage.setItem(LS_SYNC_STATUS_KEY, JSON.stringify({ lastSync: this.lastSync }));
+			localStorage.setItem(
+				`${LS_SYNC_STATUS_PREFIX}:${this.activePid}`,
+				JSON.stringify({ lastSync: this.lastSync })
+			);
 		} catch (err) {
 			console.error('[sync] could not save status:', err);
 		}
 	}
 
-	async register(): Promise<{ success: boolean; error?: string }> {
+	/**
+	 * Create a new sync key on the relay and save it as a keyring entry.
+	 * Activation is the caller's job: the coordinator decides whether local
+	 * no-account data is adopted into it and reloads the dataset.
+	 */
+	async register(
+		name?: string
+	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		const account = createSyncIdentity();
 		try {
 			const res = await fetch('/api/sync/register', {
@@ -216,13 +365,31 @@ export class SyncStore {
 					success: false,
 					error: typeof data.error === 'string' ? data.error : 'Registration failed'
 				};
-			this.account = account;
-			this.lastError = null;
-			this.saveAccount();
-			return { success: true };
+			const profile: StoredProfile = {
+				id: randomOpaqueId(),
+				name: name?.trim() || nextProfileName(this.profiles),
+				syncKey: account.syncKey,
+				createdAt: Date.now()
+			};
+			await this.addKeyringEntry(profile);
+			return { success: true, profile };
 		} catch (err) {
 			return { success: false, error: err instanceof Error ? err.message : 'Network error' };
 		}
+	}
+
+	/**
+	 * Point this window at a saved sync key. Datasets are namespaced, so this
+	 * only flips in-memory identity plus the last-active pointer; the caller
+	 * reloads memory from the target namespace.
+	 */
+	activateProfile(profile: StoredProfile): void {
+		this.account = identityFromSyncKey(profile.syncKey);
+		this.lastError = null;
+		this.progress = null;
+		this.usage = null;
+		setLastActiveProfileId(profile.id);
+		this.restoreStatus(profile.id);
 	}
 
 	async startDeviceLink(
@@ -274,6 +441,7 @@ export class SyncStore {
 		linked?: boolean;
 		matched?: boolean;
 		expired?: boolean;
+		receivedSyncKey?: string;
 		error?: string;
 	}> {
 		try {
@@ -311,14 +479,12 @@ export class SyncStore {
 			const grant = data.grant as { existingPublicKey?: unknown; ciphertext?: unknown };
 			if (typeof grant.ciphertext !== 'string')
 				return { success: false, error: 'Invalid encrypted sync key' };
-			this.account = identityFromSyncKey(
-				openSyncKeyFromPeer(link.syncCode, link.pake, data.peerPublicKey ?? '', {
-					ciphertext: grant.ciphertext
-				})
-			);
-			this.lastError = null;
-			this.saveAccount();
-			return { success: true, linked: true };
+			// Hand the raw key back; activation is the caller's job so the current
+			// profile's dataset can be stashed first.
+			const syncKey = openSyncKeyFromPeer(link.syncCode, link.pake, data.peerPublicKey ?? '', {
+				ciphertext: grant.ciphertext
+			});
+			return { success: true, linked: true, receivedSyncKey: syncKey };
 		} catch (err) {
 			return {
 				success: false,
@@ -410,6 +576,7 @@ export class SyncStore {
 	): Promise<SyncResult> {
 		if (!this.account) return { success: false, error: 'Not linked' };
 		const account = this.account;
+		const pid = this.activePid;
 		const syncCancelled = (): boolean => this.account !== account;
 		if (indicate) this.onSyncStart?.();
 		try {
@@ -422,6 +589,7 @@ export class SyncStore {
 			let resetRetries = 0;
 			const quotaBlockedKeys = new Set<string>();
 			let quotaSingleUpload = false;
+			let quotaRetryRecords: SyncRecord[] | null = null;
 			const keys = syncControlKeys(account.accountId);
 			let baseline: Record<string, string> = {};
 			try {
@@ -440,7 +608,7 @@ export class SyncStore {
 				(await getSyncState<Record<string, string>>(keys.recordIds).catch(() => undefined)) ?? {};
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
 			const outboxSnapshotAt = await getOutboxGeneration();
-			let outboxKeys = new Set(await getSyncOutboxKeys().catch(() => []));
+			let outboxKeys = new Set(await getSyncOutboxKeys(pid).catch(() => []));
 			let cursor = Number((await getSyncState<number>(keys.cursor).catch(() => undefined)) || 0);
 			if (firstFullUpload && cursor > 0) cursor = 0;
 
@@ -463,6 +631,10 @@ export class SyncStore {
 			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
 			let stalledWrites = 0;
+			let integrityBackfillDone = false;
+			let integrityVerificationIncomplete = false;
+			let serverTagDigest: string | null = null;
+			const integrityDeletes = new Map<string, { id: string; slot: string; key?: string }>();
 			while (hasMore) {
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				const startedWithDownloadsDrained = downloadsDrained;
@@ -477,15 +649,38 @@ export class SyncStore {
 						: firstFullUpload
 							? undefined
 							: outboxKeys;
-				const currentRecords = await buildSyncRecords(
-					mergedNotes,
-					mergedLabels,
-					mergedBoards,
-					mergedTombstones,
-					mergedLabelTombstones,
-					mergedBoardTombstones,
-					uploadKeys
-				);
+				const retryRecords: SyncRecord[] | null = quotaRetryRecords;
+				quotaRetryRecords = null;
+				const currentRecords: SyncRecord[] =
+					retryRecords ??
+					(await buildSyncRecords(
+						mergedNotes,
+						mergedLabels,
+						mergedBoards,
+						mergedTombstones,
+						mergedLabelTombstones,
+						mergedBoardTombstones,
+						uploadKeys
+					));
+				// The profile name rides its own account's encrypted records so every
+				// device holding this sync key converges on one local label.
+				const metaUploadDue =
+					!pullOnly &&
+					downloadsDrained &&
+					outboxKeys.has(PROFILE_META_KEY) &&
+					!quotaBlockedKeys.has(PROFILE_META_KEY) &&
+					(uploadKeys === undefined || uploadKeys.has(PROFILE_META_KEY));
+				if (metaUploadDue && !retryRecords) {
+					const metaPayload = {
+						kind: 'profile-meta' as const,
+						value: { name: this.activeProfile?.name ?? '' }
+					};
+					currentRecords.push({
+						key: PROFILE_META_KEY,
+						fingerprint: await sha256(metaPayload),
+						payload: metaPayload
+					});
+				}
 				const changed =
 					pullOnly || !downloadsDrained ? [] : changedRecords(currentRecords, baseline);
 				const nonAttachments = changed.filter(
@@ -517,7 +712,8 @@ export class SyncStore {
 							id,
 							slot,
 							expectedId: recordIds[record.key] ?? null,
-							ciphertext: encryptSyncPayload(account.syncKey, record.payload)
+							ciphertext: encryptSyncPayload(account.syncKey, record.payload),
+							tag: await recordTag(account.syncKey, record.payload)
 						};
 					})
 				);
@@ -527,6 +723,8 @@ export class SyncStore {
 					mergedBoards,
 					tombstoneMaps
 				);
+				if (recordIds[PROFILE_META_KEY] || sentRecordIds.has(PROFILE_META_KEY) || metaUploadDue)
+					currentKeys.add(PROFILE_META_KEY);
 				// Slot tokens are keyed hashes of record keys, so an unreadable envelope can
 				// still be identified locally. Adopting its id lets a later upload replace
 				// it or a delete reclaim it instead of stranding the slot on the relay;
@@ -550,13 +748,18 @@ export class SyncStore {
 					tombstones: tombstoneMaps,
 					pullOnly,
 					catchUpComplete: downloadsDrained
-				});
-				const deleteSlots = await Promise.all(
+				}).filter((key) => key !== PROFILE_META_KEY);
+				const plannedDeleteSlots = await Promise.all(
 					deletableKeys.map(async (key) => ({
 						id: recordIds[key],
 						slot: await sha256(`${account.syncKey}\u0000${key}`)
 					}))
 				);
+				const integrityDeleteSlots = [...integrityDeletes.values()];
+				const deleteSlots = [
+					...plannedDeleteSlots,
+					...integrityDeleteSlots.map(({ id, slot }) => ({ id, slot }))
+				];
 				const payload = JSON.stringify({
 					accountId: account.accountId,
 					authSecret: account.authSecret,
@@ -576,13 +779,16 @@ export class SyncStore {
 					quotaRetries += 1;
 					if (quotaRetries > MAX_QUOTA_RETRIES)
 						throw new Error('Relay kept rejecting uploads for storage quota');
-					if (outgoing.length > 1) quotaSingleUpload = true;
-					else {
+					if (outgoing.length > 1) {
+						quotaSingleUpload = true;
+						quotaRetryRecords = currentRecords;
+					} else {
 						const blockedKey = outgoing[0].key;
 						quotaBlockedKeys.add(blockedKey);
-						await markSyncOutbox([blockedKey]);
+						await markSyncOutbox(pid, [blockedKey]);
 						outboxKeys.add(blockedKey);
 						quotaSingleUpload = false;
+						quotaRetryRecords = currentRecords.filter((record) => record.key !== blockedKey);
 					}
 					hasMore = true;
 					continue;
@@ -600,6 +806,10 @@ export class SyncStore {
 						].every((value) => typeof value === 'number' && Number.isFinite(value))
 					) {
 						this.usage = candidate as SyncUsage;
+						serverTagDigest =
+							typeof candidate.tagDigest === 'string' && /^[a-f0-9]{64}$/.test(candidate.tagDigest)
+								? candidate.tagDigest
+								: null;
 					}
 				}
 				const writesAccepted = response.data.writesAccepted === true;
@@ -608,6 +818,10 @@ export class SyncStore {
 					for (const key of deletableKeys) delete recordIds[key];
 					for (const [key, id] of sentRecordIds) recordIds[key] = id;
 					for (const key of deletableKeys) acknowledgedOutbox.add(key);
+					for (const deletion of integrityDeleteSlots) {
+						if (deletion.key) delete recordIds[deletion.key];
+						integrityDeletes.delete(deletion.slot);
+					}
 				}
 				if (response.data.reset === true) {
 					// The relay was deliberately reset while this device retained a baseline.
@@ -654,6 +868,10 @@ export class SyncStore {
 							mergedBoardTombstones = mergeTombstoneMaps(mergedBoardTombstones, {
 								[record.id]: record.deletedAt
 							});
+							break;
+						case 'profile-meta':
+							if (typeof (record as { value?: { name?: unknown } }).value?.name === 'string')
+								this.applySyncedProfileName((record as { value: { name: string } }).value.name);
 							break;
 					}
 				};
@@ -788,18 +1006,23 @@ export class SyncStore {
 					uploaded: uploadedFingerprints,
 					remote: remoteFingerprints,
 					merged: fingerprintMapFrom(mergedRecords),
-					currentKeys: currentRecordKeys(
-						mergedNotes,
-						mergedLabels,
-						mergedBoards,
-						appliedTombstoneMaps
-					),
+					currentKeys: (() => {
+						const keys = currentRecordKeys(
+							mergedNotes,
+							mergedLabels,
+							mergedBoards,
+							appliedTombstoneMaps
+						);
+						if (recordIds[PROFILE_META_KEY] || sentRecordIds.has(PROFILE_META_KEY) || metaUploadDue)
+							keys.add(PROFILE_META_KEY);
+						return keys;
+					})(),
 					referencedAttachments: referencedAttachmentIds(mergedNotes, mergedTombstones)
 				});
 				baseline = reconciled.baseline;
 				for (const key of reconciled.ackKeys) acknowledgedOutbox.add(key);
 				if (reconciled.dirtyKeys.length) {
-					const generation = await markSyncOutbox(reconciled.dirtyKeys);
+					const generation = await markSyncOutbox(pid, reconciled.dirtyKeys);
 					for (const key of reconciled.dirtyKeys) {
 						outboxKeys.add(key);
 						internallyMarkedOutbox.set(key, generation);
@@ -817,6 +1040,7 @@ export class SyncStore {
 					}
 					if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 					await commitSyncControl(
+						pid,
 						[
 							[keys.cursor, cursor],
 							[keys.baseline, baseline],
@@ -836,27 +1060,133 @@ export class SyncStore {
 					}
 				}
 
+				const pendingOutboxUpload = [...outboxKeys].some(
+					(key) => !acknowledgedOutbox.has(key) && !quotaBlockedKeys.has(key)
+				);
 				const remainingUploads =
 					!pullOnly &&
-					(!startedWithDownloadsDrained ||
+					((!startedWithDownloadsDrained && (firstFullUpload || pendingOutboxUpload)) ||
 						(!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) ||
 						changed.filter((record) => !quotaBlockedKeys.has(record.key)).length > outgoing.length);
 				const pendingDeletes =
 					downloadsDrained &&
-					planDeletableKeys({
-						recordIds,
-						notes: mergedNotes,
-						labels: mergedLabels,
-						boards: mergedBoards,
-						tombstones: appliedTombstoneMaps,
-						pullOnly,
-						catchUpComplete: true
-					}).length > 0;
+					(integrityDeletes.size > 0 ||
+						planDeletableKeys({
+							recordIds,
+							notes: mergedNotes,
+							labels: mergedLabels,
+							boards: mergedBoards,
+							tombstones: appliedTombstoneMaps,
+							pullOnly,
+							catchUpComplete: true
+						}).length > 0);
 				hasMore = syncRoundHasMore({
 					remoteHasMore: response.data.hasMore === true,
 					remainingUploads,
 					pendingDeletes
 				});
+
+				// Integrity handshake: the local ledger ("what the relay already has")
+				// can drift from reality — wiped relays, deleted accounts, lost upload
+				// queues, restored backups. The normal path compares the relay's bundled
+				// keyed digest with one recomputed from local payloads. Only a mismatch
+				// downloads the exact slot map needed for repair.
+				if (
+					downloadsDrained &&
+					!pullOnly &&
+					!hasMore &&
+					!integrityBackfillDone &&
+					!syncCancelled()
+				) {
+					const integrityRecords = await buildSyncRecords(
+						mergedNotes,
+						mergedLabels,
+						mergedBoards,
+						appliedTombstoneMaps.notes,
+						appliedTombstoneMaps.labels,
+						appliedTombstoneMaps.boards,
+						undefined
+					);
+					const expectedTags = new Map<string, string>();
+					const expectedSlots = new Map<string, string>();
+					let expectedTagDigest = EMPTY_TAG_DIGEST;
+					for (const record of integrityRecords) {
+						const slot = await sha256(`${account.syncKey}\u0000${record.key}`);
+						const tag = await recordTag(account.syncKey, record.payload);
+						expectedTags.set(slot, tag);
+						expectedSlots.set(slot, record.key);
+						expectedTagDigest = xorHex(expectedTagDigest, tagContribution(tag));
+					}
+					if (this.activeProfile) {
+						const metaPayload = {
+							kind: 'profile-meta' as const,
+							value: { name: this.activeProfile.name }
+						};
+						const metaSlot = await sha256(`${account.syncKey}\u0000${PROFILE_META_KEY}`);
+						const metaTag = await recordTag(account.syncKey, metaPayload);
+						expectedSlots.set(metaSlot, PROFILE_META_KEY);
+						expectedTags.set(metaSlot, metaTag);
+						expectedTagDigest = xorHex(expectedTagDigest, tagContribution(metaTag));
+					}
+					if (serverTagDigest === expectedTagDigest) {
+						integrityBackfillDone = true;
+						continue;
+					}
+					const verification = await this.fetchServerSlots();
+					if (verification && verification.cursor > cursor) {
+						// Another device wrote after this pull drained. Catch up before
+						// deciding that its new opaque slots are unexpected.
+						hasMore = true;
+						continue;
+					}
+					integrityBackfillDone = true;
+					if (verification && verification.cursor === cursor) {
+						const serverSlotTags = verification.slots;
+						// Full enumeration: every local record is tagged and every relay
+						// slot must correspond to current local state.
+						const expectedCurrentKeys = currentRecordKeys(
+							mergedNotes,
+							mergedLabels,
+							mergedBoards,
+							appliedTombstoneMaps
+						);
+						if (this.activeProfile) expectedCurrentKeys.add(PROFILE_META_KEY);
+						for (const key of expectedCurrentKeys) {
+							const slot = await sha256(`${account.syncKey}\u0000${key}`);
+							expectedSlots.set(slot, key);
+						}
+						const repairKeys: string[] = [];
+						for (const [slot, key] of expectedSlots) {
+							const expectedTag = expectedTags.get(slot);
+							if (!expectedTag) {
+								integrityVerificationIncomplete = true;
+								continue;
+							}
+							if (serverSlotTags.get(slot)?.tag !== expectedTag) repairKeys.push(key);
+						}
+						for (const [slot, serverRecord] of serverSlotTags) {
+							if (!expectedSlots.has(slot))
+								integrityDeletes.set(slot, {
+									id: serverRecord.id,
+									slot,
+									key: await knownSlotKey(slot)
+								});
+						}
+						if (repairKeys.length || integrityDeletes.size > 0) {
+							for (const key of repairKeys) delete baseline[key];
+							const generation = await markSyncOutbox(pid, repairKeys);
+							for (const key of repairKeys) {
+								outboxKeys.add(key);
+								internallyMarkedOutbox.set(key, generation);
+							}
+							console.info(
+								`[sync] repairing ${repairKeys.length} stale or missing and ${integrityDeletes.size} unexpected relay record(s)`
+							);
+							hasMore = true;
+							continue;
+						}
+					} else integrityVerificationIncomplete = true;
+				}
 			}
 
 			if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
@@ -864,6 +1194,9 @@ export class SyncStore {
 				this.lastError = `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`;
 			} else if (quotaBlockedKeys.size > 0) {
 				this.lastError = 'Some records exceed the account storage quota';
+			} else if (integrityVerificationIncomplete) {
+				this.lastError =
+					'Synced, but relay integrity verification could not complete. It will retry on the next sync.';
 			} else {
 				this.lastError = null;
 			}
@@ -918,6 +1251,12 @@ export class SyncStore {
 		return Number.isSafeInteger(cursor) && Number(cursor) >= 0 ? Number(cursor) : null;
 	}
 
+	/** Replay this account when local attachment metadata has lost its blob. */
+	async rewindCursorForAttachmentRecovery(): Promise<void> {
+		if (!this.account) return;
+		await setSyncState(syncControlKeys(this.account.accountId).cursor, 0);
+	}
+
 	async clearAccountControlPlane(accountId: string): Promise<void> {
 		const keys = syncControlKeys(accountId);
 		await Promise.all([
@@ -928,14 +1267,98 @@ export class SyncStore {
 		]);
 	}
 
-	logout(): void {
+	/** Adopt a name received from this account's encrypted profile record. */
+	private applySyncedProfileName(name: string): void {
+		const trimmed = name.trim().slice(0, 60);
+		const profile = this.activeProfile;
+		if (!profile || !trimmed || profile.name === trimmed) return;
+		const updated = { ...profile, name: trimmed };
+		this.profiles = this.profiles.map((entry) => (entry.id === profile.id ? updated : entry));
+		void saveProfile(updated).catch((err) =>
+			console.error('[sync] could not store the synced profile name:', err)
+		);
+	}
+
+	/**
+	 * Integrity handshake half: fetch every slot the relay holds for the active
+	 * account, with its content tag where known. Slots are keyed hashes and
+	 * tags keyed content hashes — both recomputable only by the owner, so the
+	 * response leaks nothing.
+	 */
+	async fetchServerSlots(): Promise<{ cursor: number; slots: Map<string, ServerSlot> } | null> {
+		if (!this.account) return null;
+		try {
+			const response = await fetch('/api/sync/verify', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					accountId: this.account.accountId,
+					authSecret: this.account.authSecret
+				})
+			});
+			if (!response.ok) return null;
+			const data = (await response.json().catch(() => null)) as {
+				cursor?: unknown;
+				slots?: unknown;
+			} | null;
+			if (
+				!data ||
+				!Number.isSafeInteger(data.cursor) ||
+				Number(data.cursor) < 0 ||
+				!Array.isArray(data.slots)
+			)
+				return null;
+			const map = new Map<string, ServerSlot>();
+			for (const entry of data.slots) {
+				if (!entry || typeof entry !== 'object') return null;
+				const slot = (entry as { slot?: unknown }).slot;
+				const id = (entry as { id?: unknown }).id;
+				const tag = (entry as { tag?: unknown }).tag;
+				if (
+					typeof slot !== 'string' ||
+					!/^[a-f0-9]{64}$/.test(slot) ||
+					typeof id !== 'string' ||
+					!/^[A-Za-z0-9_-]{1,128}$/.test(id) ||
+					(tag !== null && (typeof tag !== 'string' || !/^[a-f0-9]{64}$/.test(tag))) ||
+					map.has(slot)
+				)
+					return null;
+				map.set(slot, {
+					id,
+					tag
+				});
+			}
+			return { cursor: Number(data.cursor), slots: map };
+		} catch {
+			return null;
+		}
+	}
+
+	async logout(): Promise<{ success: boolean; error?: string }> {
 		const accountId = this.account?.accountId;
+		const profile = this.activeProfile;
+		if (profile) {
+			try {
+				// The namespace move and keyring removal are one IndexedDB transaction:
+				// either local data is safely adopted or this profile remains retryable.
+				await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
+			} catch (err) {
+				const error =
+					err instanceof Error ? err.message : 'Could not keep this profile\u2019s local data';
+				this.lastError = error;
+				return { success: false, error };
+			}
+		}
 		this.account = null;
 		this.lastError = null;
 		this.progress = null;
 		this.usage = null;
-		this.saveAccount();
+		setLastActiveProfileId(null);
 		if (accountId) void this.clearAccountControlPlane(accountId);
+		if (profile) {
+			this.profiles = this.profiles.filter((entry) => entry.id !== profile.id);
+		}
+		return { success: true };
 	}
 
 	async deleteCloudAccount(): Promise<{ success: boolean; error?: string }> {
@@ -956,8 +1379,7 @@ export class SyncStore {
 					error: typeof data.error === 'string' ? data.error : 'Could not delete synced data'
 				};
 			}
-			this.logout();
-			return { success: true };
+			return this.logout();
 		} catch (error) {
 			return {
 				success: false,

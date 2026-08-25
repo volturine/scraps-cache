@@ -1,3 +1,4 @@
+const PID = 'device-local';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note, NoteImage } from '$lib/types';
 import {
@@ -7,13 +8,21 @@ import {
 	type SyncIdentity
 } from '$lib/syncPairing';
 import { syncControlKeys } from '$lib/syncEngine';
-import { sha256 } from '$lib/syncHash';
+import { EMPTY_TAG_DIGEST, recordTag, sha256, tagContribution, xorHex } from '$lib/syncHash';
+import { buildSyncRecords } from '$lib/syncRecords';
 import * as idb from '$lib/db/idb';
 import { SyncStore, type SyncSnapshot } from './sync.svelte';
 
 type RequestPayload = {
 	cursor: number;
-	envelopes: Array<{ id: string; slot: string; expectedId: string | null; ciphertext: string }>;
+	envelopes: Array<{
+		id: string;
+		slot: string;
+		expectedId: string | null;
+		ciphertext: string;
+		tag?: string;
+	}>;
+
 	deleteSlots: Array<{ id: string; slot: string }>;
 };
 
@@ -29,6 +38,7 @@ type RelayData = {
 		envelopeCount: number;
 		maxBytes: number;
 		maxEnvelopes: number;
+		tagDigest?: string;
 	};
 };
 
@@ -146,7 +156,7 @@ async function seedControl(
 	if (state.cursor != null) await idb.setSyncState(keys.cursor, state.cursor);
 	if (state.baseline) await idb.setSyncState(keys.baseline, state.baseline);
 	if (state.recordIds) await idb.setSyncState(keys.recordIds, state.recordIds);
-	if (state.outbox?.length) await idb.markSyncOutbox(state.outbox);
+	if (state.outbox?.length) await idb.markSyncOutbox(PID, state.outbox);
 }
 
 describe('client sync state machine', () => {
@@ -164,10 +174,10 @@ describe('client sync state machine', () => {
 		await expect(store.queueOutbox(['note:note-1'])).rejects.toThrow(
 			'IndexedDB transaction aborted'
 		);
-		expect(await idb.getSyncOutboxKeys()).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual([]);
 
 		await store.queueOutbox(['note:note-1']);
-		expect(await idb.getSyncOutboxKeys()).toEqual(['note:note-1']);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual(['note:note-1']);
 	});
 
 	it('durably applies a downloaded page before committing its cursor', async () => {
@@ -182,12 +192,12 @@ describe('client sync state machine', () => {
 
 		const result = await store.sync([], [], {}, {}, [], {}, false, true, async (snapshot) => {
 			expect(await idb.getSyncState(keys.cursor)).toBeUndefined();
-			for (const item of snapshot.notes) await idb.putNote(item);
+			for (const item of snapshot.notes) await idb.putNote(PID, item);
 			return snapshot;
 		});
 
 		expect(result.success, result.error).toBe(true);
-		expect((await idb.getAllNotesMetadata()).map(({ id }) => id)).toEqual(['note-1']);
+		expect((await idb.getAllNotesMetadata(PID)).map(({ id }) => id)).toEqual(['note-1']);
 		expect(await idb.getSyncState(keys.cursor)).toBe(1);
 	});
 
@@ -209,7 +219,7 @@ describe('client sync state machine', () => {
 		expect(await idb.getSyncState(keys.cursor)).toBeUndefined();
 		expect(await idb.getSyncState(keys.baseline)).toBeUndefined();
 		expect(await idb.getSyncState(keys.recordIds)).toBeUndefined();
-		expect(await idb.getAllNotesMetadata()).toEqual([]);
+		expect(await idb.getAllNotesMetadata(PID)).toEqual([]);
 	});
 
 	it('drains every page before applying or committing, including cross-page attachments', async () => {
@@ -303,7 +313,7 @@ describe('client sync state machine', () => {
 			}
 			return { success: true, data: emptyData({ cursor: 2 }) };
 		});
-		await idb.markSyncOutbox([`note:note-1`]);
+		await idb.markSyncOutbox(PID, [`note:note-1`]);
 
 		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 
@@ -360,7 +370,7 @@ describe('client sync state machine', () => {
 		expect(requests[1].envelopes[0].expectedId).toBe('old-id');
 		expect(requests[2].envelopes[0].expectedId).toBe('current-id');
 		expect(requests[2].envelopes[0].id).not.toBe(requests[1].envelopes[0].id);
-		expect(await idb.getSyncOutboxKeys()).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual([]);
 	});
 
 	it('recovers from an accepted upload whose response was lost without uploading it twice', async () => {
@@ -384,19 +394,211 @@ describe('client sync state machine', () => {
 			}
 			return { success: true, data: emptyData({ cursor: 1 }) };
 		});
-		await idb.markSyncOutbox([`note:note-1`]);
+		await idb.markSyncOutbox(PID, [`note:note-1`]);
 
 		const failed = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 		expect(failed).toMatchObject({ success: false, error: 'Sync timed out' });
-		expect(await idb.getSyncOutboxKeys()).toEqual(['note:note-1']);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual(['note:note-1']);
 
 		const retried = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 		expect(retried.success, retried.error).toBe(true);
 		expect(requests.filter((request) => request.envelopes.length > 0)).toHaveLength(1);
-		expect(await idb.getSyncOutboxKeys()).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual([]);
 		expect(await idb.getSyncState(syncControlKeys(account.accountId).recordIds)).toEqual({
 			'note:note-1': accepted!.id
 		});
+	});
+
+	it('backfills records the relay is missing when its envelope count runs short', async () => {
+		const local = note('note-1', { title: 'must exist on relay' });
+		const { store, account, requests } = createHarness((request, index) => {
+			if (index === 0)
+				return {
+					success: true,
+					data: emptyData({
+						cursor: 1,
+						usage: { ciphertextBytes: 0, envelopeCount: 0, maxBytes: 1000, maxEnvelopes: 50 }
+					})
+				};
+			// Repair round: the record the ledger claimed was uploaded is missing.
+			return { success: true, data: emptyData({ cursor: 2, writesAccepted: true }) };
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({ cursor: 1, slots: [] })
+			}))
+		);
+		const keys = syncControlKeys(account.accountId);
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': 'claimed-fingerprint' },
+			recordIds: { 'note:note-1': 'old-id' }
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(vi.mocked(fetch)).toHaveBeenCalled();
+		vi.unstubAllGlobals();
+		// The repair round re-uploaded the missing record as a replacement.
+		const upload = requests.at(-1)?.envelopes[0];
+		expect(upload?.expectedId).toBe('old-id');
+		expect(decryptSyncPayload(account.syncKey, upload!.ciphertext)).toMatchObject({
+			kind: 'note',
+			value: { title: 'must exist on relay' }
+		});
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual([]);
+		expect(await idb.getSyncState(keys.baseline)).toMatchObject({
+			'note:note-1': expect.any(String)
+		});
+	});
+
+	it('re-uploads a record whose stored content tag went stale even when counts match', async () => {
+		const local = note('note-1', { title: 'current local version' });
+		const { store, account, requests } = createHarness((_request, index) =>
+			index === 0
+				? { success: true, data: emptyData({ cursor: 1 }) }
+				: { success: true, data: emptyData({ cursor: 2, writesAccepted: true }) }
+		);
+		const staleSlot = await sha256(`${account.syncKey}\u0000note:note-1`);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					cursor: 1,
+					slots: [{ id: 'relay-id', slot: staleSlot, tag: 'f'.repeat(64) }]
+				})
+			}))
+		);
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': 'ledger-fingerprint' },
+			recordIds: { 'note:note-1': 'relay-id' }
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		vi.unstubAllGlobals();
+		// Equal counts but a foreign tag means the slot holds a stale version:
+		// the ledger must be overridden and the current payload re-uploaded.
+		const upload = requests.at(-1)?.envelopes[0];
+		expect(upload?.expectedId).toBe('relay-id');
+		expect(upload?.tag).toMatch(/^[a-f0-9]{64}$/);
+		expect(decryptSyncPayload(account.syncKey, upload!.ciphertext)).toMatchObject({
+			kind: 'note',
+			value: { title: 'current local version' }
+		});
+	});
+
+	it('uses a matching bundle digest without a second delta or detailed verification', async () => {
+		const local = note('note-1');
+		const record = (await buildSyncRecords([local], [], [], {}, {}, {}, undefined))[0];
+		const fingerprint = record.fingerprint;
+		let digest = EMPTY_TAG_DIGEST;
+		const { store, account, requests } = createHarness(() => ({
+			success: true,
+			data: emptyData({
+				cursor: 1,
+				usage: {
+					ciphertextBytes: 1,
+					envelopeCount: 1,
+					maxBytes: 1000,
+					maxEnvelopes: 50,
+					tagDigest: digest
+				}
+			})
+		}));
+		const accountTag = await recordTag(account.syncKey, record.payload);
+		digest = xorHex(EMPTY_TAG_DIGEST, tagContribution(accountTag));
+		vi.spyOn(store, 'fetchServerSlots');
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': fingerprint },
+			recordIds: { 'note:note-1': 'relay-id' }
+		});
+		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests).toHaveLength(1);
+		expect(store.fetchServerSlots).not.toHaveBeenCalled();
+	});
+
+	it('deletes unexpected relay slots during exact integrity repair', async () => {
+		const { store, requests } = createHarness(() => ({
+			success: true,
+			data: emptyData({ cursor: 1, writesAccepted: true })
+		}));
+		const extraSlot = 'e'.repeat(64);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					cursor: 1,
+					slots: [{ id: 'unexpected-id', slot: extraSlot, tag: 'f'.repeat(64) }]
+				})
+			}))
+		);
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests.at(-1)?.deleteSlots).toEqual([{ id: 'unexpected-id', slot: extraSlot }]);
+		expect(JSON.stringify(requests.at(-1)?.deleteSlots)).not.toContain('key');
+	});
+
+	it('pulls a concurrent write before classifying its slot as unexpected', async () => {
+		const remote = note('concurrent-note');
+		const payload = { kind: 'note' as const, value: remote };
+		let remoteSlot = '';
+		const { store, account, requests } = createHarness((_request, index) =>
+			index === 0
+				? { success: true, data: emptyData({ cursor: 1 }) }
+				: {
+						success: true,
+						data: emptyData({
+							cursor: 2,
+							envelopes: [envelope(account, 'concurrent-id', 2, payload, remoteSlot)]
+						})
+					}
+		);
+		remoteSlot = await sha256(`${account.syncKey}\u0000note:${remote.id}`);
+		const remoteTag = await recordTag(account.syncKey, payload);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					cursor: 2,
+					slots: [{ id: 'concurrent-id', slot: remoteSlot, tag: remoteTag }]
+				})
+			}))
+		);
+		await seedControl(account.accountId, { cursor: 1, baseline: { existing: 'state' } });
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(result.notes?.map(({ id }) => id)).toContain(remote.id);
+		expect(requests.flatMap((request) => request.deleteSlots)).toEqual([]);
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+
+	it('surfaces partial success when integrity verification is unavailable', async () => {
+		const { store } = createHarness(() => ({ success: true, data: emptyData() }));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({ ok: false }))
+		);
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(store.lastError).toMatch(/integrity verification could not complete/i);
 	});
 
 	it('rewinds a leftover cursor when there is no baseline so a full pull can run', async () => {
@@ -458,11 +660,14 @@ describe('client sync state machine', () => {
 		expect(reset.success, reset.error).toBe(true);
 		expect(store.consumeCurrentStateBootstrapRequest()).toBe(true);
 		expect(requests[0].envelopes).toEqual([]);
-		expect(requests[2].envelopes).toEqual([]);
+		const resetRequestCount = requests.length;
+		expect(resetRequestCount).toBe(2);
 
 		const rebuilt = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 		expect(rebuilt.success, rebuilt.error).toBe(true);
-		const rebuiltUploads = requests.slice(4).flatMap((request) => request.envelopes);
+		const rebuiltUploads = requests
+			.slice(resetRequestCount)
+			.flatMap((request) => request.envelopes);
 		expect(rebuiltUploads).toHaveLength(2);
 		expect(rebuiltUploads.every((item) => item.expectedId === null)).toBe(true);
 	});
@@ -609,7 +814,7 @@ describe('client sync state machine', () => {
 		});
 		const local = note('note-1', { title: 'local replacement' });
 		const poisonedSlot = await sha256(`${account.syncKey}\u0000note:note-1`);
-		await idb.markSyncOutbox(['note:note-1']);
+		await idb.markSyncOutbox(PID, ['note:note-1']);
 
 		const pull = await store.sync([local], [], {}, {}, [], {}, false, true, passthrough);
 		expect(pull.success, pull.error).toBe(true);
@@ -792,7 +997,7 @@ describe('client sync state machine', () => {
 		expect(uploaded).toContain('note');
 		expect(uploaded).toContain('attachment:ok');
 		expect(store.lastError).toMatch(/quota/);
-		expect(await idb.getSyncOutboxKeys()).toEqual(['attachment:huge']);
+		expect(await idb.getSyncOutboxKeys(PID)).toEqual(['attachment:huge']);
 	});
 
 	it('returns to batched uploads after an oversized record is isolated', async () => {

@@ -1,15 +1,20 @@
+const PID = 'device-local';
 import { describe, expect, it, vi } from 'vitest';
 import type { Note } from '$lib/types';
 import {
 	clearSyncOutbox,
 	commitSyncControl,
+	deleteLabelWithTombstone,
+	getAllLabels,
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
 	getSyncState,
 	getOutboxGeneration,
 	hydrateNoteAttachments,
 	markSyncOutbox,
+	putLabel,
 	putNote,
+	scopedStateKey,
 	setSyncState
 } from './idb';
 
@@ -33,56 +38,80 @@ function note(title: string): Note {
 
 describe('durable sync outbox', () => {
 	it('stores a note that the next case must not see', async () => {
-		await putNote(note('isolation-note'));
-		expect((await getAllNotesMetadata()).map(({ title }) => title)).toEqual(['isolation-note']);
+		await putNote(PID, note('isolation-note'));
+		expect((await getAllNotesMetadata(PID)).map(({ title }) => title)).toEqual(['isolation-note']);
 	});
 
 	it('starts the next case with an empty database', async () => {
-		expect(await getAllNotesMetadata()).toEqual([]);
+		expect(await getAllNotesMetadata(PID)).toEqual([]);
 	});
 
 	it('deduplicates keys and clears only acknowledged generations', async () => {
-		await markSyncOutbox(['note:one', 'note:one', 'label:two']);
-		expect((await getSyncOutboxKeys()).sort()).toEqual(['label:two', 'note:one']);
+		await markSyncOutbox(PID, ['note:one', 'note:one', 'label:two']);
+		expect((await getSyncOutboxKeys(PID)).sort()).toEqual(['label:two', 'note:one']);
 
-		await clearSyncOutbox(['note:one'], 0);
-		expect((await getSyncOutboxKeys()).sort()).toEqual(['label:two', 'note:one']);
+		await clearSyncOutbox(PID, ['note:one'], 0);
+		expect((await getSyncOutboxKeys(PID)).sort()).toEqual(['label:two', 'note:one']);
 
-		await clearSyncOutbox(['note:one', 'label:two']);
-		expect(await getSyncOutboxKeys()).toEqual([]);
+		await clearSyncOutbox(PID, ['note:one', 'label:two']);
+		expect(await getSyncOutboxKeys(PID)).toEqual([]);
 	});
 
 	it('clears an internally marked generation without clearing a later edit', async () => {
-		const first = await markSyncOutbox(['note:one']);
-		await clearSyncOutbox(['note:one'], first - 1);
-		expect(await getSyncOutboxKeys()).toEqual(['note:one']);
+		const first = await markSyncOutbox(PID, ['note:one']);
+		await clearSyncOutbox(PID, ['note:one'], first - 1);
+		expect(await getSyncOutboxKeys(PID)).toEqual(['note:one']);
 
-		const second = await markSyncOutbox(['note:one']);
-		await clearSyncOutbox(['note:one'], first);
-		expect(await getSyncOutboxKeys()).toEqual(['note:one']);
+		const second = await markSyncOutbox(PID, ['note:one']);
+		await clearSyncOutbox(PID, ['note:one'], first);
+		expect(await getSyncOutboxKeys(PID)).toEqual(['note:one']);
 
-		await clearSyncOutbox(['note:one'], second);
-		expect(await getSyncOutboxKeys()).toEqual([]);
+		await clearSyncOutbox(PID, ['note:one'], second);
+		expect(await getSyncOutboxKeys(PID)).toEqual([]);
 	});
 
 	it('allocates strictly increasing generations even when the clock jumps backward', async () => {
 		const realNow = Date.now;
 		vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
-		const first = await markSyncOutbox(['note:a']);
+		const first = await markSyncOutbox(PID, ['note:a']);
 		Date.now = () => 500;
-		const second = await markSyncOutbox(['note:b']);
+		const second = await markSyncOutbox(PID, ['note:b']);
 		Date.now = realNow;
 
 		expect(second).toBeGreaterThan(first);
 		expect(await getOutboxGeneration()).toBe(second);
 	});
 
+	it('commits a label deletion, tombstone, and marker atomically', async () => {
+		await putLabel(PID, { id: 'label-1', name: 'Work', createdAt: 1, updatedAt: 1 });
+		await deleteLabelWithTombstone(PID, 'label-1', { 'label-1': 2 });
+
+		expect(await getAllLabels(PID)).toEqual([]);
+		expect(await getSyncState(scopedStateKey('gkc-idb-label-tombstones', PID))).toEqual({
+			'label-1': 2
+		});
+		expect(await getSyncOutboxKeys(PID)).toContain('label-tombstone:label-1');
+	});
+
+	it('rolls back the label deletion when its tombstone cannot be stored', async () => {
+		await putLabel(PID, { id: 'label-1', name: 'Work', createdAt: 1, updatedAt: 1 });
+
+		await expect(
+			deleteLabelWithTombstone(PID, 'label-1', {
+				'label-1': { valueOf: () => 1 } as unknown as number
+			})
+		).rejects.toBeDefined();
+		expect((await getAllLabels(PID)).map(({ id }) => id)).toEqual(['label-1']);
+		expect(await getSyncOutboxKeys(PID)).not.toContain('label-tombstone:label-1');
+	});
+
 	it('rolls back cursor and outbox changes together when a control write fails', async () => {
 		await setSyncState('test-cursor', 4);
-		const marked = await markSyncOutbox([`note:atomic`]);
+		const marked = await markSyncOutbox(PID, [`note:atomic`]);
 
 		await expect(
 			commitSyncControl(
+				PID,
 				[
 					['test-cursor', 5],
 					['uncloneable-value', () => undefined]
@@ -92,27 +121,27 @@ describe('durable sync outbox', () => {
 		).rejects.toThrow();
 
 		expect(await getSyncState('test-cursor')).toBe(4);
-		expect(await getSyncOutboxKeys()).toEqual(['note:atomic']);
+		expect(await getSyncOutboxKeys(PID)).toEqual(['note:atomic']);
 	});
 
 	it('commits a note and its outbox marker together or rolls both back', async () => {
-		await clearSyncOutbox(await getSyncOutboxKeys());
-		await putNote(note('before'));
+		await clearSyncOutbox(PID, await getSyncOutboxKeys(PID));
+		await putNote(PID, note('before'));
 
-		await putNote(note('saved'), ['note:atomic-note', 'note:atomic-note']);
-		expect((await getAllNotesMetadata()).find(({ id }) => id === 'atomic-note')?.title).toBe(
+		await putNote(PID, note('saved'), ['note:atomic-note', 'note:atomic-note']);
+		expect((await getAllNotesMetadata(PID)).find(({ id }) => id === 'atomic-note')?.title).toBe(
 			'saved'
 		);
-		expect(await getSyncOutboxKeys()).toEqual(['note:atomic-note']);
+		expect(await getSyncOutboxKeys(PID)).toEqual(['note:atomic-note']);
 
-		await clearSyncOutbox(['note:atomic-note']);
+		await clearSyncOutbox(PID, ['note:atomic-note']);
 		await expect(
-			putNote(note('must roll back'), [Number.NaN as unknown as string])
+			putNote(PID, note('must roll back'), [Number.NaN as unknown as string])
 		).rejects.toThrow();
-		expect((await getAllNotesMetadata()).find(({ id }) => id === 'atomic-note')?.title).toBe(
+		expect((await getAllNotesMetadata(PID)).find(({ id }) => id === 'atomic-note')?.title).toBe(
 			'saved'
 		);
-		expect(await getSyncOutboxKeys()).toEqual([]);
+		expect(await getSyncOutboxKeys(PID)).toEqual([]);
 	});
 
 	it('keeps photo blobs after a later metadata-only save', async () => {
@@ -129,8 +158,9 @@ describe('durable sync outbox', () => {
 				}
 			]
 		};
-		await putNote(withPhoto, ['note:photo-note', 'attachment:pic']);
+		await putNote(PID, withPhoto, ['note:photo-note', 'attachment:pic']);
 		await putNote(
+			PID,
 			{
 				...withPhoto,
 				title: 'metadata only',
@@ -139,7 +169,8 @@ describe('durable sync outbox', () => {
 			['note:photo-note']
 		);
 		const hydrated = await hydrateNoteAttachments(
-			(await getAllNotesMetadata()).find((item) => item.id === 'photo-note')!
+			PID,
+			(await getAllNotesMetadata(PID)).find((item) => item.id === 'photo-note')!
 		);
 		expect(hydrated.images?.[0]?.dataUrl?.startsWith('data:image/png;base64,')).toBe(true);
 	});
@@ -158,8 +189,8 @@ describe('durable sync outbox', () => {
 				}
 			]
 		};
-		await putNote(withPhoto);
-		await putNote({
+		await putNote(PID, withPhoto);
+		await putNote(PID, {
 			...withPhoto,
 			images: [
 				{
@@ -171,8 +202,8 @@ describe('durable sync outbox', () => {
 				}
 			]
 		});
-		const metadata = (await getAllNotesMetadata()).find((item) => item.id === 'photo-note')!;
-		const hydrated = await hydrateNoteAttachments({
+		const metadata = (await getAllNotesMetadata(PID)).find((item) => item.id === 'photo-note')!;
+		const hydrated = await hydrateNoteAttachments(PID, {
 			...metadata,
 			images: withPhoto.images.map((image) => ({ ...image, dataUrl: '' }))
 		});

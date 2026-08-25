@@ -19,6 +19,21 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
 	});
 }
 
+// jsdom does not implement Web Animations, which Svelte transitions use.
+if (typeof Element !== 'undefined' && !Element.prototype.animate) {
+	Element.prototype.animate = (() => {
+		const animation = {
+			cancel: () => undefined,
+			currentTime: 0,
+			effect: null,
+			onfinish: null as (() => void) | null,
+			playState: 'finished'
+		};
+		queueMicrotask(() => animation.onfinish?.());
+		return animation;
+	}) as unknown as typeof Element.prototype.animate;
+}
+
 function deleteDatabase(name: string): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const request = indexedDB.deleteDatabase(name);

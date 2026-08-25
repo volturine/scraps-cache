@@ -1,5 +1,6 @@
 import { tickAppClock } from '$lib/appClock.svelte';
 import { claimFiredReminderKey, getFiredReminderKeys } from '$lib/db/idb';
+import { syncStore } from './sync.svelte';
 import {
 	nextReminderAt,
 	notificationPermission,
@@ -72,7 +73,7 @@ export class ReminderStore {
 			tickAppClock();
 			this.scan();
 			this.arm();
-			void registerReminderDevice();
+			void registerReminderDevice(true);
 		}, 60_000);
 		const onWake = () => {
 			if (document.visibilityState === 'hidden') return;
@@ -80,7 +81,7 @@ export class ReminderStore {
 				tickAppClock();
 				this.scan();
 				this.arm();
-				void registerReminderDevice();
+				void registerReminderDevice(true);
 			});
 		};
 		document.addEventListener('visibilitychange', onWake);
@@ -199,7 +200,7 @@ export class ReminderStore {
 	private async hydrateFired(): Promise<void> {
 		this.fired = new Set([...this.fired, ...readFiredReminderMirror()]);
 		try {
-			const stored = await getFiredReminderKeys();
+			const stored = await getFiredReminderKeys(syncStore.activePid);
 			this.fired = new Set([...this.fired, ...stored]);
 		} catch {
 			/* IndexedDB may be unavailable in private browsing or tests. */
@@ -212,7 +213,7 @@ export class ReminderStore {
 		this.fired.add(key);
 		writeFiredReminderMirror(this.fired);
 		try {
-			return await claimFiredReminderKey(key);
+			return await claimFiredReminderKey(syncStore.activePid, key);
 		} catch {
 			// Keep once-per-session behavior when IndexedDB is unavailable.
 			return true;
