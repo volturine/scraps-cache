@@ -48,6 +48,17 @@ describe('plain-text segment indent', () => {
 			offsetDelta: 0
 		});
 	});
+
+	it('allows twenty indent levels by default', () => {
+		let text = 'Hello';
+		for (let level = 0; level < 20; level++) {
+			const next = adjustTextIndent(text, 1);
+			expect(next.offsetDelta).toBe(2);
+			text = next.text;
+		}
+		expect(text).toBe(`${'  '.repeat(20)}Hello`);
+		expect(adjustTextIndent(text, 1)).toEqual({ text, offsetDelta: 0 });
+	});
 });
 
 describe('checklist toggle propagation', () => {

@@ -152,16 +152,33 @@
 		return { line, offset: local, global: globalOffset(line, local) };
 	}
 
+	function rangeOverlapsLine(nativeRange: Range, row: Element): boolean {
+		const text = row.querySelector('[data-line-text]');
+		if (!text) return false;
+		const lineRange = document.createRange();
+		try {
+			const content = text.firstChild;
+			if (content?.nodeType === Node.TEXT_NODE) lineRange.selectNodeContents(content);
+			else if (content) lineRange.selectNodeContents(text);
+			else lineRange.selectNode(text);
+			// Exclusive overlap against the text node. A Shift+ArrowUp caret parked at
+			// the end of the previous line is the same visual start as this row, but
+			// Range.intersectsNode still reports that previous line as selected.
+			return (
+				nativeRange.compareBoundaryPoints(Range.END_TO_START, lineRange) < 0 &&
+				nativeRange.compareBoundaryPoints(Range.START_TO_END, lineRange) > 0
+			);
+		} catch {
+			return false;
+		}
+	}
+
 	function intersectingLines(selection: Selection): number[] {
 		if (!container || selection.rangeCount === 0) return [];
 		const nativeRange = selection.getRangeAt(0);
 		const indices: number[] = [];
 		for (const row of container.querySelectorAll('[data-editor-line]')) {
-			try {
-				if (!nativeRange.intersectsNode(row)) continue;
-			} catch {
-				continue;
-			}
+			if (!rangeOverlapsLine(nativeRange, row)) continue;
 			const index = Number((row as HTMLElement).dataset.editorLine);
 			if (Number.isInteger(index)) indices.push(index);
 		}
@@ -184,11 +201,20 @@
 			if (indices.length > 0) {
 				const first = indices[0];
 				const last = indices[indices.length - 1];
-				if (!start || first < start.line)
+				if (!start || start.line !== first)
 					start = { line: first, offset: 0, global: globalOffset(first, 0) };
-				if (!end || last > end.line) {
+				if (!end || end.line !== last) {
 					const offset = lines[last]?.text.length ?? 0;
 					end = { line: last, offset, global: globalOffset(last, offset) };
+				}
+			} else if (start && end && start.line < end.line) {
+				if (start.offset >= (lines[start.line]?.text.length ?? 0)) {
+					start = { line: start.line + 1, offset: 0, global: globalOffset(start.line + 1, 0) };
+				}
+				if (end.offset === 0 && end.line > start.line) {
+					const line = end.line - 1;
+					const offset = lines[line]?.text.length ?? 0;
+					end = { line, offset, global: globalOffset(line, offset) };
 				}
 			}
 		}
@@ -568,26 +594,11 @@
 
 	function indentRange(range: EditorRange, delta: number) {
 		const reversed = selectionIsReversed();
-		let startLine = range.start.line;
-		let endLine = range.end.line;
-		let startOffset = range.start.offset;
-		let endOffset = range.end.offset;
+		const startLine = range.start.line;
+		const endLine = range.end.line;
+		const startOffset = range.start.offset;
+		const endOffset = range.end.offset;
 		const selection = window.getSelection();
-		if (!range.collapsed && selection) {
-			const indices = intersectingLines(selection);
-			if (indices.length > 0) {
-				const first = indices[0];
-				const last = indices[indices.length - 1];
-				if (first < startLine) {
-					startLine = first;
-					startOffset = 0;
-				}
-				if (last > endLine) {
-					endLine = last;
-					endOffset = lines[last]?.text.length ?? 0;
-				}
-			}
-		}
 
 		let changed = false;
 		let startDelta = 0;
