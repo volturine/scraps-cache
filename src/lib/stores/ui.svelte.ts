@@ -17,6 +17,16 @@ function prefersDark(): boolean {
 	return matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
+function applyDocumentTheme(dark: boolean) {
+	if (typeof document === 'undefined' || !document.body) return;
+	const bg = dark ? '#1a1a1a' : '#ffffff';
+	const root = document.documentElement;
+	root.classList.toggle('dark', dark);
+	root.style.colorScheme = dark ? 'dark' : 'light';
+	root.style.backgroundColor = bg;
+	document.body.style.backgroundColor = bg;
+}
+
 const LS_KEY = 'gkc-ui-state';
 
 const VIEWS: readonly View[] = ['notes', 'kanban', 'reminders', 'archive', 'trash', 'label'];
@@ -25,13 +35,22 @@ function isView(value: unknown): value is View {
 	return typeof value === 'string' && (VIEWS as readonly string[]).includes(value);
 }
 
+const CLOSED_VIEWS: Record<View, boolean> = {
+	notes: false,
+	kanban: false,
+	reminders: false,
+	archive: false,
+	trash: false,
+	label: false
+};
+
 export class UIStore {
-	sidebarOpen = $state(true);
+	#sidebarOpen = $state(true);
 	/** Explicit preference. `null` means follow the operating system. */
-	dark = $state<boolean | null>(null);
+	#dark = $state<boolean | null>(null);
 	private systemDark = $state(prefersDark());
-	layout = $state<Layout>('grid');
-	view = $state<View>('notes');
+	#layout = $state<Layout>('grid');
+	#view = $state<View>('notes');
 	activeLabelId = $state<string | null>(null);
 	// Ephemeral route-feedback state; never persisted across a reload.
 	pendingPath = $state<string | null>(null);
@@ -40,8 +59,46 @@ export class UIStore {
 	/** Committed search value; lags the input by a short debounce. */
 	search = $state('');
 	settingsOpen = $state(false);
+	/** Views that have been shown this session and should stay mounted. */
+	opened = $state<Record<View, boolean>>({ ...CLOSED_VIEWS });
 
+	#persistable = false;
 	#searchTimer: ReturnType<typeof setTimeout> | null = null;
+	viewChangeHandler: (() => void) | null = null;
+
+	get sidebarOpen() {
+		return this.#sidebarOpen;
+	}
+	set sidebarOpen(value: boolean) {
+		this.#sidebarOpen = value;
+		this.#persist();
+	}
+
+	get dark() {
+		return this.#dark;
+	}
+	set dark(value: boolean | null) {
+		this.#dark = value;
+		this.#persist();
+		applyDocumentTheme(this.effectiveDark);
+	}
+
+	get layout() {
+		return this.#layout;
+	}
+	set layout(value: Layout) {
+		this.#layout = value;
+		this.#persist();
+	}
+
+	get view() {
+		return this.#view;
+	}
+	set view(value: View) {
+		this.#view = value;
+		this.#open(value);
+		this.#persist();
+	}
 
 	setSearchInput(value: string) {
 		if (this.#searchTimer !== null) {
@@ -69,37 +126,43 @@ export class UIStore {
 				const raw = localStorage.getItem(LS_KEY);
 				if (raw) {
 					const parsed = JSON.parse(raw) as Partial<UIState>;
-					if (typeof parsed.sidebarOpen === 'boolean') this.sidebarOpen = parsed.sidebarOpen;
-					if (typeof parsed.dark === 'boolean' || parsed.dark === null) this.dark = parsed.dark;
-					if (parsed.layout === 'grid' || parsed.layout === 'list') this.layout = parsed.layout;
-					if (isView(parsed.view)) this.view = parsed.view;
+					if (typeof parsed.sidebarOpen === 'boolean') this.#sidebarOpen = parsed.sidebarOpen;
+					if (typeof parsed.dark === 'boolean' || parsed.dark === null) this.#dark = parsed.dark;
+					if (parsed.layout === 'grid' || parsed.layout === 'list') this.#layout = parsed.layout;
+					if (isView(parsed.view)) this.#view = parsed.view;
 				}
 			} catch {
 				/* ignore */
 			}
 		}
-		// Persist on change.
-		$effect.root(() => {
-			$effect(() => {
-				const snap: Partial<UIState> = {
-					sidebarOpen: this.sidebarOpen,
-					dark: this.dark,
-					layout: this.layout,
-					view: this.view
-				};
-				if (typeof localStorage !== 'undefined') {
-					localStorage.setItem(LS_KEY, JSON.stringify(snap));
-				}
-			});
-		});
+		this.#open(this.#view);
+		this.#persistable = true;
+		applyDocumentTheme(this.effectiveDark);
 
 		// Watch system theme changes when following system.
 		if (typeof matchMedia !== 'undefined') {
 			const mq = matchMedia('(prefers-color-scheme: dark)');
 			mq.addEventListener?.('change', (e) => {
 				this.systemDark = e.matches;
+				if (this.#dark === null) applyDocumentTheme(e.matches);
 			});
 		}
+	}
+
+	#open(view: View) {
+		if (this.opened[view]) return;
+		this.opened = { ...this.opened, [view]: true };
+	}
+
+	#persist() {
+		if (!this.#persistable || typeof localStorage === 'undefined') return;
+		const snap: Partial<UIState> = {
+			sidebarOpen: this.#sidebarOpen,
+			dark: this.#dark,
+			layout: this.#layout,
+			view: this.#view
+		};
+		localStorage.setItem(LS_KEY, JSON.stringify(snap));
 	}
 
 	get effectiveDark(): boolean {
@@ -122,6 +185,7 @@ export class UIStore {
 		this.view = view;
 		this.activeLabelId = labelId;
 		this.clearSearch();
+		this.viewChangeHandler?.();
 	}
 
 	/** Restore persisted UI preferences from a full device backup. */

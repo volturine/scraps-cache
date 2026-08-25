@@ -7,6 +7,7 @@
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Archive, ArchiveRestore, RotateCcw, Trash2 } from '@lucide/svelte';
+	import { onDestroy } from 'svelte';
 
 	let {
 		note,
@@ -63,9 +64,7 @@
 		}
 	});
 
-	$effect(() => {
-		return () => swipe.dispose();
-	});
+	onDestroy(() => swipe.dispose());
 </script>
 
 <div class="card-stream-in relative overflow-hidden rounded-lg">

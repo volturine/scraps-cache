@@ -15,7 +15,6 @@
 		body = $bindable(''),
 		oninput,
 		placeholder = '',
-		focusSignal = 0,
 		focusLine = null,
 		onFocusTask,
 		onExitTaskFocus
@@ -23,7 +22,6 @@
 		body?: string;
 		oninput?: () => void;
 		placeholder?: string;
-		focusSignal?: number;
 		focusLine?: number | null;
 		onFocusTask?: (line: number) => void;
 		onExitTaskFocus?: () => void;
@@ -60,24 +58,13 @@
 			.join('\n');
 	}
 
-	let lines = $state<Line[]>([newLine()]);
+	let lines = $state<Line[]>(parseBodyToLines(body));
 	let container: HTMLDivElement | null = $state(null);
-	let focusedRootId = $state<number | null>(null);
 	let draftTaskId = $state<number | null>(null);
 	let ignoredFocusLine = $state<number | null>(null);
 	let checklistPointerId: number | null = null;
-	let handledFocusSignal = 0;
-	let lastBody = '';
 	let composing = false;
 	let applyingEdit = false;
-
-	$effect(() => {
-		if (body === lastBody) return;
-		lastBody = body;
-		lines = parseBodyToLines(body);
-		focusedRootId = null;
-		draftTaskId = null;
-	});
 
 	function makeEditable(node: HTMLDivElement) {
 		node.setAttribute('contenteditable', 'plaintext-only');
@@ -99,9 +86,7 @@
 	}
 
 	function syncBody() {
-		const next = serializeLines(lines.filter((line) => line.id !== draftTaskId));
-		lastBody = next;
-		body = next;
+		body = serializeLines(lines.filter((line) => line.id !== draftTaskId));
 		oninput?.();
 	}
 
@@ -278,22 +263,31 @@
 	}
 
 	function focusTask(index: number) {
+		ignoredFocusLine = null;
 		const line = lines[index];
 		if (!line?.isCheck) {
-			focusedRootId = null;
 			onExitTaskFocus?.();
 			return;
 		}
-		const root = parentTaskIndex(index);
-		focusedRootId = lines[root]?.id ?? line.id;
 		onFocusTask?.(index);
 	}
 
 	function dropTaskFocus() {
-		focusedRootId = null;
 		ignoredFocusLine = focusLine;
 		onExitTaskFocus?.();
 	}
+
+	export function focusDefault() {
+		const index = focusLine === null ? 0 : Math.max(0, Math.min(focusLine, lines.length - 1));
+		void focusAfterRender(index, lines[index]?.text.length ?? 0, lines[index]?.id ?? null);
+	}
+
+	const focusedRootId = $derived.by(() => {
+		if (focusLine === null || focusLine === ignoredFocusLine) return null;
+		const index = Math.max(0, Math.min(focusLine, lines.length - 1));
+		const root = parentTaskIndex(index);
+		return lines[root]?.isCheck ? lines[root].id : null;
+	});
 
 	function handleEditorClick(event: MouseEvent) {
 		// A touch can start on the checkbox and finish over the editable label. In
@@ -323,7 +317,7 @@
 					lines[index].checked = parsed.checked;
 					lines[index].indent = Math.min(MAX_TASK_INDENT, parsed.indent);
 					lines[index].text = parsed.text;
-					focusedRootId = lines[index].id;
+					ignoredFocusLine = null;
 					onFocusTask?.(index);
 					flushSync();
 					focusAt(index, lines[index].text.length, lines[index].id);
@@ -646,8 +640,7 @@
 				const replacement = newLine();
 				lines.splice(index, 1, replacement);
 				if (line.id === draftTaskId) draftTaskId = null;
-				focusedRootId = null;
-				onExitTaskFocus?.();
+				dropTaskFocus();
 				syncBody();
 				focusAt(index, 0, replacement.id);
 				return;
@@ -743,7 +736,7 @@
 		const draft = newLine('', true, false, 1);
 		lines.splice(insertAt, 0, draft);
 		draftTaskId = draft.id;
-		focusedRootId = root.id;
+		ignoredFocusLine = null;
 		onFocusTask?.(insertAt);
 		focusAt(insertAt, 0, draft.id);
 	}
@@ -773,26 +766,6 @@
 		if (event.relatedTarget instanceof Node && container?.contains(event.relatedTarget)) return;
 		dropTaskFocus();
 	}
-
-	$effect(() => {
-		if (focusSignal <= 0 || focusSignal === handledFocusSignal) return;
-		handledFocusSignal = focusSignal;
-		const index = focusLine === null ? 0 : Math.max(0, Math.min(focusLine, lines.length - 1));
-		void focusAfterRender(index, lines[index]?.text.length ?? 0, lines[index]?.id ?? null);
-	});
-
-	$effect(() => {
-		if (focusLine === null) {
-			ignoredFocusLine = null;
-			focusedRootId = null;
-			return;
-		}
-		if (focusLine === ignoredFocusLine) return;
-		ignoredFocusLine = null;
-		const index = Math.max(0, Math.min(focusLine, lines.length - 1));
-		const root = parentTaskIndex(index);
-		focusedRootId = lines[root]?.isCheck ? lines[root].id : null;
-	});
 
 	const focusedGroupRows = $derived.by(() => {
 		if (focusedRootId === null) return [] as { line: Line; index: number }[];

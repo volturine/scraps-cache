@@ -327,12 +327,14 @@
 {/if}
 
 <PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />
-<AttachmentFullscreen
-	attachment={focusedAttachment}
-	onClose={() => {
-		focusedAttachment = null;
-	}}
-/>
+{#if focusedAttachment}
+	<AttachmentFullscreen
+		attachment={focusedAttachment}
+		onClose={() => {
+			focusedAttachment = null;
+		}}
+	/>
+{/if}
 
 {#if filesAwaitingQuality}
 	<div

@@ -2,6 +2,7 @@
 	import type { NoteImage } from '$lib/types';
 	import { ChevronLeft, ChevronRight, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
+	import { onDestroy } from 'svelte';
 
 	let {
 		images,
@@ -33,15 +34,9 @@
 		activeIndex = null;
 	}
 
-	$effect(() => {
-		if (activeIndex !== null) return;
+	onDestroy(() => {
 		if (controlsTimer) clearTimeout(controlsTimer);
 		controlsTimer = null;
-		controlsVisible = false;
-		return () => {
-			if (controlsTimer) clearTimeout(controlsTimer);
-			controlsTimer = null;
-		};
 	});
 
 	function move(offset: number) {

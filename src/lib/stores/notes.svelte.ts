@@ -1,4 +1,4 @@
-// Rune-based notes & labels store. Persists to IndexedDB via $effect.
+// Rune-based notes & labels store. Persists to IndexedDB from explicit write paths.
 import type { Note, Label, NoteColor, NoteField } from '$lib/types';
 import {
 	getAllNotesMetadata,

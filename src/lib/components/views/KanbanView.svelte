@@ -31,17 +31,14 @@
 	const backlogFilterActive = $derived(backlogFilter.mode === 'custom');
 
 	let renamingBoard = $state(false);
-	let boardName = $state('');
-	let boardNameId = '';
+	let boardName = $derived(board.name);
 	let backlogFilterOpen = $state(false);
 
-	$effect(() => {
-		if (board.id !== boardNameId) {
-			boardNameId = board.id;
-			boardName = board.name;
-			backlogFilterOpen = false;
-		}
-	});
+	function selectBoard(id: string) {
+		kanbanStore.selectBoard(id);
+		renamingBoard = false;
+		backlogFilterOpen = false;
+	}
 
 	function commitBoardName() {
 		const next = boardName.trim();
@@ -153,8 +150,7 @@
 			<select
 				aria-label="Kanban board"
 				value={board.id}
-				onchange={(event) =>
-					kanbanStore.selectBoard((event.currentTarget as HTMLSelectElement).value)}
+				onchange={(event) => selectBoard((event.currentTarget as HTMLSelectElement).value)}
 				class="min-w-0 max-w-full appearance-none rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] py-2 pl-3 pr-8 text-sm font-semibold text-[var(--scrapscache-text)] outline-none"
 			>
 				{#each kanbanStore.boards as choice (choice.id)}
@@ -170,6 +166,7 @@
 			type="button"
 			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
 			onclick={() => {
+				backlogFilterOpen = false;
 				kanbanStore.createBoard();
 				renamingBoard = true;
 			}}

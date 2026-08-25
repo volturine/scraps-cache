@@ -21,10 +21,15 @@
 
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
-	let editorDismissTick = $state(0);
+	let closeOpenNote: (() => void) | null = null;
+
+	function applyEditorOpen(open: boolean) {
+		document.documentElement.classList.toggle('editor-open', open);
+	}
 
 	function openEditor(id: string) {
 		editingId = id;
+		applyEditorOpen(true);
 		if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
 	}
 
@@ -32,12 +37,16 @@
 		const noteId = new URL(window.location.href).searchParams.get('note');
 		if (!noteId || !notesStore.notes.some((note) => note.id === noteId)) return;
 		editingId = noteId;
+		applyEditorOpen(true);
 		const next = new URL(window.location.href);
 		next.searchParams.delete('note');
 		history.replaceState(history.state, '', `${next.pathname}${next.search}${next.hash}`);
 	}
 
 	onMount(() => {
+		applyEditorOpen(editingId !== null);
+		const stopViewport = attachAppViewport(document.documentElement);
+		uiStore.viewChangeHandler = restoreFeedScroll;
 		attachSyncCloudIndicator(syncStore);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
 		if (mobile.current) uiStore.sidebarOpen = false;
@@ -72,21 +81,13 @@
 			}
 		}
 		return () => {
+			uiStore.viewChangeHandler = null;
+			stopViewport();
+			applyEditorOpen(false);
 			document.removeEventListener('visibilitychange', onForeground);
 			window.removeEventListener('focus', onForeground);
 			stopReminders();
 		};
-	});
-
-	$effect(() => {
-		const dark = uiStore.effectiveDark;
-		const bg = dark ? '#1a1a1a' : '#ffffff';
-		document.documentElement.classList.toggle('dark', dark);
-		// Document canvas, not the note overlay. Safari paints overscroll /
-		// toolbar gutters from this color; without it light mode shows black strips.
-		document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
-		document.documentElement.style.backgroundColor = bg;
-		document.body.style.backgroundColor = bg;
 	});
 
 	function startNewNote() {
@@ -102,59 +103,45 @@
 			labels
 		});
 		editingId = n.id;
+		applyEditorOpen(true);
 	}
 
 	function requestCloseEditor() {
-		if (editingId === null) return;
-		editorDismissTick += 1;
+		closeOpenNote?.();
 	}
 
 	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: requestCloseEditor });
 
-	// Toggle editor-open class on <html> for compositing isolation.
-	$effect(() => {
-		document.documentElement.classList.toggle('editor-open', editingId !== null);
-	});
-
 	let feedEl: HTMLElement | null = $state(null);
 
 	// Preserve each view's scroll offset across switches; display:none panes
-	// would otherwise lose it.
+	// would otherwise lose it. Save on scroll so restore does not need to
+	// read scrollTop after the outgoing pane is already hidden.
 	const scrollTops = new Map<string, number>();
-	let lastViewKey = viewKey(uiStore.view, uiStore.activeLabelId);
 
 	function viewKey(view: View, labelId: string | null): string {
 		return labelId ? `${view}:${labelId}` : view;
 	}
 
-	// Save before the swap: the outgoing pane is still visible here.
-	$effect.pre(() => {
-		const key = viewKey(uiStore.view, uiStore.activeLabelId);
-		if (!feedEl || key === lastViewKey) return;
-		scrollTops.set(lastViewKey, feedEl.scrollTop);
-		lastViewKey = key;
-	});
-
-	// Restore once the incoming pane is unhidden: this effect may run before
-	// AppViews' DOM update in the same flush, and writing scrollTop on a
-	// display:none element silently clamps to 0. A microtask runs after the
-	// full flush (unlike rAF, which never fires in backgrounded tabs).
-	$effect(() => {
-		const key = viewKey(uiStore.view, uiStore.activeLabelId);
+	function rememberFeedScroll() {
 		if (!feedEl) return;
+		scrollTops.set(viewKey(uiStore.view, uiStore.activeLabelId), feedEl.scrollTop);
+	}
+
+	function restoreFeedScroll() {
+		if (!feedEl) return;
+		const key = viewKey(uiStore.view, uiStore.activeLabelId);
 		const target = scrollTops.get(key) ?? 0;
 		queueMicrotask(() => {
 			if (feedEl && viewKey(uiStore.view, uiStore.activeLabelId) === key) {
 				feedEl.scrollTop = target;
-				(window as any).__slog = ((window as any).__slog ?? []).concat([
-					['restore', key, target, feedEl.scrollTop]
-				]);
 			}
 		});
-	});
+	}
 
 	function closeEditor() {
 		editingId = null;
+		applyEditorOpen(false);
 	}
 
 	function closeMobileSidebar() {
@@ -167,7 +154,7 @@
 	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
-<div class="app-viewport" {@attach attachAppViewport}>
+<div class="app-viewport">
 	<div
 		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
 		{@attach mobile.current &&
@@ -217,13 +204,22 @@
 				<main
 					bind:this={feedEl}
 					class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+					onscroll={rememberFeedScroll}
 				>
 					<AppViews />
 				</main>
 				<div class="app-float" data-app-float>
 					<BottomNav />
 					<ReminderAlert />
-					<NoteEditor noteId={editingId} dismissTick={editorDismissTick} onClose={closeEditor} />
+					{#key editingId}
+						<NoteEditor
+							noteId={editingId}
+							onClose={closeEditor}
+							registerClose={(fn) => {
+								closeOpenNote = fn;
+							}}
+						/>
+					{/key}
 				</div>
 			</div>
 		</div>
