@@ -1,6 +1,6 @@
 // Durable delete manifests in IndexedDB. Permanent delete wins until the
 // tombstone is cleared. localStorage is only a first-paint cache during hydrate.
-import { getSyncState, setSyncState } from '$lib/db/idb';
+import { getSyncState, setSyncState, writeSyncStateWithOutbox } from '$lib/db/idb';
 
 const NOTE_LS = 'scrapscache-note-tombstones';
 const LABEL_LS = 'scrapscache-label-tombstones';
@@ -59,15 +59,13 @@ export async function writeTombstones(tombstones: Tombstones): Promise<void> {
 	if (typeof localStorage !== 'undefined') localStorage.removeItem(NOTE_LS);
 }
 
-export async function writeLabelTombstones(tombstones: Tombstones): Promise<void> {
+export async function writeLabelTombstones(
+	tombstones: Tombstones,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
 	labelCache = sanitize(tombstones);
-	await setSyncState(LABEL_IDB, labelCache);
+	await writeSyncStateWithOutbox([[LABEL_IDB, labelCache]], syncOutboxKeys);
 	if (typeof localStorage !== 'undefined') localStorage.removeItem(LABEL_LS);
-}
-
-export async function writeBoardTombstones(tombstones: Tombstones): Promise<void> {
-	boardCache = sanitize(tombstones);
-	await setSyncState(BOARD_IDB, boardCache);
 }
 
 export async function hydrateTombstones(): Promise<{
@@ -110,4 +108,20 @@ export async function saveBoardsToDevice<T>(boards: T): Promise<void> {
 	// `$state` board proxies throw DataCloneError in IndexedDB; JSON is already how
 	// localStorage snapshots them.
 	await setSyncState(BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? [])));
+}
+
+/** Persist boards, tombstones, and optional upload markers in one transaction. */
+export async function writeKanbanState(
+	boards: unknown,
+	boardTombstones: Tombstones,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
+	boardCache = sanitize(boardTombstones);
+	await writeSyncStateWithOutbox(
+		[
+			[BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? []))],
+			[BOARD_IDB, boardCache]
+		],
+		syncOutboxKeys
+	);
 }

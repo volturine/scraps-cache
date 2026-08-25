@@ -60,7 +60,6 @@
 			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
 		};
 		document.addEventListener('visibilitychange', onForeground);
-		window.addEventListener('focus', onForeground);
 		const stopReminders = reminderStore.attach(openEditor);
 		void preloadVapidPublicKey();
 		if ('serviceWorker' in navigator) {
@@ -85,7 +84,6 @@
 			stopViewport();
 			applyEditorOpen(false);
 			document.removeEventListener('visibilitychange', onForeground);
-			window.removeEventListener('focus', onForeground);
 			stopReminders();
 		};
 	});

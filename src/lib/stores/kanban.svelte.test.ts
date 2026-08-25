@@ -1,9 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createKanbanBoard } from '$lib/kanban';
 import { loadBoardsFromDevice } from '$lib/syncTombstones';
 import { KanbanStore } from './kanban.svelte';
 
 describe('kanban persist during sync', () => {
+	beforeEach(() => {
+		localStorage.clear();
+	});
+
 	it('writes $state boards to IndexedDB without throwing DataCloneError', async () => {
 		const store = new KanbanStore();
 		await expect(store.persistSyncState()).resolves.toBeUndefined();
@@ -17,6 +21,19 @@ describe('kanban persist during sync', () => {
 			])
 		);
 		expect(() => structuredClone(stored)).not.toThrow();
+	});
+
+	it('gives later same-millisecond board edits a newer version', async () => {
+		localStorage.clear();
+		vi.spyOn(Date, 'now').mockReturnValue(1_000);
+		const store = new KanbanStore();
+		const boardId = store.boards[0].id;
+		store.renameBoard(boardId, 'First');
+		store.renameBoard(boardId, 'Second');
+		expect(store.boards[0]?.name).toBe('Second');
+		expect(store.boards[0]?.updatedAt).toBe(1_002);
+		await (store as unknown as { pendingDeviceWrites: Promise<void> }).pendingDeviceWrites;
+		vi.restoreAllMocks();
 	});
 
 	it('keeps a newer localStorage board over a stale IndexedDB copy', async () => {

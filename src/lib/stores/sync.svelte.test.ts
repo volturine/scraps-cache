@@ -458,11 +458,14 @@ describe('client sync state machine', () => {
 		expect(reset.success, reset.error).toBe(true);
 		expect(store.consumeCurrentStateBootstrapRequest()).toBe(true);
 		expect(requests[0].envelopes).toEqual([]);
-		expect(requests[2].envelopes).toEqual([]);
+		const resetRequestCount = requests.length;
+		expect(resetRequestCount).toBe(2);
 
 		const rebuilt = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 		expect(rebuilt.success, rebuilt.error).toBe(true);
-		const rebuiltUploads = requests.slice(4).flatMap((request) => request.envelopes);
+		const rebuiltUploads = requests
+			.slice(resetRequestCount)
+			.flatMap((request) => request.envelopes);
 		expect(rebuiltUploads).toHaveLength(2);
 		expect(rebuiltUploads.every((item) => item.expectedId === null)).toBe(true);
 	});

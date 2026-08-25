@@ -3,12 +3,14 @@ import type { Note } from '$lib/types';
 import {
 	clearSyncOutbox,
 	commitSyncControl,
+	getAllLabels,
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
 	getSyncState,
 	getOutboxGeneration,
 	hydrateNoteAttachments,
 	markSyncOutbox,
+	putLabel,
 	putNote,
 	setSyncState
 } from './idb';
@@ -93,6 +95,26 @@ describe('durable sync outbox', () => {
 
 		expect(await getSyncState('test-cursor')).toBe(4);
 		expect(await getSyncOutboxKeys()).toEqual(['note:atomic']);
+	});
+
+	it('commits a label and its outbox marker together or rolls both back', async () => {
+		await clearSyncOutbox(await getSyncOutboxKeys());
+		const label = {
+			id: 'atomic-label',
+			name: 'saved',
+			createdAt: 1,
+			updatedAt: 1
+		};
+		await putLabel(label, ['label:atomic-label']);
+		expect((await getAllLabels()).find(({ id }) => id === 'atomic-label')?.name).toBe('saved');
+		expect(await getSyncOutboxKeys()).toEqual(['label:atomic-label']);
+
+		await clearSyncOutbox(['label:atomic-label']);
+		await expect(
+			putLabel({ ...label, name: 'must roll back' }, [Number.NaN as unknown as string])
+		).rejects.toThrow();
+		expect((await getAllLabels()).find(({ id }) => id === 'atomic-label')?.name).toBe('saved');
+		expect(await getSyncOutboxKeys()).toEqual([]);
 	});
 
 	it('commits a note and its outbox marker together or rolls both back', async () => {
