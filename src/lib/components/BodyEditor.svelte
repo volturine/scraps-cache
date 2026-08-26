@@ -424,13 +424,11 @@
 		const { start, end } = range;
 		if (start.line === end.line) {
 			const line = lines[start.line];
-			const removesWholePlainRow =
-				!line.isCheck &&
-				replacement.length === 0 &&
-				start.offset === 0 &&
-				end.offset === line.text.length;
-			if (removesWholePlainRow) {
+			const removesWholeRow =
+				replacement.length === 0 && start.offset === 0 && end.offset === line.text.length;
+			if (removesWholeRow) {
 				lines.splice(start.line, 1);
+				if (line.id === draftTaskId) draftTaskId = null;
 				if (lines.length === 0) lines.push(newLine());
 				const nextLine = Math.min(start.line, lines.length - 1);
 				syncBody();
@@ -482,7 +480,8 @@
 		if (range.collapsed || !event.inputType.startsWith('delete')) return;
 		event.preventDefault();
 		const caret = replaceSelectedRange(range);
-		focusTask(caret.line);
+		const targetRoot = parentTaskIndex(caret.line);
+		if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
@@ -748,9 +747,19 @@
 	}
 
 	function handleBackspace(range: EditorRange) {
-		if (!range.collapsed || range.start.offset !== 0 || range.start.line <= 0) return false;
+		if (!range.collapsed || range.start.offset !== 0) return false;
 		const index = range.start.line;
 		const line = lines[index];
+		if (index === 0) {
+			if (!line.isCheck || line.text.trim() !== '') return false;
+			const replacement = newLine();
+			lines.splice(0, 1, replacement);
+			if (line.id === draftTaskId) draftTaskId = null;
+			dropTaskFocus();
+			syncBody();
+			focusAt(0, 0, replacement.id);
+			return true;
+		}
 		if (line.isCheck && line.text.trim() === '') {
 			const targetIndex = previousTaskIndex(index);
 			const target = lines[targetIndex];
@@ -812,7 +821,7 @@
 			event.key === 'Backspace' &&
 			range.collapsed &&
 			range.start.offset === 0 &&
-			range.start.line > 0
+			(range.start.line > 0 || lines[0]?.isCheck)
 		) {
 			rememberEdit(range);
 			if (handleBackspace(range)) event.preventDefault();

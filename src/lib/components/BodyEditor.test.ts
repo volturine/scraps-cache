@@ -170,15 +170,21 @@ describe('BodyEditor native editing', () => {
 		expect(onExitTaskFocus).not.toHaveBeenCalled();
 	});
 
-	it('keeps an empty task focused when its entire label is deleted and can undo the deletion', async () => {
+	it('keeps task focus when selected text is deleted from a subtask and can undo the deletion', async () => {
 		const onExitTaskFocus = vi.fn();
+		const onFocusTask = vi.fn();
 		const { container } = render(BodyEditor, {
-			props: { body: '[ ] Focused task', focusLine: 0, onExitTaskFocus }
+			props: {
+				body: '[ ] Parent\n  [ ] Focused subtask',
+				focusLine: 0,
+				onFocusTask,
+				onExitTaskFocus
+			}
 		});
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		const task = container.querySelector('[data-line-text]') as HTMLElement;
-		select(task, 0, task, 'Focused task'.length);
+		const subtask = container.querySelectorAll('[data-line-text]')[1];
+		select(subtask, 'Focused '.length, subtask, 'Focused sub'.length);
 
 		editor.dispatchEvent(
 			new InputEvent('beforeinput', {
@@ -189,16 +195,56 @@ describe('BodyEditor native editing', () => {
 		);
 		await tick();
 
-		expect(lineTexts(container)).toEqual(['']);
-		expect(container.querySelector('[data-checklist-toggle]')).not.toBeNull();
+		expect(lineTexts(container)).toEqual(['Parent', 'Focused task']);
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
+		expect(document.activeElement).toBe(editor);
+		expect(onFocusTask).not.toHaveBeenCalled();
 		expect(onExitTaskFocus).not.toHaveBeenCalled();
 
 		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
 		await tick();
 
-		expect(lineTexts(container)).toEqual(['Focused task']);
+		expect(lineTexts(container)).toEqual(['Parent', 'Focused subtask']);
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
+	});
+
+	it('removes a fully selected task row', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Remove task\n[ ] Keep task', focusLine: 0 }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const task = container.querySelector('[data-line-text]') as HTMLElement;
+		select(task, 0, task, 'Remove task'.length);
+
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'deleteContentBackward'
+			})
+		);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Keep task']);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
+	});
+
+	it('turns an empty first-row task back into a plain line with Backspace', async () => {
+		const onExitTaskFocus = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] \nAfter', focusLine: 0, onExitTaskFocus }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const task = container.querySelector('[data-line-text]') as HTMLElement;
+		select(task, 0);
+
+		await fireEvent.keyDown(editor, { key: 'Backspace' });
+
+		expect(lineTexts(container)).toEqual(['', 'After']);
+		expect(container.querySelector('[data-editor-line="0"] [data-checklist-toggle]')).toBeNull();
+		expect(onExitTaskFocus).toHaveBeenCalledOnce();
 	});
 
 	it('undoes and redoes a selected-text deletion while restoring the caret', async () => {
