@@ -25,8 +25,6 @@ backports.
   (CPace), so the relay does not learn the key in the clear.
 - **User backups** (`.scraps-cache-backup`) are encrypted client-side with Argon2id +
   XChaCha20-Poly1305 under a user-chosen passphrase.
-- **Server snapshots** of the SQLite relay database contain only ciphertext and
-  account credentials needed for sync auth — not readable note content.
 
 ## What Scraps Cache does not claim
 

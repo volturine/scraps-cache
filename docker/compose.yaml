@@ -2,11 +2,7 @@ name: scrapscache
 
 services:
   app:
-    build:
-      # Requires: docker compose --project-directory . -f docker/compose.yaml …
-      context: .
-      dockerfile: docker/Dockerfile
-    image: scrapscache:latest
+    image: "${SCRAPSCACHE_IMAGE:?Set SCRAPSCACHE_IMAGE to a pinned release tag or digest in docker/.env}"
     restart: unless-stopped
     init: true
     ports:
@@ -21,16 +17,13 @@ services:
       ADDRESS_HEADER: "${SCRAPSCACHE_ADDRESS_HEADER:-}"
       XFF_DEPTH: "${SCRAPSCACHE_XFF_DEPTH:-1}"
       SCRAPSCACHE_SYNC_DATA_DIR: /data
-      SCRAPSCACHE_BACKUP_DIR: /backups
-      SCRAPSCACHE_BACKUP_INTERVAL_HOURS: "${SCRAPSCACHE_BACKUP_INTERVAL_HOURS:-24}"
-      SCRAPSCACHE_BACKUP_RETAIN: "${SCRAPSCACHE_BACKUP_RETAIN:-2}"
-      SCRAPSCACHE_ADMIN_TOKEN: "${SCRAPSCACHE_ADMIN_TOKEN:-development-only-admin-token}"
+      SCRAPSCACHE_ADMIN_TOKEN: "${SCRAPSCACHE_ADMIN_TOKEN:?Set SCRAPSCACHE_ADMIN_TOKEN in docker/.env}"
       SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES: "${SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES:-1000000000}"
       SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES: "${SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES:-50000}"
+      SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS: "${SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS:-8}"
       SCRAPSCACHE_RETENTION_INACTIVE_DAYS: "${SCRAPSCACHE_RETENTION_INACTIVE_DAYS:-0}"
     volumes:
       - scrapscache-sync-data:/data
-      - scrapscache-backup-snapshots:/backups
     read_only: true
     tmpfs:
       - /tmp
@@ -39,4 +32,3 @@ services:
 
 volumes:
   scrapscache-sync-data:
-  scrapscache-backup-snapshots:

@@ -4,7 +4,6 @@ import { recordHttpRequest, renderMetrics } from './metrics';
 describe('renderMetrics', () => {
 	it('emits anonymous storage, activity, and retention gauges', () => {
 		const body = renderMetrics(
-			{ lastAttemptAt: 2_000, lastSuccessAt: 2_000, failures: 0, durationMs: 5 },
 			{
 				accounts: 4,
 				envelopeCount: 8,
@@ -26,7 +25,6 @@ describe('renderMetrics', () => {
 	it('declares a TYPE for every emitted metric family', () => {
 		recordHttpRequest('/health/live', 200, 1);
 		const body = renderMetrics(
-			{ lastAttemptAt: 2_000, lastSuccessAt: 2_000, failures: 0, durationMs: 5 },
 			{
 				accounts: 4,
 				envelopeCount: 8,

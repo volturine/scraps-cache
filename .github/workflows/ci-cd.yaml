@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Required PR status check: typecheck + Prettier + full Vitest suite (incl. backup/restore) + production build.
+  # Required PR status check: typecheck + Prettier + full Vitest suite + production build.
   validate:
     name: Validate application
     runs-on: ubuntu-latest

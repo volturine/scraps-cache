@@ -8,7 +8,7 @@ const wake = (character: string, fireAt: number) => ({ id: character.repeat(43),
 
 /**
  * Issue #80: the wake revision is the device's committed sync cursor. After a
- * relay sequence reset (restore from an older backup), device cursors restart
+ * relay sequence reset (for example, after replacing relay state), device cursors restart
  * low while accounts.wake_revision keeps the old high-water mark, so wake
  * publishing is rejected until the cursor climbs past it.
  */
@@ -33,7 +33,7 @@ describe('wake revision across a relay sequence reset', () => {
 			);
 			expect(store.replaceReminderWakes('account', [wake('a', 1_000)], 5)).toBe(true);
 
-			// The relay is restored from an older backup: next_seq regresses to 1.
+			// The relay state was replaced: next_seq regresses to 1.
 			const database = (
 				store as unknown as {
 					database: { prepare(sql: string): { run(...values: unknown[]): unknown } };

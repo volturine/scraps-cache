@@ -67,7 +67,7 @@ body:
     attributes:
       label: Environment
       description: Browser + OS, or Docker / Node setup.
-      placeholder: 'e.g. Firefox 140 on macOS; or compose.production.yaml'
+      placeholder: 'e.g. Firefox 140 on macOS; or docker/compose.yaml'
   - type: textarea
     id: logs
     attributes:

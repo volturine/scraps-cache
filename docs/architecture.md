@@ -23,7 +23,6 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 │  │ pair / delta / │──┤ auth        │──┤ accounts +      │  │
 │  │ register / …   │  │ metrics     │  │ encrypted slots │  │
 │  └────────────────┘  └─────────────┘  └─────────────────┘  │
-│  Online SQLite snapshots → optional Restic (Compose)       │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -92,7 +91,6 @@ verifies `accountId` + `authSecret` but cannot decrypt envelopes.
 | Reminder wakes  | `src/routes/api/sync/push/*`                             | Device subscriptions + opaque wake ticks           |
 | Account delete  | `src/routes/api/sync/account/`                           | Wipe cloud ciphertext for an account               |
 | Rate limits     | `src/lib/server/rateLimit.ts`                            | In-memory token buckets (single-node)              |
-| Backups         | `src/lib/server/backupManager.ts`                        | Online SQLite snapshot + integrity check           |
 | Metrics         | `src/lib/server/metrics.ts`, `/metrics`                  | Operator metrics (admin token)                     |
 | Operator status | `src/lib/server/operatorMonitor.ts`, `/api/admin/status` | Anonymous JSON usage + activity                    |
 | Retention       | `src/lib/server/retentionManager.ts`                     | Optional inactive-account sweep (env, admin token) |
@@ -113,15 +111,13 @@ counts per account for quotas (default 1 GB / 50k envelopes).
 
 ## Deployment shapes
 
-| Mode               | How                              | Notes                                                  |
-| ------------------ | -------------------------------- | ------------------------------------------------------ |
-| Dev                | `npm run dev`                    | Vite + HMR; sync data under `sync-data/` by default    |
-| Local prod build   | `npm run build && npm start`     | Node adapter; same env vars as Docker                  |
-| Dev Compose        | `docker/compose.yaml`            | Build local image, loose admin token default           |
-| PR preview Compose | `docker/compose.dev.yaml`        | Pull GHCR `dev-*` image on port 3000, isolated volumes |
-| Prod Compose       | `docker/compose.production.yaml` | Pull GHCR image, require admin token + image pin       |
-| Tailscale overlay  | `docker/compose.tailscale.yaml`  | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)       |
-| Backup overlay     | `docker/compose.backup.yaml`     | Restic local and/or S3 encrypted repos                 |
+| Mode               | How                             | Notes                                                  |
+| ------------------ | ------------------------------- | ------------------------------------------------------ |
+| Dev                | `npm run dev`                   | Vite + HMR; sync data under `sync-data/` by default    |
+| Local prod build   | `npm run build && npm start`    | Node adapter; same env vars as Docker                  |
+| Compose            | `docker/compose.yaml`           | Pull GHCR image, require admin token + image pin       |
+| PR preview Compose | `docker/compose.dev.yaml`       | Pull GHCR `dev-*` image on port 3000, isolated volumes |
+| Tailscale overlay  | `docker/compose.tailscale.yaml` | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)       |
 
 ## Related docs
 

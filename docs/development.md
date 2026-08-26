@@ -11,18 +11,18 @@ Contributor-oriented notes for working on Scraps Cache. Also read
 
 ## Scripts
 
-| Script                 | Description                                           |
-| ---------------------- | ----------------------------------------------------- |
-| `npm run dev`          | Vite dev server (SvelteKit)                           |
-| `npm run build`        | Production build (`adapter-node` → `build/`)          |
-| `npm start`            | Run the built server (`node build`)                   |
-| `npm run preview`      | Vite preview of the production build                  |
-| `npm run check`        | `svelte-check` with native TypeScript                 |
-| `npm run format`       | Prettier write                                        |
-| `npm run format:check` | Prettier check (also runs in CI / `validate`)         |
-| `npm test`             | Vitest once (includes SQLite backup/restore coverage) |
-| `npm run test:watch`   | Vitest watch mode                                     |
-| `npm run validate`     | check + format + test + build                         |
+| Script                 | Description                                   |
+| ---------------------- | --------------------------------------------- |
+| `npm run dev`          | Vite dev server (SvelteKit)                   |
+| `npm run build`        | Production build (`adapter-node` → `build/`)  |
+| `npm start`            | Run the built server (`node build`)           |
+| `npm run preview`      | Vite preview of the production build          |
+| `npm run check`        | `svelte-check` with native TypeScript         |
+| `npm run format`       | Prettier write                                |
+| `npm run format:check` | Prettier check (also runs in CI / `validate`) |
+| `npm test`             | Run the Vitest suite                          |
+| `npm run test:watch`   | Vitest watch mode                             |
+| `npm run validate`     | check + format + test + build                 |
 
 ## Local sync data
 
@@ -36,15 +36,12 @@ a private window) against the same origin and exercise pairing in the Sync UI.
 
 - Co-located unit tests: `src/lib/**/*.test.ts`, some component tests
 - Shared setup: `src/tests/setup.ts` (e.g. fake IndexedDB)
-- Server backup/restore: `syncStore.test.ts` (online backup → reopen) and
-  `backupManager.test.ts` (verified snapshots, retention, concurrency, failures)
 - Operator monitoring / inactive-account retention: `operatorMonitor.test.ts`,
   `retentionManager.test.ts`, `operatorConfig.test.ts`
 
 Prefer tests for:
 
 - Crypto and backup format edge cases
-- Server online backup / restore into a fresh `SyncStore`
 - Sync merge / tombstones / quota
 - Rate limiting and request validation
 - Image optimization invariants

@@ -1,6 +1,5 @@
 import type { Handle } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
-import { backupManager } from '$lib/server/backupManager';
 import { recordHttpRequest } from '$lib/server/metrics';
 import { retentionManager } from '$lib/server/retentionManager';
 import { closeSyncStore } from '$lib/server/syncStore';
@@ -17,7 +16,6 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 export const handle: Handle = async ({ event, resolve }) => {
-	backupManager.start();
 	retentionManager.start();
 	wakeScheduler.start();
 	const startedAt = performance.now();
@@ -46,7 +44,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 };
 
 process.on('sveltekit:shutdown', async () => {
-	backupManager.stop();
 	retentionManager.stop();
 	wakeScheduler.stop();
 	closeSyncStore();

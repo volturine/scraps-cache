@@ -3,16 +3,16 @@ name: scrapscache-dev
 # Preview a published PR image beside a production stack.
 # Isolated project name + volumes. Host port 3000 (master here uses 5173).
 #
-#   cp .env.dev.example .env.dev
+#   cp docker/.env.dev.example docker/.env.dev
 #   # set SCRAPSCACHE_IMAGE=ghcr.io/volturine/scrapscache:dev-<pr>
-#   docker compose --project-directory . -f docker/compose.dev.yaml --env-file .env.dev pull
-#   docker compose --project-directory . -f docker/compose.dev.yaml --env-file .env.dev up -d
+#   docker compose --project-directory . -f docker/compose.dev.yaml --env-file docker/.env.dev pull
+#   docker compose --project-directory . -f docker/compose.dev.yaml --env-file docker/.env.dev up -d
 #
-# Change the tag: edit SCRAPSCACHE_IMAGE in .env.dev, then pull && up -d again.
+# Change the tag in docker/.env.dev, then pull && up -d again.
 
 services:
   app:
-    image: "${SCRAPSCACHE_IMAGE:?Set SCRAPSCACHE_IMAGE to a GHCR dev-* tag in .env.dev}"
+    image: "${SCRAPSCACHE_IMAGE:?Set SCRAPSCACHE_IMAGE to a GHCR dev-* tag in docker/.env.dev}"
     # PR images are published as linux/amd64 only.
     platform: linux/amd64
     pull_policy: always
@@ -33,14 +33,10 @@ services:
       SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES: "${SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES:-1000000000}"
       SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES: "${SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES:-50000}"
       SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS: "${SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS:-8}"
-      SCRAPSCACHE_BACKUP_DIR: /backups
-      SCRAPSCACHE_BACKUP_INTERVAL_HOURS: "${SCRAPSCACHE_BACKUP_INTERVAL_HOURS:-24}"
-      SCRAPSCACHE_BACKUP_RETAIN: "${SCRAPSCACHE_BACKUP_RETAIN:-2}"
       SCRAPSCACHE_RETENTION_INACTIVE_DAYS: "${SCRAPSCACHE_RETENTION_INACTIVE_DAYS:-0}"
       SCRAPSCACHE_ADMIN_TOKEN: "${SCRAPSCACHE_ADMIN_TOKEN:-development-only-admin-token}"
     volumes:
       - scrapscache-dev-sync-data:/data
-      - scrapscache-dev-backup-snapshots:/backups
     read_only: true
     tmpfs:
       - /tmp
@@ -49,4 +45,3 @@ services:
 
 volumes:
   scrapscache-dev-sync-data:
-  scrapscache-dev-backup-snapshots:
