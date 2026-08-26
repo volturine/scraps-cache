@@ -26,9 +26,7 @@ WORKDIR /app
 COPY --from=build --chown=node:node /app/build ./build
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/package.json ./package.json
-COPY --chmod=755 docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
-
-RUN apk add --no-cache libstdc++ libgcc setpriv \
+RUN apk add --no-cache libstdc++ libgcc \
 	&& addgroup -g 1000 -S node \
 	&& adduser -S -D -H -u 1000 -G node node \
 	&& mkdir -p /data \
@@ -40,4 +38,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 	CMD ["node", "-e", "fetch(`http://127.0.0.1:${process.env.PORT || 3000}/health/ready`).then(response => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"]
 
-ENTRYPOINT ["docker-entrypoint"]
+USER node
+CMD ["node", "build"]

@@ -1,52 +1,50 @@
 # Self-hosting
 
 Run Scraps Cache as a single Node service with SQLite for the optional encrypted sync
-relay. This guide covers Docker production deployment, configuration, backups,
-and recovery.
+relay. This guide covers Docker production deployment and configuration.
 
 ## Requirements
 
 - Docker Engine with Compose v2
 - For public deployments: a reverse proxy that terminates TLS
-- Persistent volumes for sync data and online snapshots
+- A persistent volume for sync data
 
 ## Production (recommended)
 
 Pull the multi-architecture image from GitHub Container Registry:
 
 ```sh
-cp .env.example .env
+cp docker/.env.example docker/.env
 ```
 
-Edit `.env` at minimum:
+Edit `docker/.env` at minimum:
 
 | Variable                  | Guidance                                                                          |
 | ------------------------- | --------------------------------------------------------------------------------- |
 | `SCRAPSCACHE_IMAGE`       | Pin a release, e.g. `ghcr.io/volturine/scrapscache:1.2.3`, or an immutable digest |
-| `SCRAPSCACHE_ADMIN_TOKEN` | Long random secret (metrics, JSON status, backup, retention)                      |
+| `SCRAPSCACHE_ADMIN_TOKEN` | Long random secret (metrics, JSON status, retention)                              |
 | `SCRAPSCACHE_ORIGIN`      | Exact public origin, e.g. `https://scrapscache.com`                               |
 | `SCRAPSCACHE_PORT`        | Host port (default `3000`)                                                        |
 
 ```sh
-docker compose --project-directory . -f docker/compose.production.yaml pull
-docker compose --project-directory . -f docker/compose.production.yaml up -d
-docker compose --project-directory . -f docker/compose.production.yaml ps
+docker compose --project-directory . -f docker/compose.yaml --env-file docker/.env pull
+docker compose --project-directory . -f docker/compose.yaml --env-file docker/.env up -d
+docker compose --project-directory . -f docker/compose.yaml --env-file docker/.env ps
 ```
 
 Scraps Cache listens on container port **3000**. The production template:
 
 - Runs with a read-only application filesystem
 - Stores SQLite under the `scrapscache-sync-data` volume
-- Writes verified online snapshots to `scrapscache-backup-snapshots`
 
 ### Build locally instead of pulling
 
 ```sh
-docker compose --project-directory . -f docker/compose.yaml up -d --build
+docker build -f docker/Dockerfile -t scrapscache:local .
 ```
 
-Uses `docker/compose.yaml` (development-oriented defaults). Prefer
-`docker/compose.production.yaml` + a pinned GHCR image for real deployments.
+Set `SCRAPSCACHE_IMAGE=scrapscache:local` in `docker/.env`, then use the same
+Compose commands as above. Prefer a pinned GHCR image for real deployments.
 
 ## Preview a pull-request image
 
@@ -54,10 +52,10 @@ CI publishes each same-repo PR as `dev-<n>` / `dev-sha-<commit>` (amd64 only).
 Run that image beside production with a separate Compose project and port:
 
 ```sh
-cp .env.dev.example .env.dev
+cp docker/.env.dev.example docker/.env.dev
 # Set SCRAPSCACHE_IMAGE=ghcr.io/volturine/scrapscache:dev-<pr>
-docker compose --project-directory . -f docker/compose.dev.yaml --env-file .env.dev pull
-docker compose --project-directory . -f docker/compose.dev.yaml --env-file .env.dev up -d
+docker compose --project-directory . -f docker/compose.dev.yaml --env-file docker/.env.dev pull
+docker compose --project-directory . -f docker/compose.dev.yaml --env-file docker/.env.dev up -d
 ```
 
 Defaults: host port **3000**, project name `scrapscache-dev`, isolated volumes.
@@ -81,7 +79,7 @@ In the Tailscale admin console:
    an OAuth secret so the machine survives restarts.
 3. Do **not** enable Funnel. Serve is tailnet-only.
 
-Set in `.env`:
+Set in `docker/.env`:
 
 ```sh
 TS_HOSTNAME=scrapscache
@@ -91,10 +89,10 @@ SCRAPSCACHE_ORIGIN=https://scrapscache.your-tailnet.ts.net
 
 ```sh
 docker compose --project-directory . \
-  -f docker/compose.production.yaml -f docker/compose.tailscale.yaml \
+  -f docker/compose.yaml -f docker/compose.tailscale.yaml --env-file docker/.env \
   up -d
 docker compose --project-directory . \
-  -f docker/compose.production.yaml -f docker/compose.tailscale.yaml \
+  -f docker/compose.yaml -f docker/compose.tailscale.yaml --env-file docker/.env \
   exec tailscale tailscale serve status
 ```
 
@@ -109,7 +107,7 @@ persists identity in the `tailscale-state` volume. Serve config lives in
 Mount that path as a **directory**, not a single file.
 
 Same overlay works with `docker/compose.dev.yaml` for PR previews. Give that
-stack its own hostname (`dev-scrapscache` in `.env.dev.example`) and auth key so it
+stack its own hostname (`dev-scrapscache` in `docker/.env.dev.example`) and auth key so it
 cannot collide with production.
 
 ## Reverse proxy and TLS
@@ -137,10 +135,7 @@ Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
 | `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                   `1000000000` | Ciphertext quota per account                                                    |
 | `SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES`   |                        `50000` | Record quota per account                                                        |
 | `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight                                                     |
-| `SCRAPSCACHE_BACKUP_DIR`                   |                       disabled | Directory for consistent online SQLite snapshots                                |
-| `SCRAPSCACHE_BACKUP_INTERVAL_HOURS`        |                           `24` | Snapshot interval                                                               |
-| `SCRAPSCACHE_BACKUP_RETAIN`                |                            `2` | Raw verified staging snapshots retained locally                                 |
-| `SCRAPSCACHE_ADMIN_TOKEN`                  |                              — | Protects metrics, JSON status, backup, and retention (required in prod Compose) |
+| `SCRAPSCACHE_ADMIN_TOKEN`                  |                              — | Protects metrics, JSON status, and retention (required in prod Compose)         |
 | `SCRAPSCACHE_RETENTION_INACTIVE_DAYS`      |                            `0` | Delete accounts with no authenticated activity for this many days; `0` disables |
 | `SCRAPSCACHE_VAPID_PUBLIC_KEY`             |                 auto-generated | Optional stable Web Push VAPID public key                                       |
 | `SCRAPSCACHE_VAPID_PRIVATE_KEY`            |                 auto-generated | Optional stable Web Push VAPID private key                                      |
@@ -154,8 +149,8 @@ Provide both VAPID key variables or neither. When omitted, Scraps Cache generate
 pair once and persists it in the sync SQLite database. Changing the pair causes
 browsers to replace their subscription the next time Scraps Cache opens.
 
-The VAPID private key is excluded from server backup snapshots. If you lose the
-live database (or the key row) without setting `SCRAPSCACHE_VAPID_PRIVATE_KEY`,
+If you lose the live database (or the key row) without setting
+`SCRAPSCACHE_VAPID_PRIVATE_KEY`,
 a new key is generated and existing push subscriptions are rejected by the Web
 Push spec — devices must re-register (the server logs a warning when this
 happens). To keep subscriptions working across restores, set both VAPID env
@@ -179,7 +174,7 @@ Inside Compose, `HOST`, `PORT`, and `SCRAPSCACHE_SYNC_DATA_DIR` are fixed to
 An existing `users.json` under the data directory is imported once into SQLite
 and left in place as a recovery copy.
 
-## Health, metrics, and admin backup
+## Health, metrics, and administration
 
 | Endpoint                    | Auth                                             | Purpose                                             |
 | --------------------------- | ------------------------------------------------ | --------------------------------------------------- |
@@ -187,13 +182,12 @@ and left in place as a recovery copy.
 | `GET /health/ready`         | none                                             | SQLite + migrations + volume readiness              |
 | `GET /metrics`              | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                            |
 | `GET /api/admin/status`     | same bearer token                                | Anonymous JSON: storage, users, activity, retention |
-| `POST /api/admin/backup`    | same bearer token                                | Trigger an online snapshot now                      |
 | `POST /api/admin/retention` | same bearer token                                | Run the inactive-account sweeper now                |
 
 `GET /api/admin/status` is the JSON companion to `/metrics`. It reports
 ciphertext bytes and decimal GB, account totals, activity in the last 1 / 7 / 30
-days, process-lifetime sync counters, backup status, and the retention
-policy. Counts are aggregates only — no account IDs, ciphertext, or credentials.
+days, process-lifetime sync counters, and the retention policy. Counts are
+aggregates only — no account IDs, ciphertext, or credentials.
 
 Inactive-account retention is **off** unless
 `SCRAPSCACHE_RETENTION_INACTIVE_DAYS` is a positive integer. When enabled, a
@@ -208,73 +202,6 @@ IDs.
 curl -fsS -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
   http://localhost:3000/api/admin/status
 ```
-
-Trigger a snapshot before upgrades:
-
-```sh
-curl -fsS -X POST \
-  -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
-  http://localhost:3000/api/admin/backup
-```
-
-**Do not** copy `sync.sqlite`, `sync.sqlite-wal`, and `sync.sqlite-shm`
-independently while the app is running. Use the online snapshot as the
-supported backup source.
-
-## Encrypted backups with Restic
-
-Optional overlay: `docker/compose.backup.yaml`.
-
-### Local encrypted repository
-
-```sh
-export SCRAPSCACHE_RESTIC_PASSWORD_FILE=/secure/path/scrapscache-restic-password
-docker compose --project-directory . \
-  -f docker/compose.production.yaml -f docker/compose.backup.yaml \
-  --profile backup up -d
-```
-
-### S3-compatible repository
-
-```sh
-export SCRAPSCACHE_RESTIC_S3_REPOSITORY=s3:https://storage.example.com/scrapscache-backups
-export SCRAPSCACHE_S3_ACCESS_KEY_FILE=/secure/path/s3-access-key
-export SCRAPSCACHE_S3_SECRET_KEY_FILE=/secure/path/s3-secret-key
-docker compose --project-directory . \
-  -f docker/compose.production.yaml -f docker/compose.backup.yaml \
-  --profile backup-s3 up -d
-```
-
-List and verify:
-
-```sh
-docker compose --project-directory . \
-  -f docker/compose.production.yaml -f docker/compose.backup.yaml \
-  --profile backup exec backup-local restic snapshots
-docker compose --project-directory . \
-  -f docker/compose.production.yaml -f docker/compose.backup.yaml \
-  --profile backup exec backup-local restic check --read-data
-```
-
-## Restore drill (monthly)
-
-Default server RPO is up to one backup interval (24h). Linked devices may hold
-newer local edits and repopulate a restored relay.
-
-1. Trigger a fresh online snapshot; confirm `/metrics` shows a newer
-   `scrapscache_backup_last_success_timestamp_seconds`.
-2. Run `restic check --read-data`, then restore `latest` into a **new** temporary
-   volume or directory — never over the live volume.
-3. Locate restored `scrapscache-sync-*.sqlite` and run:
-   `sqlite3 restored.sqlite 'PRAGMA integrity_check;'`
-   (expect only `ok`).
-4. Stop Scraps Cache, copy that file into an empty sync-data volume as `sync.sqlite`,
-   start Scraps Cache against the new volume.
-5. Check `/health/ready`, link an existing device, complete a delta sync, then
-   retire the old volume.
-
-CI Vitest coverage exercises the same online-backup API and restore-into-fresh-store
-path used here (`SyncStore.backup` + `BackupManager` verified snapshots).
 
 ## Images and CI
 
@@ -296,4 +223,4 @@ password is required for GitHub Actions.
 
 See [security.md](security.md). Short version: the database holds **encrypted
 envelopes**, not readable notes — but you still protect availability, auth
-tokens, TLS, and backup encryption keys carefully.
+tokens and TLS configuration carefully.

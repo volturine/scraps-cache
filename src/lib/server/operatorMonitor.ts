@@ -1,4 +1,3 @@
-import { backupManager, type BackupStatus } from '$lib/server/backupManager';
 import { processActivity, type ProcessActivity } from '$lib/server/metrics';
 import {
 	bytesToGigabytes,
@@ -23,7 +22,6 @@ export type OperatorSnapshot = {
 	activity: ProcessActivity;
 	retention: RetentionStatus;
 	quotas: SyncQuotas;
-	backup: BackupStatus;
 };
 
 export function buildOperatorSnapshot(
@@ -31,7 +29,6 @@ export function buildOperatorSnapshot(
 	quotas: SyncQuotas,
 	activity: ProcessActivity,
 	retention: RetentionStatus,
-	backup: BackupStatus,
 	now: number,
 	retentionInactiveDays: number
 ): OperatorSnapshot {
@@ -49,8 +46,7 @@ export function buildOperatorSnapshot(
 		},
 		activity,
 		retention,
-		quotas,
-		backup
+		quotas
 	};
 }
 
@@ -66,7 +62,6 @@ export function getOperatorSnapshot(now = Date.now()) {
 		store.getQuotas(),
 		processActivity(),
 		retentionManager.getStatus(),
-		backupManager.getStatus(),
 		now,
 		retentionInactiveDays
 	);

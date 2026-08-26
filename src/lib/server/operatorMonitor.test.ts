@@ -36,16 +36,6 @@ describe('operator snapshot', () => {
 				failures: 0,
 				lastError: null
 			},
-			{
-				enabled: true,
-				running: false,
-				lastAttemptAt: 1,
-				lastSuccessAt: 1,
-				failures: 0,
-				durationMs: 2,
-				lastError: null,
-				lastFile: null
-			},
 			1_000,
 			365
 		);
@@ -86,16 +76,6 @@ describe('operator snapshot', () => {
 				lastPurgedSlots: 0,
 				failures: 0,
 				lastError: null
-			},
-			{
-				enabled: false,
-				running: false,
-				lastAttemptAt: 0,
-				lastSuccessAt: 0,
-				failures: 0,
-				durationMs: 0,
-				lastError: null,
-				lastFile: null
 			},
 			1_000,
 			0

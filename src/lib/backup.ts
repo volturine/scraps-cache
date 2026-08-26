@@ -3,7 +3,7 @@ import { NOTE_FIELDS } from './noteMerge';
 import type { LinkPreview } from '$lib/linkPreview';
 import type { Layout, View } from '$lib/stores/ui.svelte';
 import type { Label, Note, NoteFieldTimes, NoteImage } from '$lib/types';
-import { cloneNote } from '$lib/utils';
+import { cloneNote, uid } from '$lib/utils';
 
 const NOTE_COLORS = new Set<Note['color']>([
 	'default',
@@ -46,6 +46,33 @@ export type BackupImportProgress = {
 	completed: number;
 	total: number;
 };
+
+export type BackupImportMode = 'keep' | 'replace';
+
+/** Make imported notes current; additive imports also need fresh record identities. */
+export function prepareImportedNotes(
+	notes: Note[],
+	mode: BackupImportMode,
+	now = Date.now()
+): Note[] {
+	const fieldTimes = Object.fromEntries(NOTE_FIELDS.map((field) => [field, now]));
+	return notes.map((source) => {
+		const note = cloneNote(source);
+		return {
+			...note,
+			id: mode === 'keep' ? uid() : note.id,
+			createdAt: now,
+			updatedAt: now,
+			trashedAt: note.trashed ? now : null,
+			fieldTimes: { ...fieldTimes },
+			images: (note.images ?? []).map((image) => ({
+				...image,
+				id: mode === 'keep' ? uid() : image.id,
+				createdAt: now
+			}))
+		};
+	});
+}
 
 function asTombstoneMap(value: unknown): Record<string, number> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};

@@ -20,7 +20,7 @@ Visit [scrapscache.com](https://scrapscache.com).
 | **E2E encrypted sync** | Multi-device sync always encrypts on the client. The relay stores opaque ciphertext only.                               |
 | **Self-hosted**        | Run the app and relay yourself. One Node process, one SQLite database.                                                  |
 | **Local-first data**   | Notes live in the browser (IndexedDB). Day-to-day use does not require the network.                                     |
-| **Recoverable**        | Encrypted client backups (`.scraps-cache-backup`) and operator-friendly server snapshots.                               |
+| **Recoverable**        | Encrypted client backups (`.scraps-cache-backup`) can be exported and imported from the UI.                             |
 
 ## Features
 
@@ -32,7 +32,7 @@ Visit [scrapscache.com](https://scrapscache.com).
 - **Kanban** — boards with custom backlog filters
 - **Search** — local full-text style filtering on your device
 - **Sync** — pair devices with a short code; payloads are always E2E encrypted; server stores ciphertext only
-- **Backups** — passphrase-protected client exports; optional automated SQLite + Restic on the server
+- **Backups** — passphrase-protected client exports and imports
 - **PWA** — installable shell with a service worker
 
 ## Quick start (development)
@@ -58,10 +58,10 @@ npm run build && npm start   # production Node adapter on port 3000 by default
 The recommended production path pulls the multi-arch image from GitHub Container Registry:
 
 ```sh
-cp .env.example .env
-# Edit .env: set SCRAPSCACHE_IMAGE, SCRAPSCACHE_ADMIN_TOKEN, and SCRAPSCACHE_ORIGIN for public HTTPS
-docker compose --project-directory . -f docker/compose.production.yaml pull
-docker compose --project-directory . -f docker/compose.production.yaml up -d
+cp docker/.env.example docker/.env
+# Edit docker/.env: set SCRAPSCACHE_IMAGE, SCRAPSCACHE_ADMIN_TOKEN, and SCRAPSCACHE_ORIGIN for public HTTPS
+docker compose --project-directory . -f docker/compose.yaml --env-file docker/.env pull
+docker compose --project-directory . -f docker/compose.yaml --env-file docker/.env up -d
 ```
 
 App: `http://localhost:3000` (or the origin you configured).
@@ -72,7 +72,7 @@ To preview a published PR image (`dev-<n>`) beside production, use
 Private HTTPS on your tailnet (no public ports): add
 `docker/compose.tailscale.yaml` — see [self-hosting](docs/self-hosting.md#tailscale-serve).
 
-Full operator guide — reverse proxy, Tailscale Serve, backups, restore drill, env reference:
+Full operator guide — reverse proxy, Tailscale Serve, and environment reference:
 
 **→ [docs/self-hosting.md](docs/self-hosting.md)**
 
@@ -115,7 +115,7 @@ Details, threat model, and limits: **[docs/security.md](docs/security.md)**.
 | -------------------------------------------- | -------------------------------------------- |
 | [docs/architecture.md](docs/architecture.md) | System layout, data flow, major modules      |
 | [docs/security.md](docs/security.md)         | Crypto, threat model, headers, logging rules |
-| [docs/self-hosting.md](docs/self-hosting.md) | Docker, env vars, backups, restore, metrics  |
+| [docs/self-hosting.md](docs/self-hosting.md) | Docker, environment variables, and metrics   |
 | [docs/development.md](docs/development.md)   | Local workflow, testing, CI                  |
 | [CONTRIBUTING.md](CONTRIBUTING.md)           | How to contribute                            |
 | [SECURITY.md](SECURITY.md)                   | Vulnerability reporting                      |

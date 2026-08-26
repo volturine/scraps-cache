@@ -86,12 +86,6 @@ function line(name: string, value: number, labels = ''): string {
 }
 
 export function renderMetrics(
-	backup: {
-		lastAttemptAt: number;
-		lastSuccessAt: number;
-		failures: number;
-		durationMs: number;
-	},
 	usage: {
 		accounts: number;
 		envelopeCount: number;
@@ -162,14 +156,6 @@ export function renderMetrics(
 		);
 	}
 	lines.push(
-		'# TYPE scrapscache_backup_last_attempt_timestamp_seconds gauge',
-		line('scrapscache_backup_last_attempt_timestamp_seconds', backup.lastAttemptAt / 1000),
-		'# TYPE scrapscache_backup_last_success_timestamp_seconds gauge',
-		line('scrapscache_backup_last_success_timestamp_seconds', backup.lastSuccessAt / 1000),
-		'# TYPE scrapscache_backup_failures_total counter',
-		line('scrapscache_backup_failures_total', backup.failures),
-		'# TYPE scrapscache_backup_duration_milliseconds gauge',
-		line('scrapscache_backup_duration_milliseconds', backup.durationMs),
 		'# TYPE scrapscache_reminder_wakes_sent_total counter',
 		line('scrapscache_reminder_wakes_sent_total', reminderWakesSent),
 		'# TYPE scrapscache_reminder_wakes_gone_total counter',

@@ -6,6 +6,8 @@
 	import SyncModal from './SyncModal.svelte';
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
+	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
+	import type { BackupImportMode } from '$lib/backup';
 	import { useEditorActions } from '$lib/editorContext';
 	import {
 		decryptBackup,
@@ -38,6 +40,8 @@
 	let backupDialogMode = $state<'export' | 'import' | null>(null);
 	let backupBusy = $state(false);
 	let pendingEncryptedBackup = $state<EncryptedScrapsCacheBackup | null>(null);
+	let pendingImportData = $state.raw<unknown>(null);
+	let choosingImportMode = $state(false);
 
 	function startBackupExport() {
 		settingsOpen = false;
@@ -60,18 +64,37 @@
 				return;
 			}
 			if (backupDialogMode === 'import' && pendingEncryptedBackup) {
-				importingBackup = true;
 				const decrypted = await decryptBackup(pendingEncryptedBackup, passphrase);
-				const result = await notesStore.importBackup(decrypted);
-				if (!result.success) throw new Error(result.error || 'Could not restore that backup.');
+				pendingImportData = decrypted;
 				pendingEncryptedBackup = null;
 				backupDialogMode = null;
 				settingsOpen = false;
+				choosingImportMode = true;
 			}
 		} catch (error) {
 			backupImportError = error instanceof Error ? error.message : 'Backup operation failed.';
 		} finally {
 			backupBusy = false;
+			importingBackup = false;
+		}
+	}
+
+	async function selectImportMode(mode: BackupImportMode) {
+		if (!pendingImportData) return;
+		choosingImportMode = false;
+		importingBackup = true;
+		settingsOpen = true;
+		backupImportError = '';
+		try {
+			const result = await notesStore.importBackup(pendingImportData, mode);
+			if (!result.success) throw new Error(result.error || 'Could not import that backup.');
+			pendingImportData = null;
+			settingsOpen = false;
+		} catch (error) {
+			backupImportError = error instanceof Error ? error.message : 'Backup operation failed.';
+			choosingImportMode = true;
+			settingsOpen = false;
+		} finally {
 			importingBackup = false;
 		}
 	}
@@ -92,9 +115,9 @@
 					backupDialogMode = 'import';
 					settingsOpen = false;
 				} else if (window.confirm('This is an older unencrypted backup. Restore it anyway?')) {
-					const result = await notesStore.importBackup(data);
-					if (result.success) settingsOpen = false;
-					else backupImportError = result.error || 'Could not import that backup.';
+					pendingImportData = data;
+					choosingImportMode = true;
+					settingsOpen = false;
 				}
 			} catch (err) {
 				backupImportError = err instanceof Error ? err.message : 'Could not read that backup file.';
@@ -302,6 +325,20 @@
 	<SyncModal
 		onClose={() => {
 			syncOpen = false;
+		}}
+	/>
+{/if}
+
+{#if choosingImportMode}
+	<BackupImportModeDialog
+		busy={importingBackup}
+		error={backupImportError}
+		onSelect={selectImportMode}
+		onClose={() => {
+			if (importingBackup) return;
+			choosingImportMode = false;
+			pendingImportData = null;
+			backupImportError = '';
 		}}
 	/>
 {/if}

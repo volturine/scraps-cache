@@ -4,10 +4,11 @@
 # Do not enable Funnel — Serve is tailnet-only.
 #
 #   docker compose --project-directory . \
-#     -f docker/compose.production.yaml -f docker/compose.tailscale.yaml \
+#     -f docker/compose.yaml -f docker/compose.tailscale.yaml \
+#     --env-file docker/.env \
 #     up -d
 #
-# Preview stack: swap in docker/compose.dev.yaml and --env-file .env.dev.
+# Preview stack: swap in docker/compose.dev.yaml and --env-file docker/.env.dev.
 # Host ports stay published; use the https://<TS_HOSTNAME>.<tailnet>.ts.net origin.
 
 services:
@@ -18,7 +19,7 @@ services:
     depends_on:
       - app
     environment:
-      TS_AUTHKEY: ${TS_AUTHKEY:?Set TS_AUTHKEY in .env}
+      TS_AUTHKEY: ${TS_AUTHKEY:?Set TS_AUTHKEY in docker/.env}
       TS_AUTH_ONCE: "true"
       TS_STATE_DIR: /var/lib/tailscale
       TS_HOSTNAME: ${TS_HOSTNAME:-scrapscache}

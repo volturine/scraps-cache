@@ -45,7 +45,7 @@ This runs:
 
 1. `svelte-check` (TypeScript / Svelte diagnostics)
 2. Prettier check
-3. Vitest unit tests (including SQLite online-backup / restore coverage)
+3. Vitest unit tests
 4. Production build
 
 Useful partial commands:
@@ -62,11 +62,13 @@ Useful partial commands:
 
 ### Docker (optional)
 
-Build and run the development Compose template:
+Build and run the production container locally:
 
 ```sh
-cp .env.example .env
-docker compose up -d --build
+docker build -f docker/Dockerfile -t scrapscache:local .
+cp docker/.env.example docker/.env
+# Set SCRAPSCACHE_IMAGE=scrapscache:local and a local-only admin token in docker/.env.
+docker compose --project-directory . -f docker/compose.yaml --env-file docker/.env up -d
 ```
 
 Production-style deployment is documented in
@@ -74,16 +76,16 @@ Production-style deployment is documented in
 
 ## Project map
 
-| Path                    | Role                                      |
-| ----------------------- | ----------------------------------------- |
-| `src/lib/components/`   | UI components                             |
-| `src/lib/stores/`       | Client state (notes, sync, kanban, UI)    |
-| `src/lib/db/`           | IndexedDB persistence                     |
-| `src/lib/server/`       | Sync relay, rate limits, backups, metrics |
-| `src/routes/api/sync/`  | HTTP sync and pairing endpoints           |
-| `src/routes/api/admin/` | Admin-only status, backup, and retention  |
-| `docs/`                 | Architecture, security, self-hosting      |
-| `docker/`               | Docker Compose templates and image        |
+| Path                    | Role                                   |
+| ----------------------- | -------------------------------------- |
+| `src/lib/components/`   | UI components                          |
+| `src/lib/stores/`       | Client state (notes, sync, kanban, UI) |
+| `src/lib/db/`           | IndexedDB persistence                  |
+| `src/lib/server/`       | Sync relay, rate limits, and metrics   |
+| `src/routes/api/sync/`  | HTTP sync and pairing endpoints        |
+| `src/routes/api/admin/` | Admin-only status and retention        |
+| `docs/`                 | Architecture, security, self-hosting   |
+| `docker/`               | Docker Compose templates and image     |
 
 Deeper orientation: [docs/architecture.md](docs/architecture.md) and
 [docs/development.md](docs/development.md).
@@ -132,7 +134,7 @@ Changes that touch any of the following need extra care and tests:
 - Sync merge, tombstones, and conflict resolution
 - Rate limiting, auth, and admin token checks
 - CSP / security headers in `svelte.config.js` and `hooks.server.ts`
-- Backup and restore paths
+- Encrypted client backup export and import paths
 
 Report vulnerabilities privately per [SECURITY.md](SECURITY.md).
 

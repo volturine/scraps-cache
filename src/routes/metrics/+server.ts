@@ -7,7 +7,6 @@ import {
 	staleBeforeMs
 } from '$lib/server/operatorConfig';
 import { retentionManager } from '$lib/server/retentionManager';
-import { backupManager } from '$lib/server/backupManager';
 import { getSyncStore } from '$lib/server/syncStore';
 
 export const GET: RequestHandler = ({ request }) => {
@@ -19,7 +18,6 @@ export const GET: RequestHandler = ({ request }) => {
 	});
 	return new Response(
 		renderMetrics(
-			backupManager.getStatus(),
 			{
 				...usage,
 				gigabytes: bytesToGigabytes(usage.ciphertextBytes)

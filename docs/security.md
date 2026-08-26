@@ -71,8 +71,8 @@ the long-term attachment format.
   `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, restrictive
   `Permissions-Policy`
 - **Rate limiting** — in-memory token buckets for register, pairing, and sync
-- **Admin token** — required for `/metrics`, `GET /api/admin/status`,
-  `POST /api/admin/backup`, and `POST /api/admin/retention` in production Compose
+- **Admin token** — required for `/metrics`, `GET /api/admin/status`, and
+  `POST /api/admin/retention` in production Compose
 - **Operator status** — anonymous aggregates only (storage, account counts,
   activity windows). No account IDs, ciphertext, or credentials
 - **Account retention** — optional; a daily sweep deletes unused relay accounts
@@ -131,10 +131,6 @@ app is in use; browser storage isolation is the boundary.
 3. Pin **`SCRAPSCACHE_IMAGE`** to a release tag or digest.
 4. Configure trusted proxy headers only when appropriate
    (`SCRAPSCACHE_ADDRESS_HEADER` / `SCRAPSCACHE_XFF_DEPTH`).
-5. Enable **encrypted Restic** backups for the SQLite snapshots if the relay
-   matters to you (ciphertext still deserves availability protection).
-6. Run the monthly restore drill documented in
-   [self-hosting.md](self-hosting.md).
 
 ## Related source
 

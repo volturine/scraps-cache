@@ -217,10 +217,6 @@ export class SyncStore {
 		this.database.close();
 	}
 
-	async backup(destination: string): Promise<void> {
-		await this.database.backup(destination);
-	}
-
 	getCredentialHash(accountId: string): string | null {
 		const row = this.database
 			.prepare('SELECT credential_hash FROM accounts WHERE account_id = ?')
