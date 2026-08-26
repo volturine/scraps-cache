@@ -170,6 +170,37 @@ describe('BodyEditor native editing', () => {
 		expect(onExitTaskFocus).not.toHaveBeenCalled();
 	});
 
+	it('keeps an empty task focused when its entire label is deleted and can undo the deletion', async () => {
+		const onExitTaskFocus = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Focused task', focusLine: 0, onExitTaskFocus }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const task = container.querySelector('[data-line-text]') as HTMLElement;
+		select(task, 0, task, 'Focused task'.length);
+
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'deleteContentBackward'
+			})
+		);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['']);
+		expect(container.querySelector('[data-checklist-toggle]')).not.toBeNull();
+		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
+		expect(onExitTaskFocus).not.toHaveBeenCalled();
+
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Focused task']);
+		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
+	});
+
 	it('undoes and redoes a selected-text deletion while restoring the caret', async () => {
 		const { container } = render(BodyEditor, {
 			props: { body: '[ ] Focused task', focusLine: 0 }

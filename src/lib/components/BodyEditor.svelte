@@ -424,11 +424,13 @@
 		const { start, end } = range;
 		if (start.line === end.line) {
 			const line = lines[start.line];
-			const removesWholeRow =
-				replacement.length === 0 && start.offset === 0 && end.offset === line.text.length;
-			if (removesWholeRow) {
+			const removesWholePlainRow =
+				!line.isCheck &&
+				replacement.length === 0 &&
+				start.offset === 0 &&
+				end.offset === line.text.length;
+			if (removesWholePlainRow) {
 				lines.splice(start.line, 1);
-				if (line.id === draftTaskId) draftTaskId = null;
 				if (lines.length === 0) lines.push(newLine());
 				const nextLine = Math.min(start.line, lines.length - 1);
 				syncBody();
