@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeBackup } from './backup';
+import type { Note } from './types';
+import { normalizeBackup, prepareImportedNotes } from './backup';
+
+const sourceNote: Note = {
+	id: 'note',
+	title: 'Imported',
+	body: 'Body',
+	color: 'default',
+	pinned: false,
+	archived: false,
+	trashed: false,
+	trashedAt: null,
+	createdAt: 1,
+	updatedAt: 2,
+	reminder: null,
+	labels: ['label'],
+	fieldTimes: { title: 2, body: 1 },
+	images: [{ id: 'image', mime: 'image/jpeg', dataUrl: 'data:', createdAt: 1 }]
+};
 
 describe('backup normalization', () => {
 	it('rejects values without the required note and label collections', () => {
@@ -71,5 +89,21 @@ describe('backup normalization', () => {
 		});
 		expect(backup).not.toHaveProperty('sync');
 		expect(JSON.stringify(backup)).not.toContain('root-secret');
+	});
+
+	it('refreshes timestamps while retaining IDs for replacement imports', () => {
+		const [note] = prepareImportedNotes([sourceNote], 'replace', 100);
+
+		expect(note).toMatchObject({ id: 'note', createdAt: 100, updatedAt: 100, trashedAt: null });
+		expect(note.images).toEqual([expect.objectContaining({ id: 'image', createdAt: 100 })]);
+		expect(new Set(Object.values(note.fieldTimes ?? {}))).toEqual(new Set([100]));
+	});
+
+	it('regenerates note and attachment IDs for additive imports', () => {
+		const [note] = prepareImportedNotes([sourceNote], 'keep', 100);
+
+		expect(note.id).not.toBe(sourceNote.id);
+		expect(note.images?.[0].id).not.toBe(sourceNote.images?.[0].id);
+		expect(note).toMatchObject({ createdAt: 100, updatedAt: 100 });
 	});
 });

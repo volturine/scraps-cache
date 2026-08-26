@@ -152,7 +152,7 @@
 							: 'Decrypting…'
 						: exporting
 							? 'Download backup'
-							: 'Restore backup'}</button
+							: 'Unlock backup'}</button
 				>
 			</div>
 		</form>
