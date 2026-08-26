@@ -340,6 +340,14 @@ body {
 	overscroll-behavior: contain;
 }
 
+.note-scrollbar-hidden {
+	scrollbar-width: none;
+}
+
+.note-scrollbar-hidden::-webkit-scrollbar {
+	display: none;
+}
+
 /* Let the primary feed chain a top-edge pull to Android Chrome's native
  * refresh gesture. Nested editor and attachment scrollers remain contained. */
 .app-feed {

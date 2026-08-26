@@ -145,6 +145,62 @@ describe('BodyEditor native editing', () => {
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
 	});
 
+	it('keeps task focus when selected text is deleted from the focused task', async () => {
+		const onExitTaskFocus = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Focused task', focusLine: 0, onExitTaskFocus }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const task = container.querySelector('[data-line-text]') as HTMLElement;
+		select(task, 0, task, 'Focused '.length);
+
+		const beforeInput = new InputEvent('beforeinput', {
+			bubbles: true,
+			cancelable: true,
+			inputType: 'deleteContentBackward'
+		});
+		editor.dispatchEvent(beforeInput);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['task']);
+		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
+		expect(document.activeElement).toBe(editor);
+		expect(window.getSelection()?.anchorOffset).toBe(0);
+		expect(onExitTaskFocus).not.toHaveBeenCalled();
+	});
+
+	it('undoes and redoes a selected-text deletion while restoring the caret', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Focused task', focusLine: 0 }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const task = container.querySelector('[data-line-text]') as HTMLElement;
+		select(task, 0, task, 'Focused '.length);
+
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'deleteContentBackward'
+			})
+		);
+		await tick();
+		expect(lineTexts(container)).toEqual(['task']);
+
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+		expect(lineTexts(container)).toEqual(['Focused task']);
+		expect(window.getSelection()?.anchorOffset).toBe(0);
+		expect(window.getSelection()?.focusOffset).toBe('Focused '.length);
+
+		await fireEvent.keyDown(editor, { key: 'Z', ctrlKey: true, shiftKey: true });
+		await tick();
+		expect(lineTexts(container)).toEqual(['task']);
+		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
+	});
+
 	it('cuts the selected task rows from the model', async () => {
 		const onExitTaskFocus = vi.fn();
 		const { container } = render(BodyEditor, {
@@ -169,8 +225,8 @@ describe('BodyEditor native editing', () => {
 		expect(setData).toHaveBeenCalledWith('text/plain', '[ ] First task\n[ ] Second task');
 		expect(lineTexts(container)).toEqual(['Keep']);
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
-		expect(container.querySelector('[data-focus-group]')).toBeNull();
-		expect(onExitTaskFocus).toHaveBeenCalledOnce();
+		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
+		expect(onExitTaskFocus).not.toHaveBeenCalled();
 	});
 
 	it('removes a fully selected single row instead of leaving a micro row', async () => {
@@ -192,7 +248,7 @@ describe('BodyEditor native editing', () => {
 
 		expect(lineTexts(container)).toEqual(['Keep before', 'Keep after']);
 		expect(container.querySelectorAll('[data-editor-line]')).toHaveLength(2);
-		expect(container.querySelector('[data-focus-group]')).toBeNull();
+		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
 	});
 
 	it('pastes multiple clipboard lines as structured task rows', async () => {
