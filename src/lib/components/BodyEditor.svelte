@@ -30,6 +30,13 @@
 	type Line = { id: number; text: string; checked: boolean; isCheck: boolean; indent: number };
 	type EditorPoint = { line: number; offset: number; global: number };
 	type EditorRange = { start: EditorPoint; end: EditorPoint; collapsed: boolean };
+	type HistoryEntry = {
+		body: string;
+		startLine: number;
+		startOffset: number;
+		endLine: number;
+		endOffset: number;
+	};
 
 	let lineIdCounter = 0;
 	function newLine(text = '', isCheck = false, checked = false, indent = 0): Line {
@@ -65,6 +72,8 @@
 	let checklistPointerId: number | null = null;
 	let composing = false;
 	let applyingEdit = false;
+	const undoStack: HistoryEntry[] = [];
+	const redoStack: HistoryEntry[] = [];
 
 	function makeEditable(node: HTMLDivElement) {
 		node.setAttribute('contenteditable', 'plaintext-only');
@@ -220,6 +229,56 @@
 		}
 		if (!start || !end) return null;
 		return { start, end, collapsed: start.global === end.global };
+	}
+
+	function historyEntry(range = editorRange()): HistoryEntry {
+		const fallbackLine = Math.max(0, lines.length - 1);
+		const fallbackOffset = lines[fallbackLine]?.text.length ?? 0;
+		return {
+			body: serializeLines(lines.filter((line) => line.id !== draftTaskId)),
+			startLine: range?.start.line ?? fallbackLine,
+			startOffset: range?.start.offset ?? fallbackOffset,
+			endLine: range?.end.line ?? fallbackLine,
+			endOffset: range?.end.offset ?? fallbackOffset
+		};
+	}
+
+	function rememberEdit(range = editorRange()) {
+		const entry = historyEntry(range);
+		if (undoStack.at(-1)?.body !== entry.body) undoStack.push(entry);
+		if (undoStack.length > 100) undoStack.shift();
+		redoStack.length = 0;
+	}
+
+	async function restoreHistory(entry: HistoryEntry) {
+		applyingEdit = true;
+		try {
+			lines = parseBodyToLines(entry.body);
+			draftTaskId = null;
+			ignoredFocusLine = null;
+			syncBody();
+			await tick();
+			const startLine = Math.min(entry.startLine, lines.length - 1);
+			const endLine = Math.min(entry.endLine, lines.length - 1);
+			focusTask(endLine);
+			selectAt(startLine, entry.startOffset, endLine, entry.endOffset);
+		} finally {
+			applyingEdit = false;
+		}
+	}
+
+	function undo() {
+		const entry = undoStack.pop();
+		if (!entry) return;
+		redoStack.push(historyEntry());
+		void restoreHistory(entry);
+	}
+
+	function redo() {
+		const entry = redoStack.pop();
+		if (!entry) return;
+		undoStack.push(historyEntry());
+		void restoreHistory(entry);
 	}
 
 	function caretNode(index: number, offset: number): { node: Node; offset: number } | null {
@@ -414,11 +473,14 @@
 		}
 		const event = rawEvent as InputEvent;
 		const range = editorRange();
-		if (!range || range.collapsed) return;
-		if (!event.inputType.startsWith('delete')) return;
+		if (!range) return;
+		if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
+			rememberEdit(range);
+		}
+		if (range.collapsed || !event.inputType.startsWith('delete')) return;
 		event.preventDefault();
 		const caret = replaceSelectedRange(range);
-		dropTaskFocus();
+		focusTask(caret.line);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
@@ -453,8 +515,9 @@
 	function handleCut(event: ClipboardEvent) {
 		const range = writeSelectionToClipboard(event);
 		if (!range) return;
+		rememberEdit(range);
 		const caret = replaceSelectedRange(range);
-		dropTaskFocus();
+		focusTask(caret.line);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
@@ -530,12 +593,14 @@
 		const text = event.clipboardData.getData('text/plain');
 		if (!text) return;
 		event.preventDefault();
+		rememberEdit(range);
 		const caret = replaceRangeWithText(range, text);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
 	function toggleCheck(index: number, event: MouseEvent) {
 		event.stopPropagation();
+		rememberEdit();
 		const tasks = lines.filter((line) => line.isCheck);
 		toggleCheckEntries(tasks, tasks.indexOf(lines[index]));
 		syncBody();
@@ -712,11 +777,24 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
+		const primaryModifier = event.ctrlKey || event.metaKey;
+		if (primaryModifier && !event.altKey && event.key.toLowerCase() === 'z') {
+			event.preventDefault();
+			if (event.shiftKey) redo();
+			else undo();
+			return;
+		}
+		if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'y') {
+			event.preventDefault();
+			redo();
+			return;
+		}
 		if (event.key === 'Tab' && !event.altKey && !event.metaKey) {
 			if (composing) return;
 			event.preventDefault();
 			const range = editorRange();
 			if (!range) return;
+			rememberEdit(range);
 			indentRange(range, event.shiftKey || event.ctrlKey ? -1 : 1);
 			return;
 		}
@@ -724,10 +802,19 @@
 		if (!range) return;
 		if (event.key === 'Enter' || event.key === 'NumpadEnter') {
 			event.preventDefault();
+			rememberEdit(range);
 			handleEnter(range);
 			return;
 		}
-		if (event.key === 'Backspace' && handleBackspace(range)) event.preventDefault();
+		if (
+			event.key === 'Backspace' &&
+			range.collapsed &&
+			range.start.offset === 0 &&
+			range.start.line > 0
+		) {
+			rememberEdit(range);
+			if (handleBackspace(range)) event.preventDefault();
+		}
 	}
 
 	function addSubtask(rootIndex: number) {
@@ -745,6 +832,7 @@
 		while (insertAt < lines.length && lines[insertAt].isCheck && lines[insertAt].indent > 0)
 			insertAt++;
 		const draft = newLine('', true, false, 1);
+		rememberEdit();
 		lines.splice(insertAt, 0, draft);
 		draftTaskId = draft.id;
 		ignoredFocusLine = null;

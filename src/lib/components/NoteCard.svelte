@@ -108,7 +108,7 @@
 			</div>
 		{/if}
 
-		<div class="scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+		<div class="note-scrollbar-hidden scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
 			<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
 				{#if note.title}
 					<h3
