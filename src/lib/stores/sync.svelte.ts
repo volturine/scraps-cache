@@ -30,9 +30,13 @@ import {
 	createPairingRequestKey,
 	createSyncIdentity,
 	identityFromSyncKey,
+	legacyAuthSecret,
 	openSyncKeyFromPeer,
 	pairingCodeTag,
 	sealSyncKeyForPeer,
+	signSyncChallenge,
+	signSyncMigration,
+	signSyncRegistration,
 	encryptSyncPayload,
 	decryptSyncPayload,
 	randomOpaqueId
@@ -52,7 +56,7 @@ const LS_SYNC_STATUS_KEY = 'scrapscache-sync-status';
 export interface SyncAccount {
 	syncKey: string;
 	accountId: string;
-	authSecret: string;
+	authPublicKey: string;
 	pairingCode: string;
 }
 
@@ -136,6 +140,8 @@ export class SyncStore {
 	usage = $state<SyncUsage | null>(null);
 	private bootstrapRequested = false;
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
+	private session: { accountId: string; accessToken: string; expiresAt: number } | null = null;
+	private pendingSession: Promise<string> | null = null;
 
 	// Non-reactive callbacks avoid re-rendering the note grid for cloud feedback.
 	onSyncStart: (() => void) | null = null;
@@ -208,7 +214,11 @@ export class SyncStore {
 			const res = await fetch('/api/sync/register', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ accountId: account.accountId, authSecret: account.authSecret })
+				body: JSON.stringify({
+					accountId: account.accountId,
+					authPublicKey: account.authPublicKey,
+					signature: signSyncRegistration(account.syncKey, account.accountId, account.authPublicKey)
+				})
 			});
 			const data = await res.json().catch(() => ({}));
 			if (!res.ok)
@@ -327,18 +337,116 @@ export class SyncStore {
 		}
 	}
 
-	private sendSyncRequest(
+	private async accessToken(account: SyncAccount | null = this.account): Promise<string> {
+		if (!account) throw new Error('Sync is not set up on this device');
+		if (
+			this.session?.accountId === account.accountId &&
+			this.session.expiresAt - Date.now() > 5_000
+		)
+			return this.session.accessToken;
+		if (this.pendingSession) return this.pendingSession;
+		this.pendingSession = (async () => {
+			const challengeResponse = await fetch('/api/sync/auth/challenge', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ accountId: account.accountId })
+			});
+			const challenge = (await challengeResponse.json().catch(() => ({}))) as {
+				challengeId?: unknown;
+				challenge?: unknown;
+				migrationRequired?: unknown;
+			};
+			if (challengeResponse.status === 409 && challenge.migrationRequired === true) {
+				const migrationResponse = await fetch('/api/sync/auth/migrate', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						accountId: account.accountId,
+						authSecret: legacyAuthSecret(account.syncKey),
+						authPublicKey: account.authPublicKey,
+						signature: signSyncMigration(account.syncKey, account.accountId, account.authPublicKey)
+					})
+				});
+				return this.acceptIssuedSession(account, migrationResponse);
+			}
+			if (
+				!challengeResponse.ok ||
+				typeof challenge.challengeId !== 'string' ||
+				typeof challenge.challenge !== 'string'
+			) {
+				throw new Error('Could not start sync authentication');
+			}
+			const sessionResponse = await fetch('/api/sync/auth/session', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					accountId: account.accountId,
+					challengeId: challenge.challengeId,
+					signature: signSyncChallenge(account.syncKey, account.accountId, challenge.challenge)
+				})
+			});
+			return this.acceptIssuedSession(account, sessionResponse);
+		})();
+		try {
+			return await this.pendingSession;
+		} finally {
+			this.pendingSession = null;
+		}
+	}
+
+	private async acceptIssuedSession(account: SyncAccount, response: Response): Promise<string> {
+		const issued = (await response.json().catch(() => ({}))) as {
+			accessToken?: unknown;
+			expiresAt?: unknown;
+		};
+		if (
+			!response.ok ||
+			typeof issued.accessToken !== 'string' ||
+			typeof issued.expiresAt !== 'number'
+		) {
+			throw new Error('Sync authentication failed');
+		}
+		this.session = {
+			accountId: account.accountId,
+			accessToken: issued.accessToken,
+			expiresAt: issued.expiresAt
+		};
+		return issued.accessToken;
+	}
+
+	async authorizedFetch(
+		input: RequestInfo | URL,
+		init: RequestInit = {},
+		account: SyncAccount | null = this.account
+	): Promise<Response> {
+		const accessToken = await this.accessToken(account);
+		const headers = new Headers(init.headers);
+		headers.set('authorization', `Bearer ${accessToken}`);
+		return fetch(input, { ...init, headers });
+	}
+
+	private async sendSyncRequest(
 		path: string,
 		payload: string,
 		uploadBytes: number,
 		indicate: boolean
 	): Promise<SyncResult> {
+		let accessToken: string;
+		try {
+			accessToken = await this.accessToken();
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Authentication failed'
+			};
+		}
 		return new Promise((resolve) => {
 			const xhr = new XMLHttpRequest();
 			xhr.open('POST', path);
 			// Pairing expires in 60 seconds; photo/data sync must be allowed to finish.
 			xhr.timeout = 300_000;
 			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
 
 			const showTransfer = indicate && uploadBytes >= 32 * 1024;
 			if (showTransfer) {
@@ -370,6 +478,7 @@ export class SyncStore {
 					/* handled below */
 				}
 				if (xhr.status < 200 || xhr.status >= 300) {
+					if (xhr.status === 401) this.session = null;
 					resolve({
 						success: false,
 						status: xhr.status,
@@ -558,8 +667,6 @@ export class SyncStore {
 					}))
 				);
 				const payload = JSON.stringify({
-					accountId: account.accountId,
-					authSecret: account.authSecret,
 					cursor,
 					limit: DOWNLOAD_LIMIT,
 					envelopes: outbound,
@@ -934,6 +1041,7 @@ export class SyncStore {
 		this.lastError = null;
 		this.progress = null;
 		this.usage = null;
+		this.session = null;
 		this.saveAccount();
 		if (accountId) void this.clearAccountControlPlane(accountId);
 	}
@@ -941,13 +1049,8 @@ export class SyncStore {
 	async deleteCloudAccount(): Promise<{ success: boolean; error?: string }> {
 		if (!this.account) return { success: false, error: 'Sync is not set up on this device' };
 		try {
-			const response = await fetch('/api/sync/account', {
-				method: 'DELETE',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					accountId: this.account.accountId,
-					authSecret: this.account.authSecret
-				})
+			const response = await this.authorizedFetch('/api/sync/account', {
+				method: 'DELETE'
 			});
 			if (!response.ok) {
 				const data = (await response.json().catch(() => ({}))) as { error?: unknown };

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { unregisterReminderDevice } from './reminderWake';
+import { syncStore } from '$lib/stores/sync.svelte';
 
 describe('unregisterReminderDevice', () => {
 	afterEach(() => {
@@ -15,21 +16,23 @@ describe('unregisterReminderDevice', () => {
 		vi.stubGlobal('navigator', {
 			serviceWorker: { getRegistration, ready }
 		});
-		const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
-		vi.stubGlobal('fetch', fetchMock);
+		const fetchMock = vi
+			.spyOn(syncStore, 'authorizedFetch')
+			.mockResolvedValue(new Response(null, { status: 204 }));
 
 		const started = Date.now();
 		await unregisterReminderDevice({
 			syncKey: 'key',
 			accountId: 'acct',
-			authSecret: 'secret',
+			authPublicKey: 'secret',
 			pairingCode: ''
 		});
 		expect(Date.now() - started).toBeLessThan(500);
 		expect(getRegistration).toHaveBeenCalled();
 		expect(fetchMock).toHaveBeenCalledWith(
 			'/api/sync/push/wakes',
-			expect.objectContaining({ method: 'DELETE', keepalive: true })
+			expect.objectContaining({ method: 'DELETE', keepalive: true }),
+			expect.any(Object)
 		);
 	});
 });

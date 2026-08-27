@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note, NoteImage } from '$lib/types';
 import {
 	createSyncIdentity,
 	decryptSyncPayload,
 	encryptSyncPayload,
+	legacyAuthSecret,
 	type SyncIdentity
 } from '$lib/syncPairing';
 import { syncControlKeys } from '$lib/syncEngine';
@@ -153,6 +154,46 @@ describe('client sync state machine', () => {
 	beforeEach(() => {
 		localStorage.clear();
 		vi.restoreAllMocks();
+	});
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('migrates a legacy credential once and caches the issued session', async () => {
+		const account = createSyncIdentity();
+		const store = new SyncStore();
+		store.account = account;
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ migrationRequired: true }), {
+					status: 409,
+					headers: { 'content-type': 'application/json' }
+				})
+			)
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({ accessToken: 'session-token', expiresAt: Date.now() + 60_000 }),
+					{
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					}
+				)
+			);
+		vi.stubGlobal('fetch', fetchMock);
+		const privateStore = store as unknown as { accessToken(): Promise<string> };
+
+		await expect(privateStore.accessToken()).resolves.toBe('session-token');
+		await expect(privateStore.accessToken()).resolves.toBe('session-token');
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const migration = JSON.parse(String(fetchMock.mock.calls[1][1]?.body)) as {
+			authSecret: string;
+			authPublicKey: string;
+			signature: string;
+		};
+		expect(migration).toMatchObject({
+			authSecret: legacyAuthSecret(account.syncKey),
+			authPublicKey: account.authPublicKey
+		});
+		expect(migration.signature).toMatch(/^[A-Za-z0-9_-]+$/);
 	});
 
 	it('reports an outbox failure and allows the next durable marker write to retry', async () => {

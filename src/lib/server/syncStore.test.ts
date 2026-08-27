@@ -38,7 +38,16 @@ describe('SQLite sync store', () => {
 		const { store } = createStore();
 		expect(store.createAccount('account', 'first')).toBe(true);
 		expect(store.createAccount('account', 'second')).toBe(false);
-		expect(store.getCredentialHash('account')).toBe('first');
+		expect(store.getAuthCredential('account')).toBe('first');
+	});
+
+	it('replaces an authentication credential only when the legacy value still matches', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'legacy');
+		expect(store.replaceAuthCredential('account', 'wrong', 'public-key')).toBe(false);
+		expect(store.replaceAuthCredential('account', 'legacy', 'public-key')).toBe(true);
+		expect(store.replaceAuthCredential('account', 'legacy', 'attacker-key')).toBe(false);
+		expect(store.getAuthCredential('account')).toBe('public-key');
 	});
 
 	it('pages more than 480 envelopes without dropping the tail', () => {
@@ -634,9 +643,9 @@ describe('SQLite sync store', () => {
 		});
 
 		expect(store.deleteInactiveAccounts(now - 20 * 24 * 60 * 60 * 1000)).toBe(1);
-		expect(store.getCredentialHash('stale')).toBeNull();
-		expect(store.getCredentialHash('fresh')).toBe('credential');
-		expect(store.getCredentialHash('week-old')).toBe('credential');
+		expect(store.getAuthCredential('stale')).toBeNull();
+		expect(store.getAuthCredential('fresh')).toBe('credential');
+		expect(store.getAuthCredential('week-old')).toBe('credential');
 	});
 
 	it('treats pull-only sync as activity without changing stored ciphertext', () => {
@@ -645,7 +654,7 @@ describe('SQLite sync store', () => {
 		store.touchAccount('account', 1);
 		store.sync('account', 0, [], [], 10);
 		expect(store.deleteInactiveAccounts(Date.now() - 1_000)).toBe(0);
-		expect(store.getCredentialHash('account')).toBe('credential');
+		expect(store.getAuthCredential('account')).toBe('credential');
 		expect(store.aggregateUsage()).toEqual({
 			accounts: 1,
 			envelopeCount: 0,
@@ -712,7 +721,7 @@ describe('SQLite sync store', () => {
 		});
 		store.replaceReminderWakes('account', [wake('a', 1_000)]);
 		expect(store.deleteAccount('account')).toBe(true);
-		expect(store.getCredentialHash('account')).toBeNull();
+		expect(store.getAuthCredential('account')).toBeNull();
 		expect(store.countPushDevices()).toBe(0);
 		expect(store.listWakeTimes('account')).toEqual([]);
 		expect(store.aggregateUsage()).toEqual({
@@ -741,7 +750,7 @@ describe('SQLite sync store', () => {
 
 		const store = new SyncStore(directory);
 		stores.push(store);
-		expect(store.getCredentialHash('account')).toBe('credential');
+		expect(store.getAuthCredential('account')).toBe('credential');
 		expect(store.sync('account', 0, [], [], 10).envelopes).toEqual([
 			{ seq: 7, id: 'new', slot: slot('a'), ciphertext: 'new' }
 		]);
@@ -774,8 +783,8 @@ describe('SQLite sync store', () => {
 
 		const store = new SyncStore(directory);
 		stores.push(store);
-		expect(store.getCredentialHash('account')).toBe('credential');
-		expect(store.getCredentialHash('junk')).toBeNull();
+		expect(store.getAuthCredential('account')).toBe('credential');
+		expect(store.getAuthCredential('junk')).toBeNull();
 		expect(store.sync('account', 0, [], [], 10).envelopes).toEqual([
 			{ seq: 2, id: 'good', slot: slot('a'), ciphertext: 'aa' }
 		]);

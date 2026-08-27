@@ -2,6 +2,7 @@ import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { cpace } from '@cipherman/pake-js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
+import { ed25519 } from '@noble/curves/ed25519.js';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -10,7 +11,7 @@ const PAIRING_CODE_LENGTH = 16;
 export type SyncIdentity = {
 	syncKey: string;
 	accountId: string;
-	authSecret: string;
+	authPublicKey: string;
 	pairingCode: string;
 };
 export type PairingRequestKey = { ephemeralSecret: string; share: string };
@@ -62,18 +63,61 @@ export function createOneTimePairingCode(): string {
 export function identityFromSyncKey(syncKey: string): SyncIdentity {
 	const raw = base64UrlToBytes(syncKey);
 	if (raw.length !== 32) throw new Error('Invalid sync key');
+	const authPrivateKey = sha256(encoder.encode(`scraps-cache-account-auth:v2:${syncKey}`));
+	const authPublicKey = bytesToBase64Url(ed25519.getPublicKey(authPrivateKey));
 	const accountId = bytesToBase64Url(
 		sha256(encoder.encode(`scraps-cache-account-id:v1:${syncKey}`)).slice(0, 18)
-	);
-	const authSecret = bytesToBase64Url(
-		sha256(encoder.encode(`scraps-cache-account-auth:v1:${syncKey}`))
 	);
 	return {
 		syncKey,
 		accountId,
-		authSecret,
+		authPublicKey,
 		pairingCode: ''
 	};
+}
+
+export function legacyAuthSecret(syncKey: string): string {
+	identityFromSyncKey(syncKey);
+	return bytesToBase64Url(sha256(encoder.encode(`scraps-cache-account-auth:v1:${syncKey}`)));
+}
+
+function signSyncAuthMessage(syncKey: string, message: string): string {
+	const authPrivateKey = sha256(encoder.encode(`scraps-cache-account-auth:v2:${syncKey}`));
+	return bytesToBase64Url(ed25519.sign(encoder.encode(message), authPrivateKey));
+}
+
+export function signSyncRegistration(
+	syncKey: string,
+	accountId: string,
+	authPublicKey: string
+): string {
+	const identity = identityFromSyncKey(syncKey);
+	if (identity.accountId !== accountId || identity.authPublicKey !== authPublicKey)
+		throw new Error('Invalid sync account identity');
+	return signSyncAuthMessage(
+		syncKey,
+		`scraps-cache-auth-registration:v1:${accountId}:${authPublicKey}`
+	);
+}
+
+export function signSyncMigration(
+	syncKey: string,
+	accountId: string,
+	authPublicKey: string
+): string {
+	const identity = identityFromSyncKey(syncKey);
+	if (identity.accountId !== accountId || identity.authPublicKey !== authPublicKey)
+		throw new Error('Invalid sync account identity');
+	return signSyncAuthMessage(
+		syncKey,
+		`scraps-cache-auth-migration:v1:${accountId}:${authPublicKey}`
+	);
+}
+
+export function signSyncChallenge(syncKey: string, accountId: string, challenge: string): string {
+	const identity = identityFromSyncKey(syncKey);
+	if (identity.accountId !== accountId) throw new Error('Invalid sync account identity');
+	return signSyncAuthMessage(syncKey, `scraps-cache-auth-challenge:v1:${accountId}:${challenge}`);
 }
 export function createSyncIdentity(): SyncIdentity {
 	return identityFromSyncKey(bytesToBase64Url(secureBytes(32)));

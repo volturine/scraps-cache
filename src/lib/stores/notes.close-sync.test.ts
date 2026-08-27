@@ -9,7 +9,7 @@ describe('syncing when a note closes', () => {
 		syncStore.account = {
 			syncKey: 'test-key',
 			accountId: 'test-account',
-			authSecret: 'test-secret',
+			authPublicKey: 'test-secret',
 			pairingCode: 'test-code'
 		};
 	});

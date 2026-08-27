@@ -32,9 +32,14 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 
 ### Account authentication
 
-- Sync key → `accountId` and `authSecret` via SHA-256 with domain separation
-- Server stores a **credential hash**, not the raw secret in recoverable form
-  suitable for decrypting notes (notes were never decryptable server-side)
+- The sync key deterministically derives an Ed25519 signing key with domain separation
+- The existing sync-key-derived `accountId` remains stable across the authentication upgrade
+- The relay stores only the signing public key after new registration or one-time migration
+- Clients sign a one-time, 60-second challenge to obtain a bearer session
+- Sessions are stored as token hashes in server memory and expire after 30 minutes
+- The signing private key and reusable authentication material never leave the client
+- Existing accounts present their legacy secret once over HTTPS to atomically replace its scrypt hash
+  with a verified public key; the legacy credential cannot be used again
 
 ### Device pairing
 

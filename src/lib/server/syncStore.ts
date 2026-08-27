@@ -217,14 +217,24 @@ export class SyncStore {
 		this.database.close();
 	}
 
-	getCredentialHash(accountId: string): string | null {
+	getAuthCredential(accountId: string): string | null {
 		const row = this.database
 			.prepare('SELECT credential_hash FROM accounts WHERE account_id = ?')
 			.get(accountId) as Pick<AccountRow, 'credential_hash'> | undefined;
 		return row?.credential_hash ?? null;
 	}
 
-	createAccount(accountId: string, credentialHash: string, updatedAt = Date.now()): boolean {
+	replaceAuthCredential(accountId: string, expected: string, replacement: string): boolean {
+		return (
+			this.database
+				.prepare(
+					'UPDATE accounts SET credential_hash = ?, updated_at = ? WHERE account_id = ? AND credential_hash = ?'
+				)
+				.run(replacement, Date.now(), accountId, expected).changes === 1
+		);
+	}
+
+	createAccount(accountId: string, authPublicKey: string, updatedAt = Date.now()): boolean {
 		const result = this.database
 			.prepare(
 				`
@@ -234,7 +244,7 @@ export class SyncStore {
 			VALUES (?, ?, 0, 0, 0, ?, ?)
 		`
 			)
-			.run(accountId, credentialHash, updatedAt, updatedAt);
+			.run(accountId, authPublicKey, updatedAt, updatedAt);
 		return result.changes === 1;
 	}
 

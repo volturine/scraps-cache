@@ -82,7 +82,6 @@ function wire(
 		'sendSyncRequest'
 	).mockImplementation(async (_path, payload) => {
 		const body = JSON.parse(payload) as {
-			accountId: string;
 			cursor: number;
 			envelopes: unknown[];
 			deleteSlots: Array<{ id: string; slot: string }>;
@@ -93,7 +92,7 @@ function wire(
 			return {
 				success: true,
 				data: relay.sync(
-					body.accountId,
+					client.account!.accountId,
 					body.cursor,
 					body.envelopes as never,
 					body.deleteSlots,
@@ -214,7 +213,6 @@ describe('client sync against the sqlite relay', () => {
 			'sendSyncRequest'
 		).mockImplementation(async (_path, payload) => {
 			const body = JSON.parse(payload) as {
-				accountId: string;
 				cursor: number;
 				envelopes: Array<{ id: string; slot: string; ciphertext: string }>;
 				deleteSlots: Array<{ id: string; slot: string }>;
@@ -236,7 +234,7 @@ describe('client sync against the sqlite relay', () => {
 				expect(hasNew).toBe(true);
 			}
 			const data = relay.sync(
-				body.accountId,
+				identity.accountId,
 				body.cursor,
 				body.envelopes as never,
 				body.deleteSlots,

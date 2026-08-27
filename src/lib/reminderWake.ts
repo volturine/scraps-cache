@@ -109,13 +109,11 @@ export async function registerReminderDevice(): Promise<boolean> {
 	const subscription = await subscriptionBody();
 	if (!subscription) return false;
 	try {
-		const response = await fetch('/api/sync/push/wakes', {
+		const response = await syncStore.authorizedFetch('/api/sync/push/wakes', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
 				deviceId: reminderDeviceId(),
-				accountId: account.accountId,
-				authSecret: account.authSecret,
 				subscription
 			})
 		});
@@ -133,12 +131,10 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 	const revision = await syncStore.committedRevision();
 	if (revision === null) return null;
 	try {
-		const response = await fetch('/api/sync/push/wakes', {
+		const response = await syncStore.authorizedFetch('/api/sync/push/wakes', {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				accountId: account.accountId,
-				authSecret: account.authSecret,
 				revision,
 				wakes
 			})
@@ -158,16 +154,18 @@ export async function unregisterReminderDevice(account: SyncAccount | null): Pro
 	if (!account) return;
 	let response: Response;
 	try {
-		response = await fetch('/api/sync/push/wakes', {
-			method: 'DELETE',
-			headers: { 'Content-Type': 'application/json' },
-			keepalive: true,
-			body: JSON.stringify({
-				accountId: account.accountId,
-				authSecret: account.authSecret,
-				deviceId: reminderDeviceId()
-			})
-		});
+		response = await syncStore.authorizedFetch(
+			'/api/sync/push/wakes',
+			{
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				keepalive: true,
+				body: JSON.stringify({
+					deviceId: reminderDeviceId()
+				})
+			},
+			account
+		);
 	} catch (err) {
 		throw new Error('Could not reach the relay to remove this device from reminder push', {
 			cause: err
