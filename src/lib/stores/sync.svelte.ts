@@ -524,9 +524,7 @@ export class SyncStore {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
 			const UPLOAD_RECORD_BUDGET = 500;
 			const DOWNLOAD_LIMIT = 12;
-			const MAX_QUOTA_RETRIES = 25;
 			const MAX_RESET_RETRIES = 3;
-			let quotaRetries = 0;
 			let resetRetries = 0;
 			const quotaBlockedKeys = new Set<string>();
 			let quotaSingleUpload = false;
@@ -679,9 +677,6 @@ export class SyncStore {
 				);
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				if (!response.success && response.status === 507 && outgoing.length > 0) {
-					quotaRetries += 1;
-					if (quotaRetries > MAX_QUOTA_RETRIES)
-						throw new Error('Relay kept rejecting uploads for storage quota');
 					if (outgoing.length > 1) quotaSingleUpload = true;
 					else {
 						const blockedKey = outgoing[0].key;

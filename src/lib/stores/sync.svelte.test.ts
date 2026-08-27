@@ -901,9 +901,9 @@ describe('client sync state machine', () => {
 		expect(requests.length).toBeLessThanOrEqual(5);
 	});
 
-	it('caps quota retries when the relay keeps rejecting uploads with 507', async () => {
-		const notes = Array.from({ length: 40 }, (_, index) => note(`note-${index}`));
-		const { store, requests } = createHarness((_request, index) =>
+	it('makes finite progress while isolating records rejected with 507', async () => {
+		const notes = Array.from({ length: 4 }, (_, index) => note(`note-${index}`));
+		const { store, account, requests } = createHarness((_request, index) =>
 			index === 0
 				? { success: true, data: emptyData({ cursor: 1 }) }
 				: { success: false, status: 507, error: 'Sync account storage quota exceeded' }
@@ -913,6 +913,15 @@ describe('client sync state machine', () => {
 
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/quota/i);
-		expect(requests).toHaveLength(27);
+		const isolatedIds = requests
+			.filter((request) => request.envelopes.length === 1)
+			.map((request) => {
+				const payload = decryptSyncPayload(account.syncKey, request.envelopes[0].ciphertext) as {
+					value: { id: string };
+				};
+				return payload.value.id;
+			});
+		expect(isolatedIds).toEqual(notes.map(({ id }) => id));
+		expect(requests).toHaveLength(9);
 	});
 });
