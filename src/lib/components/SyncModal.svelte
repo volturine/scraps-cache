@@ -9,7 +9,7 @@
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose }: { onClose: () => void } = $props();
-	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'choice' | 'linked'>(
+	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'linked'>(
 		syncStore.isLoggedIn ? 'linked' : 'menu'
 	);
 	let code = $state('');
@@ -107,9 +107,21 @@
 				info = 'Key sent. This device can go offline.';
 				error = '';
 			} else {
-				mode = 'choice';
+				mode = 'linked';
 				error = '';
 				info = '';
+				syncing = true;
+				const ok = await notesStore.replaceWithCloudManual();
+				syncing = false;
+				if (!ok) {
+					error = friendlyError(
+						syncStore.lastError || notesStore.lastPersistError,
+						'Could not finish setup'
+					);
+					info = '';
+					syncStore.logout();
+					mode = 'link';
+				}
 			}
 			return;
 		}
@@ -139,36 +151,6 @@
 			void pollLink();
 		}, 1500);
 		void pollLink();
-	}
-
-	async function choose(merge: boolean) {
-		if (loading || syncing) return;
-		loading = true;
-		syncing = true;
-		error = '';
-		info = merge ? 'Merging notes…' : 'Downloading synced notes…';
-		try {
-			const success = merge
-				? await notesStore.mergeWithCloudManual()
-				: await notesStore.replaceWithCloudManual();
-			if (success) {
-				mode = 'linked';
-				info = merge ? 'Notes merged.' : 'Notes replaced from sync.';
-				error = '';
-				return;
-			}
-			if (!merge) syncStore.logout();
-			error = friendlyError(
-				syncStore.lastError || notesStore.lastPersistError,
-				'Could not finish setup'
-			);
-			info = '';
-			// Stay on choice so the user can retry without re-linking.
-			if (!merge && !syncStore.isLoggedIn) mode = 'link';
-		} finally {
-			loading = false;
-			syncing = false;
-		}
 	}
 
 	function formatBytes(bytes: number): string {
@@ -539,48 +521,6 @@
 					class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
 					>Cancel</button
 				>
-			</div>
-		{:else if mode === 'choice'}
-			<div class="space-y-3">
-				<h3 class="font-medium">Use this device’s existing notes?</h3>
-				{#if syncStore.progress}
-					{@const progress = syncStore.progress}
-					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-					<div
-						class="rounded-[var(--scrapscache-radius-md)] bg-[var(--scrapscache-interactive-hover)] p-3 text-sm"
-					>
-						<div class="mb-1 flex justify-between text-[var(--scrapscache-text-muted)]">
-							<span>{progress.phase === 'upload' ? 'Uploading' : 'Downloading'}</span><span
-								>{formatBytes(progress.loadedBytes)}{progress.totalBytes
-									? ` / ${formatBytes(progress.totalBytes)} (${percent}%)`
-									: ''}</span
-							>
-						</div>
-						<div class="scrapscache-progress-track h-2 overflow-hidden rounded-full">
-							<div
-								class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
-								style={`width: ${progress.totalBytes ? percent : 100}%`}
-							></div>
-						</div>
-					</div>
-				{:else if syncing || loading}
-					<p class="text-sm text-[var(--scrapscache-text-muted)]">{info || 'Working…'}</p>
-				{/if}
-				<button
-					type="button"
-					onclick={() => void choose(true)}
-					disabled={loading || syncing}
-					class="scrapscache-button scrapscache-button-primary w-full px-3 py-3 text-left text-sm font-medium"
-					>Keep and merge local notes</button
-				>
-				<button
-					type="button"
-					onclick={() => void choose(false)}
-					disabled={loading || syncing}
-					class="scrapscache-button scrapscache-button-destructive w-full border border-[var(--scrapscache-danger)] px-3 py-3 text-left text-sm font-medium"
-					>Discard local notes and download synced notes</button
-				>
-				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
 			</div>
 		{/if}
 	</div>
