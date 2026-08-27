@@ -471,6 +471,63 @@ describe('notes store sync apply', () => {
 		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['cloud-1']);
 	});
 
+	it('serializes replacement with normal sync before local notes can upload', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		const local = remoteNote('local-only');
+		notesStore.notes = [local];
+		let lockRequests = 0;
+		let tail: Promise<unknown> = Promise.resolve();
+		const locks = {
+			request: async (_name: string, callback: () => Promise<boolean>) => {
+				lockRequests += 1;
+				const run = tail.then(callback);
+				tail = run.catch(() => undefined);
+				return run;
+			}
+		};
+		Object.defineProperty(navigator, 'locks', { configurable: true, value: locks });
+		vi.spyOn(syncStore, 'clearAccountControlPlane').mockImplementation(async () => undefined);
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(
+					path: string,
+					payload: string
+				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockResolvedValue({
+			success: true,
+			data: {
+				cursor: 1,
+				envelopes: [],
+				conflicts: [],
+				hasMore: false,
+				reset: false,
+				writesAccepted: true,
+				usage: {
+					ciphertextBytes: 0,
+					envelopeCount: 0,
+					maxBytes: 1000,
+					maxEnvelopes: 50
+				}
+			}
+		});
+
+		try {
+			const replacement = notesStore.replaceWithCloudManual();
+			const normalSync = notesStore.syncWithCloudManual();
+			const [replaced, synced] = await Promise.all([replacement, normalSync]);
+			expect(replaced).toBe(true);
+			expect(synced).toBe(true);
+		} finally {
+			Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
+		}
+
+		expect(lockRequests).toBe(2);
+		expect(notesStore.notes).toEqual([]);
+	});
+
 	it('pairing merge keeps both notes when this device and the account share an id', async () => {
 		const account = createSyncIdentity();
 		syncStore.account = account;

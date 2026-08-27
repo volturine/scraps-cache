@@ -1125,6 +1125,11 @@ export class NotesStore {
 	// local records or tombstones first. The cloud response is obtained before local storage is cleared.
 	async replaceWithCloudManual(): Promise<boolean> {
 		if (!syncStore.isLoggedIn || !syncStore.account) return false;
+		return this.withSyncLock(() => this.replaceWithCloudLocked());
+	}
+
+	private async replaceWithCloudLocked(): Promise<boolean> {
+		if (!syncStore.isLoggedIn || !syncStore.account) return false;
 		try {
 			const leftover = await getSyncOutboxKeys().catch(() => []);
 			if (leftover.length) await clearSyncOutbox(leftover);
