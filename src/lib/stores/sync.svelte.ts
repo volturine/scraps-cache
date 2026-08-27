@@ -524,7 +524,7 @@ export class SyncStore {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
 			const UPLOAD_RECORD_BUDGET = 500;
 			const DOWNLOAD_LIMIT = 12;
-			const MAX_QUOTA_RETRIES = 1000;
+			const MAX_QUOTA_RETRIES = 25;
 			const MAX_RESET_RETRIES = 3;
 			let quotaRetries = 0;
 			let resetRetries = 0;

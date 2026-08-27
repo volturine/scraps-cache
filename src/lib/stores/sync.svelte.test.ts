@@ -902,7 +902,7 @@ describe('client sync state machine', () => {
 	});
 
 	it('caps quota retries when the relay keeps rejecting uploads with 507', async () => {
-		const notes = Array.from({ length: 1010 }, (_, index) => note(`note-${index}`));
+		const notes = Array.from({ length: 40 }, (_, index) => note(`note-${index}`));
 		const { store, requests } = createHarness((_request, index) =>
 			index === 0
 				? { success: true, data: emptyData({ cursor: 1 }) }
@@ -913,7 +913,6 @@ describe('client sync state machine', () => {
 
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/quota/i);
-		expect(requests.length).toBeGreaterThan(1000);
-		expect(requests.length).toBeLessThanOrEqual(1100);
-	}, 60000);
+		expect(requests).toHaveLength(27);
+	});
 });
