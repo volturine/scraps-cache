@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	dueReminderNotes,
 	nextReminderAt,
-	pruneFiredReminders,
 	relayReminderWakes,
 	RELAY_WAKE_RETAIN_MS,
 	reminderPreview,
@@ -92,11 +91,6 @@ describe('reminder wake identity and scheduling', () => {
 			)
 		).toBe(now + 10);
 		expect(nextReminderAt([note({ reminder: now })], now)).toBeNull();
-	});
-
-	it('keeps opaque fired ids, including ones for notes not downloaded yet', () => {
-		const id = reminderWakeId('missing', 100);
-		expect([...pruneFiredReminders([], ['legacy:100', id])]).toEqual([id]);
 	});
 });
 

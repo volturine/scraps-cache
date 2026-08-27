@@ -59,8 +59,7 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 - AAD binds format version, KDF params, chunk index, and count
 - Passphrase is confirmed on export and **never persisted** by the app
 
-Plaintext legacy backup versions may still import with a warning; new exports
-are encrypted only.
+Only current version 4 backup payloads are accepted; new exports are encrypted only.
 
 ### Images
 

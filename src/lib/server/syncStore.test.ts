@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -674,40 +674,6 @@ describe('SQLite sync store', () => {
 		});
 	});
 
-	it('backfills last_seen_at from updated_at on existing databases', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
-		directories.push(directory);
-		const legacy = new Database(join(directory, 'sync.sqlite'));
-		legacy.exec(`
-			CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-			CREATE TABLE accounts (
-				account_id TEXT PRIMARY KEY,
-				credential_hash TEXT NOT NULL,
-				next_seq INTEGER NOT NULL DEFAULT 0,
-				envelope_count INTEGER NOT NULL DEFAULT 0,
-				ciphertext_bytes INTEGER NOT NULL DEFAULT 0,
-				updated_at INTEGER NOT NULL
-			);
-			INSERT INTO accounts(account_id, credential_hash, next_seq, envelope_count, ciphertext_bytes, updated_at)
-			VALUES ('old-account', 'credential', 0, 0, 0, 42);
-		`);
-		legacy.close();
-
-		const store = new SyncStore(directory);
-		stores.push(store);
-		expect(
-			store.operatorUsage({
-				now: 40 * 24 * 60 * 60 * 1000,
-				staleBefore: 50
-			})
-		).toMatchObject({
-			accounts: 1,
-			staleAccounts: 1,
-			activeByWindowDays: { '1': 0, '7': 0, '30': 0 }
-		});
-		expect(store.deleteInactiveAccounts(50)).toBe(1);
-	});
-
 	it('deletes an account and all of its opaque envelopes', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
@@ -729,64 +695,5 @@ describe('SQLite sync store', () => {
 			envelopeCount: 0,
 			ciphertextBytes: 0
 		});
-	});
-
-	it('imports the legacy JSON once and leaves it available for recovery', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
-		directories.push(directory);
-		const legacyFile = join(directory, 'users.json');
-		const legacy = JSON.stringify({
-			account: {
-				credentialHash: 'credential',
-				nextSeq: 7,
-				updatedAt: 123,
-				envelopes: [
-					{ seq: 2, id: 'old', slot: slot('a'), ciphertext: 'old' },
-					{ seq: 7, id: 'new', slot: slot('a'), ciphertext: 'new' }
-				]
-			}
-		});
-		writeFileSync(legacyFile, legacy);
-
-		const store = new SyncStore(directory);
-		stores.push(store);
-		expect(store.getAuthCredential('account')).toBe('credential');
-		expect(store.sync('account', 0, [], [], 10).envelopes).toEqual([
-			{ seq: 7, id: 'new', slot: slot('a'), ciphertext: 'new' }
-		]);
-		expect(readFileSync(legacyFile, 'utf8')).toBe(legacy);
-	});
-
-	it('skips garbage legacy entries instead of failing startup', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
-		directories.push(directory);
-		writeFileSync(
-			join(directory, 'users.json'),
-			JSON.stringify({
-				junk: null,
-				'also-junk': 'a string',
-				'no-hash': { envelopes: [{ seq: 1, id: 'x', slot: slot('x'), ciphertext: 'x' }] },
-				account: {
-					credentialHash: 'credential',
-					nextSeq: 3,
-					updatedAt: 123,
-					envelopes: [
-						'garbage',
-						null,
-						{ seq: 0, id: 'zero', slot: slot('z'), ciphertext: 'zz' },
-						{ seq: 3, id: 'bad-cipher', slot: slot('b'), ciphertext: 'not+base64url' },
-						{ seq: 2, id: 'good', slot: slot('a'), ciphertext: 'aa' }
-					]
-				}
-			})
-		);
-
-		const store = new SyncStore(directory);
-		stores.push(store);
-		expect(store.getAuthCredential('account')).toBe('credential');
-		expect(store.getAuthCredential('junk')).toBeNull();
-		expect(store.sync('account', 0, [], [], 10).envelopes).toEqual([
-			{ seq: 2, id: 'good', slot: slot('a'), ciphertext: 'aa' }
-		]);
 	});
 });

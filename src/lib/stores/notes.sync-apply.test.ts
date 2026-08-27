@@ -315,7 +315,6 @@ describe('notes store sync apply', () => {
 		await deleteSyncState(keys.cursor);
 		await deleteSyncState(keys.baseline);
 		await deleteSyncState(keys.recordIds);
-		await deleteSyncState(keys.migration);
 
 		vi.spyOn(
 			syncStore as unknown as {

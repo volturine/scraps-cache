@@ -19,7 +19,6 @@ import {
 	changedRecords,
 	hydrateNoteImages,
 	isSyncRecordPayload,
-	legacySnapshotPayloads,
 	syncRecordKey,
 	type SyncRecord,
 	type SyncRecordPayload
@@ -793,9 +792,7 @@ export class SyncStore {
 							account.syncKey,
 							(envelope as { ciphertext: string }).ciphertext
 						);
-						decodedRecords = isSyncRecordPayload(remote)
-							? [remote]
-							: await legacySnapshotPayloads(remote);
+						decodedRecords = isSyncRecordPayload(remote) ? [remote] : null;
 					} catch {
 						decodedRecords = null;
 					}
@@ -927,8 +924,7 @@ export class SyncStore {
 						[
 							[keys.cursor, cursor],
 							[keys.baseline, baseline],
-							[keys.recordIds, recordIds],
-							[keys.migration, true]
+							[keys.recordIds, recordIds]
 						],
 						[
 							{ keys: acknowledgedOutbox, through: outboxSnapshotAt },
@@ -1030,8 +1026,7 @@ export class SyncStore {
 		await Promise.all([
 			deleteSyncState(keys.cursor),
 			deleteSyncState(keys.baseline),
-			deleteSyncState(keys.recordIds),
-			deleteSyncState(keys.migration)
+			deleteSyncState(keys.recordIds)
 		]);
 	}
 

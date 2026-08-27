@@ -171,15 +171,12 @@ variables explicitly.
 Inside Compose, `HOST`, `PORT`, and `SCRAPSCACHE_SYNC_DATA_DIR` are fixed to
 `0.0.0.0`, `3000`, and `/data`. Direct `docker run` may override them.
 
-An existing `users.json` under the data directory is imported once into SQLite
-and left in place as a recovery copy.
-
 ## Health, metrics, and administration
 
 | Endpoint                    | Auth                                             | Purpose                                             |
 | --------------------------- | ------------------------------------------------ | --------------------------------------------------- |
 | `GET /health/live`          | none                                             | Process liveness                                    |
-| `GET /health/ready`         | none                                             | SQLite + migrations + volume readiness              |
+| `GET /health/ready`         | none                                             | SQLite and volume readiness                         |
 | `GET /metrics`              | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                            |
 | `GET /api/admin/status`     | same bearer token                                | Anonymous JSON: storage, users, activity, retention |
 | `POST /api/admin/retention` | same bearer token                                | Run the inactive-account sweeper now                |

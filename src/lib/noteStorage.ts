@@ -71,7 +71,7 @@ function writeJson<T>(key: string, value: T[]): boolean {
 
 export function readNotesMirror(): Note[] {
 	return readJson<MirroredNote>(NOTES_MIRROR_KEY).map((note) => {
-		const { hasImages: _legacy, images, ...rest } = note as MirroredNote & { hasImages?: boolean };
+		const { images, ...rest } = note;
 		return {
 			...rest,
 			images: (images ?? []).map((image) => ({

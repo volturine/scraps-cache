@@ -40,10 +40,13 @@ function normalizeBoard(value: unknown): KanbanBoard | null {
 	let hasBacklog = false;
 	const columns = board.columns.flatMap((column): KanbanColumn[] => {
 		if (!column || typeof column !== 'object') return [];
-		// Ignore legacy column aliases: a column is now only its tag.
 		const candidate = column as { id?: unknown; labelId?: unknown };
-		if (typeof candidate.id !== 'string') return [];
-		const labelId = typeof candidate.labelId === 'string' ? candidate.labelId : null;
+		if (
+			typeof candidate.id !== 'string' ||
+			(candidate.labelId !== null && typeof candidate.labelId !== 'string')
+		)
+			return [];
+		const labelId = candidate.labelId;
 		if (labelId === null) {
 			if (hasBacklog) return [];
 			hasBacklog = true;

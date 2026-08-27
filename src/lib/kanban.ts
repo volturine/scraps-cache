@@ -77,9 +77,8 @@ export function noteMatchesBacklog(board: KanbanBoard, note: Note): boolean {
 	const columnLabels = boardColumnLabelIds(board);
 	if (note.labels.some((labelId) => columnLabels.has(labelId))) return false;
 
-	const filter = board.backlogFilter ?? defaultBacklogFilter();
+	const filter = board.backlogFilter;
 	if (filter.mode !== 'custom') {
-		// Legacy / default: everything that is not already in a tag column.
 		return true;
 	}
 

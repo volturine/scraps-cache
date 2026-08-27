@@ -604,9 +604,7 @@ export class NotesStore {
 				dark: uiStore.dark,
 				layout: uiStore.layout,
 				view: uiStore.view
-			},
-			// Kept empty for v1-v3 import compatibility; new backups never retain remote metadata.
-			linkPreviews: []
+			}
 		};
 	}
 

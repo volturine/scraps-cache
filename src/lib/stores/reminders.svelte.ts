@@ -3,7 +3,6 @@ import { claimFiredReminderKey, getFiredReminderKeys } from '$lib/db/idb';
 import {
 	nextReminderAt,
 	notificationPermission,
-	pruneFiredReminders,
 	relayReminderWakes,
 	reminderPreview,
 	reminderWakeId,
@@ -96,7 +95,6 @@ export class ReminderStore {
 
 	sync(notes: ReminderNote[]): void {
 		this.notes = notes;
-		this.fired = pruneFiredReminders(notes, this.fired);
 		const current = new Set(relayReminderWakes(notes, Date.now()).map((wake) => wake.id));
 		this.seen = new Set([...this.seen].filter((id) => current.has(id)));
 		this.armed = new Set([...this.armed].filter((id) => current.has(id)));

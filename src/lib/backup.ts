@@ -38,7 +38,6 @@ export type ScrapsCacheBackup = {
 		layout: Layout;
 		view: View;
 	};
-	linkPreviews: LinkPreview[];
 };
 
 export type BackupImportProgress = {
@@ -158,11 +157,27 @@ function normalizeBoard(value: unknown): KanbanBoard | null {
 	};
 }
 
-/** Parse older or partially malformed backups into the current safe in-memory shape. */
+/** Validate and normalize the current backup format into a safe in-memory shape. */
 export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 	if (!data || typeof data !== 'object') return null;
 	const raw = data as Record<string, unknown>;
-	if (!Array.isArray(raw.notes) || !Array.isArray(raw.labels)) return null;
+	if (
+		raw.version !== 4 ||
+		typeof raw.exportedAt !== 'number' ||
+		!Array.isArray(raw.notes) ||
+		!Array.isArray(raw.labels) ||
+		!Array.isArray(raw.boards) ||
+		typeof raw.activeBoardId !== 'string' ||
+		!raw.tombstones ||
+		typeof raw.tombstones !== 'object' ||
+		!raw.labelTombstones ||
+		typeof raw.labelTombstones !== 'object' ||
+		!raw.boardTombstones ||
+		typeof raw.boardTombstones !== 'object' ||
+		!raw.ui ||
+		typeof raw.ui !== 'object'
+	)
+		return null;
 	const notes = (raw.notes as unknown[]).flatMap((item): Note[] => {
 		if (!item || typeof item !== 'object') return [];
 		const note = item as Partial<Note>;
@@ -220,13 +235,11 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 		exportedAt: Number(raw.exportedAt) || Date.now(),
 		notes,
 		labels,
-		boards: Array.isArray(raw.boards)
-			? raw.boards.flatMap((board) => {
-					const normalized = normalizeBoard(board);
-					return normalized ? [normalized] : [];
-				})
-			: [],
-		activeBoardId: typeof raw.activeBoardId === 'string' ? raw.activeBoardId : '',
+		boards: raw.boards.flatMap((board) => {
+			const normalized = normalizeBoard(board);
+			return normalized ? [normalized] : [];
+		}),
+		activeBoardId: raw.activeBoardId,
 		tombstones: asTombstoneMap(raw.tombstones),
 		labelTombstones: asTombstoneMap(raw.labelTombstones),
 		boardTombstones: asTombstoneMap(raw.boardTombstones),
@@ -238,12 +251,6 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 					: null,
 			layout: uiRaw.layout === 'list' ? 'list' : 'grid',
 			view: VIEWS.has(uiRaw.view as View) ? (uiRaw.view as View) : 'notes'
-		},
-		linkPreviews: Array.isArray(raw.linkPreviews)
-			? raw.linkPreviews.flatMap((preview) => {
-					const normalized = normalizeLinkPreview(preview);
-					return normalized ? [normalized] : [];
-				})
-			: []
+		}
 	};
 }

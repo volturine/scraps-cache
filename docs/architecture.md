@@ -89,7 +89,7 @@ authentication. The account ID and encrypted relay data do not move.
 
 | Area            | Location                                                 | Responsibility                                     |
 | --------------- | -------------------------------------------------------- | -------------------------------------------------- |
-| Sync store      | `src/lib/server/syncStore.ts`                            | SQLite accounts, envelopes, quotas, migrations     |
+| Sync store      | `src/lib/server/syncStore.ts`                            | SQLite accounts, envelopes, and quotas             |
 | Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes    |
 | Register        | `src/routes/api/sync/register/`                          | Create account credentials                         |
 | Pairing         | `src/routes/api/sync/pair/*`                             | Rendezvous for PAKE shares (no plaintext key)      |

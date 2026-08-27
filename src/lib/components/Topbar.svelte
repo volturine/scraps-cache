@@ -110,15 +110,11 @@
 		reader.onload = async () => {
 			try {
 				const data = JSON.parse(String(reader.result));
-				if (isEncryptedScrapsCacheBackup(data)) {
-					pendingEncryptedBackup = data;
-					backupDialogMode = 'import';
-					settingsOpen = false;
-				} else if (window.confirm('This is an older unencrypted backup. Restore it anyway?')) {
-					pendingImportData = data;
-					choosingImportMode = true;
-					settingsOpen = false;
-				}
+				if (!isEncryptedScrapsCacheBackup(data))
+					throw new Error('This is not a current encrypted Scraps Cache backup.');
+				pendingEncryptedBackup = data;
+				backupDialogMode = 'import';
+				settingsOpen = false;
 			} catch (err) {
 				backupImportError = err instanceof Error ? err.message : 'Could not read that backup file.';
 			} finally {
