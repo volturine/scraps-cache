@@ -41,6 +41,12 @@ describe('SQLite sync store', () => {
 		expect(store.getCredentialHash('account')).toBe('first');
 	});
 
+	it('defaults each account to one GiB of ciphertext storage', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		expect(store.sync('account', 0, [], [], 1).usage.maxBytes).toBe(1024 ** 3);
+	});
+
 	it('pages more than 480 envelopes without dropping the tail', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');

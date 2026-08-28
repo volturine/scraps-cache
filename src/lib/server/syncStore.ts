@@ -57,7 +57,7 @@ type LegacyUser = {
 	updatedAt?: unknown;
 };
 
-const DEFAULT_MAX_ACCOUNT_BYTES = 1_000_000_000;
+const DEFAULT_MAX_ACCOUNT_BYTES = 1024 ** 3;
 const DEFAULT_MAX_ACCOUNT_ENVELOPES = 50_000;
 export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
