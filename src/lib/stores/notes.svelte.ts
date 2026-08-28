@@ -284,16 +284,29 @@ export class NotesStore {
 
 	/** Only hydrate a few notes per sync so photo-heavy accounts transfer in fractions. */
 	private async hydrateAttachmentsForSync(): Promise<void> {
+		this.pruneAttachmentHydrationFailures();
 		const dirtyKeys = new Set(await getSyncOutboxKeys().catch(() => []));
 		const ids = this.notes
 			.filter(
 				(note) =>
-					(dirtyKeys.has(`note:${note.id}`) ||
+					(this.attachmentHydrationFailures.has(note.id) ||
+						dirtyKeys.has(`note:${note.id}`) ||
 						(note.images ?? []).some((image) => dirtyKeys.has(`attachment:${image.id}`))) &&
 					(note.images ?? []).some((image) => !image.dataUrl)
 			)
 			.map((note) => note.id);
 		for (const noteId of ids) await this.ensureNoteAttachments(noteId);
+	}
+
+	private pruneAttachmentHydrationFailures(): void {
+		const retryable = new Set(
+			this.notes
+				.filter((note) => (note.images ?? []).some((image) => !image.dataUrl))
+				.map((note) => note.id)
+		);
+		for (const noteId of this.attachmentHydrationFailures) {
+			if (!retryable.has(noteId)) this.attachmentHydrationFailures.delete(noteId);
+		}
 	}
 
 	/** Queue attachment bytes only when a note card enters the viewport. */
@@ -1263,6 +1276,7 @@ export class NotesStore {
 				await this.hydrateAllAttachments();
 				return this.doSyncLocked(indicate);
 			}
+			this.pruneAttachmentHydrationFailures();
 			// A photo that failed to load has no payload to upload: the sync is
 			// only partial. Keep the warning visible until the retry succeeds so
 			// "synced" never hides an unsynced photo.

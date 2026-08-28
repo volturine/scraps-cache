@@ -121,6 +121,34 @@ describe('syncing when a note closes', () => {
 		expect(notesStore.lastPersistError).toMatch(/missing from device storage/i);
 	});
 
+	it('prunes attachment hydration failures after the damaged note is removed', async () => {
+		const failures = (notesStore as unknown as { attachmentHydrationFailures: Set<string> })
+			.attachmentHydrationFailures;
+		failures.add('deleted-photo-note');
+		notesStore.notes = [];
+
+		await (
+			notesStore as unknown as { hydrateAttachmentsForSync(): Promise<void> }
+		).hydrateAttachmentsForSync();
+
+		expect(failures.size).toBe(0);
+	});
+
+	it('retries a failed attachment hydration without requiring an outbox marker', async () => {
+		const note = noteWithPhoto('');
+		notesStore.notes = [note];
+		(
+			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
+		).attachmentHydrationFailures.add(note.id);
+		const hydrate = vi.spyOn(notesStore, 'ensureNoteAttachments').mockResolvedValue();
+
+		await (
+			notesStore as unknown as { hydrateAttachmentsForSync(): Promise<void> }
+		).hydrateAttachmentsForSync();
+
+		expect(hydrate).toHaveBeenCalledWith(note.id);
+	});
+
 	it('does not loop automatic sync when an outbox record remains queued', async () => {
 		notesStore.notes = [noteWithPhoto('')];
 		(

@@ -6,7 +6,7 @@ const DEVICE_KEY = 'scrapscache-push-device';
 let cachedVapidKey: string | null = null;
 let registeredDevice: { accountId: string; endpoint: string } | null = null;
 let registrationFlight: { key: string; promise: Promise<boolean> } | null = null;
-let publishedWakes: { accountId: string; signature: string } | null = null;
+let publishedWakes: { accountId: string; revision: number; signature: string } | null = null;
 let publishFlight: { key: string; promise: Promise<ReminderWake[] | null> } | null = null;
 
 export function reminderPushSupported(): boolean {
@@ -150,13 +150,17 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 	if (!account) return null;
 	const wakes = relayReminderWakes(notes, Date.now());
 	const signature = JSON.stringify(wakes);
-	if (publishedWakes?.accountId === account.accountId && publishedWakes.signature === signature)
+	const revision = await syncStore.committedRevision();
+	if (revision === null) return null;
+	if (
+		publishedWakes?.accountId === account.accountId &&
+		publishedWakes.revision === revision &&
+		publishedWakes.signature === signature
+	)
 		return wakes;
-	const key = `${account.accountId}\0${signature}`;
+	const key = `${account.accountId}\0${revision}\0${signature}`;
 	if (publishFlight?.key === key) return publishFlight.promise;
 	const promise = (async () => {
-		const revision = await syncStore.committedRevision();
-		if (revision === null) return null;
 		try {
 			const response = await fetch('/api/sync/push/wakes', {
 				method: 'PUT',
@@ -169,7 +173,7 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 				})
 			});
 			if (!response.ok) return null;
-			publishedWakes = { accountId: account.accountId, signature };
+			publishedWakes = { accountId: account.accountId, revision, signature };
 			return wakes;
 		} catch {
 			return null;

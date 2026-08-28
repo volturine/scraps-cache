@@ -17,7 +17,10 @@ describe('reminder wake requests', () => {
 	it('does not publish an unchanged wake snapshot twice', async () => {
 		syncStore.account = createSyncIdentity();
 		vi.spyOn(syncStore, 'committedRevision').mockResolvedValue(3);
-		const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true })));
+		const fetchMock = vi.fn(
+			async (_input: string | URL | Request, _init?: RequestInit) =>
+				new Response(JSON.stringify({ ok: true }))
+		);
 		vi.stubGlobal('fetch', fetchMock);
 		const notes = [
 			{
@@ -37,6 +40,36 @@ describe('reminder wake requests', () => {
 			'/api/sync/push/wakes',
 			expect.objectContaining({ method: 'PUT' })
 		);
+	});
+
+	it('publishes an unchanged wake snapshot again after the sync revision advances', async () => {
+		syncStore.account = createSyncIdentity();
+		let revision = 3;
+		vi.spyOn(syncStore, 'committedRevision').mockImplementation(async () => revision);
+		const fetchMock = vi.fn(
+			async (_input: string | URL | Request, _init?: RequestInit) =>
+				new Response(JSON.stringify({ ok: true }))
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		const notes = [
+			{
+				id: 'revision-reminder',
+				title: 'Later',
+				body: '',
+				reminder: Date.now() + 60_000,
+				archived: false,
+				trashed: false
+			}
+		];
+
+		expect(await publishReminderWakes(notes)).toHaveLength(1);
+		revision = 4;
+		expect(await publishReminderWakes(notes)).toHaveLength(1);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const requests = fetchMock.mock.calls as unknown as [string | URL | Request, RequestInit?][];
+		expect(JSON.parse(String(requests[1]?.[1]?.body)) as { revision: number }).toMatchObject({
+			revision: 4
+		});
 	});
 
 	it('does not register the same push device after every sync', async () => {
