@@ -23,6 +23,16 @@
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let deleteConfirm = $state(false);
+	let quotaRatio = $derived.by(() => {
+		if (!syncStore.usage) return 0;
+		return syncStore.usage.ciphertextBytes / syncStore.usage.maxBytes;
+	});
+	let quotaError = $derived(
+		syncStore.lastError?.toLowerCase().includes('quota') ? syncStore.lastError : ''
+	);
+	let quotaStatus = $derived(
+		quotaError || quotaRatio >= 1 ? 'danger' : quotaRatio >= 0.8 ? 'warning' : 'normal'
+	);
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -318,7 +328,11 @@
 					</div>
 				{:else if syncing}<p class="text-sm text-[var(--scrapscache-text-muted)]">Syncing…</p>{/if}
 				{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]">{info}</p>{/if}
-				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
+				{#if error}
+					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{error}</p>
+				{:else if quotaError}
+					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{quotaError}</p>
+				{/if}
 				<button
 					type="button"
 					onclick={() => void syncNow()}
@@ -334,8 +348,24 @@
 					>Connect another device</button
 				>
 				{#if syncStore.usage}
-					<div class="text-center text-xs text-[var(--scrapscache-text-muted)]">
-						{formatBytes(syncStore.usage.ciphertextBytes)} stored for this account
+					<div
+						aria-label="Sync storage usage"
+						class={[
+							'rounded-[var(--scrapscache-radius-md)] p-3 text-xs',
+							quotaStatus === 'danger'
+								? 'scrapscache-status-danger'
+								: quotaStatus === 'warning'
+									? 'scrapscache-status-warning'
+									: 'border border-[var(--scrapscache-border)] text-[var(--scrapscache-text-muted)]'
+						]}
+					>
+						<div class="flex items-center justify-between gap-3">
+							<span class="font-medium">Sync storage</span>
+							<span>
+								{formatBytes(syncStore.usage.ciphertextBytes)} of
+								{formatBytes(syncStore.usage.maxBytes)}
+							</span>
+						</div>
 					</div>
 				{/if}
 				<button

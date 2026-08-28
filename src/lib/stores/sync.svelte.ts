@@ -90,7 +90,6 @@ export interface SyncUsage {
 	ciphertextBytes: number;
 	envelopeCount: number;
 	maxBytes: number;
-	maxEnvelopes: number;
 }
 
 type SyncResult = {
@@ -693,12 +692,9 @@ export class SyncStore {
 				if (remoteUsage && typeof remoteUsage === 'object') {
 					const candidate = remoteUsage as Partial<SyncUsage>;
 					if (
-						[
-							candidate.ciphertextBytes,
-							candidate.envelopeCount,
-							candidate.maxBytes,
-							candidate.maxEnvelopes
-						].every((value) => typeof value === 'number' && Number.isFinite(value))
+						[candidate.ciphertextBytes, candidate.envelopeCount, candidate.maxBytes].every(
+							(value) => typeof value === 'number' && Number.isFinite(value)
+						)
 					) {
 						this.usage = candidate as SyncUsage;
 					}
@@ -961,7 +957,8 @@ export class SyncStore {
 			if (poisonCount > 0) {
 				this.lastError = `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`;
 			} else if (quotaBlockedKeys.size > 0) {
-				this.lastError = 'Some records exceed the account storage quota';
+				this.lastError = 'Sync incomplete: account storage quota prevented some uploads';
+				return { success: false, error: this.lastError };
 			} else {
 				this.lastError = null;
 			}

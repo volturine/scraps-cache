@@ -67,7 +67,7 @@ describe('sync delta route', () => {
 			hasMore: false,
 			reset: false,
 			writesAccepted: true,
-			usage: { envelopeCount: 2, ciphertextBytes: 12, maxBytes: 100, maxEnvelopes: 10 }
+			usage: { envelopeCount: 2, ciphertextBytes: 12, maxBytes: 100 }
 		});
 	});
 

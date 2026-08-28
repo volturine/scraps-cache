@@ -23,7 +23,6 @@ export type SyncResult = {
 
 export type SyncStoreOptions = {
 	maxAccountBytes?: number;
-	maxAccountEnvelopes?: number;
 };
 
 type AccountRow = {
@@ -41,7 +40,6 @@ type UsageRow = {
 
 export type SyncQuotas = {
 	maxAccountBytes: number;
-	maxAccountEnvelopes: number;
 };
 
 export type OperatorUsage = UsageRow & {
@@ -51,7 +49,6 @@ export type OperatorUsage = UsageRow & {
 };
 
 const DEFAULT_MAX_ACCOUNT_BYTES = 1_000_000_000;
-const DEFAULT_MAX_ACCOUNT_ENVELOPES = 50_000;
 export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
@@ -98,14 +95,12 @@ export class SyncStore {
 	private readonly database: Database.Database;
 	private readonly dataDirectory: string;
 	private readonly maxAccountBytes: number;
-	private readonly maxAccountEnvelopes: number;
 
 	constructor(dataDirectory: string, options: SyncStoreOptions = {}) {
 		mkdirSync(dataDirectory, { recursive: true });
 		this.dataDirectory = dataDirectory;
 		this.database = new Database(join(dataDirectory, 'sync.sqlite'));
 		this.maxAccountBytes = options.maxAccountBytes ?? DEFAULT_MAX_ACCOUNT_BYTES;
-		this.maxAccountEnvelopes = options.maxAccountEnvelopes ?? DEFAULT_MAX_ACCOUNT_ENVELOPES;
 
 		this.database.pragma('journal_mode = WAL');
 		this.database.pragma('foreign_keys = ON');
@@ -222,7 +217,7 @@ export class SyncStore {
 		uploads: OpaqueUpload[],
 		deletions: OpaqueDelete[],
 		downloadLimit = 12
-	): SyncResult & { usage: UsageRow & { maxBytes: number; maxEnvelopes: number } } {
+	): SyncResult & { usage: UsageRow & { maxBytes: number } } {
 		return this.database.transaction(() => {
 			const account = this.database
 				.prepare(
@@ -254,8 +249,7 @@ export class SyncStore {
 					usage: {
 						envelopeCount,
 						ciphertextBytes,
-						maxBytes: this.maxAccountBytes,
-						maxEnvelopes: this.maxAccountEnvelopes
+						maxBytes: this.maxAccountBytes
 					}
 				};
 			}
@@ -285,8 +279,7 @@ export class SyncStore {
 					usage: {
 						envelopeCount,
 						ciphertextBytes,
-						maxBytes: this.maxAccountBytes,
-						maxEnvelopes: this.maxAccountEnvelopes
+						maxBytes: this.maxAccountBytes
 					}
 				};
 			}
@@ -314,8 +307,7 @@ export class SyncStore {
 					usage: {
 						envelopeCount,
 						ciphertextBytes,
-						maxBytes: this.maxAccountBytes,
-						maxEnvelopes: this.maxAccountEnvelopes
+						maxBytes: this.maxAccountBytes
 					}
 				};
 			}
@@ -365,7 +357,7 @@ export class SyncStore {
 				const projectedCount = envelopeCount + (prior ? 0 : 1);
 				const projectedBytes =
 					ciphertextBytes + upload.ciphertext.length - (prior?.ciphertext.length ?? 0);
-				if (projectedCount > this.maxAccountEnvelopes || projectedBytes > this.maxAccountBytes) {
+				if (projectedBytes > this.maxAccountBytes) {
 					throw new SyncQuotaExceededError();
 				}
 				sequence += 1;
@@ -400,8 +392,7 @@ export class SyncStore {
 				usage: {
 					envelopeCount,
 					ciphertextBytes,
-					maxBytes: this.maxAccountBytes,
-					maxEnvelopes: this.maxAccountEnvelopes
+					maxBytes: this.maxAccountBytes
 				}
 			};
 		})();
@@ -422,8 +413,7 @@ export class SyncStore {
 
 	getQuotas(): SyncQuotas {
 		return {
-			maxAccountBytes: this.maxAccountBytes,
-			maxAccountEnvelopes: this.maxAccountEnvelopes
+			maxAccountBytes: this.maxAccountBytes
 		};
 	}
 
@@ -754,10 +744,6 @@ export function getSyncStore(): SyncStore {
 		maxAccountBytes: positiveInteger(
 			env.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES,
 			DEFAULT_MAX_ACCOUNT_BYTES
-		),
-		maxAccountEnvelopes: positiveInteger(
-			env.SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES,
-			DEFAULT_MAX_ACCOUNT_ENVELOPES
 		)
 	});
 	return singleton;

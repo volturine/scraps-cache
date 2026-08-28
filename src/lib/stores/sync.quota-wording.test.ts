@@ -95,7 +95,8 @@ describe('quota isolation independent of server error wording', () => {
 
 		const result = await store.sync([local], [], {}, {}, [], {}, false, false, async (s) => s);
 
-		expect(result.success, result.error).toBe(true);
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/quota/);
 		expect(store.lastError).toMatch(/limit|quota/);
 		expect(await idb.getSyncOutboxKeys()).toEqual(['attachment:huge']);
 	});

@@ -29,7 +29,6 @@ type RelayData = {
 		ciphertextBytes: number;
 		envelopeCount: number;
 		maxBytes: number;
-		maxEnvelopes: number;
 	};
 };
 
@@ -448,7 +447,7 @@ describe('client sync state machine', () => {
 					success: true,
 					data: emptyData({
 						cursor: request.cursor,
-						usage: { ciphertextBytes: 10, envelopeCount: 1, maxBytes: 1000, maxEnvelopes: 50 }
+						usage: { ciphertextBytes: 10, envelopeCount: 1, maxBytes: 1000 }
 					})
 				};
 			}
@@ -457,7 +456,7 @@ describe('client sync state machine', () => {
 				data: emptyData({
 					cursor: 1,
 					envelopes: [envelope(account, 'cloud-id', 1, { kind: 'note', value: pulled })],
-					usage: { ciphertextBytes: 10, envelopeCount: 1, maxBytes: 1000, maxEnvelopes: 50 }
+					usage: { ciphertextBytes: 10, envelopeCount: 1, maxBytes: 1000 }
 				})
 			};
 		});
@@ -829,7 +828,8 @@ describe('client sync state machine', () => {
 			})
 		);
 
-		expect(result.success, result.error).toBe(true);
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/quota/);
 		expect(uploaded).toContain('note');
 		expect(uploaded).toContain('attachment:ok');
 		expect(store.lastError).toMatch(/quota/);
@@ -853,7 +853,8 @@ describe('client sync state machine', () => {
 		});
 
 		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
-		expect(result.success, result.error).toBe(true);
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/quota/);
 
 		const hugeSingle = requests.findIndex((request) => {
 			if (request.envelopes.length !== 1) return false;
@@ -901,10 +902,11 @@ describe('client sync state machine', () => {
 		expect(requests.length).toBeLessThanOrEqual(5);
 	});
 
-	it('makes finite progress while isolating records rejected with 507', async () => {
+	it('reports incomplete sync after isolating records rejected with 507', async () => {
 		const notes = Array.from({ length: 4 }, (_, index) => note(`note-${index}`));
-		const { store, account, requests } = createHarness((_request, index) =>
-			index === 0
+		let rejectWrites = true;
+		const { store, account, requests } = createHarness((request) =>
+			!rejectWrites || request.envelopes.length === 0
 				? { success: true, data: emptyData({ cursor: 1 }) }
 				: { success: false, status: 507, error: 'Sync account storage quota exceeded' }
 		);
@@ -923,5 +925,15 @@ describe('client sync state machine', () => {
 			});
 		expect(isolatedIds).toEqual(notes.map(({ id }) => id));
 		expect(requests).toHaveLength(9);
+		expect(requests.at(-1)?.envelopes).toEqual([]);
+		expect(store.lastSync).toBe(0);
+		expect(await idb.getSyncOutboxKeys()).toEqual(notes.map(({ id }) => `note:${id}`));
+
+		rejectWrites = false;
+		const retry = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(retry.success, retry.error).toBe(true);
+		expect(await idb.getSyncOutboxKeys()).toEqual([]);
+		expect(store.lastSync).toBeGreaterThan(0);
 	});
 });

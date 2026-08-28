@@ -133,7 +133,6 @@ Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
 | ------------------------------------------ | -----------------------------: | ------------------------------------------------------------------------------- |
 | `SCRAPSCACHE_SYNC_DATA_DIR`                |                    `sync-data` | Persistent sync-data directory (`/data` in Compose)                             |
 | `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                   `1000000000` | Ciphertext quota per account                                                    |
-| `SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES`   |                        `50000` | Record quota per account                                                        |
 | `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight                                                     |
 | `SCRAPSCACHE_ADMIN_TOKEN`                  |                              — | Protects metrics, JSON status, and retention (required in prod Compose)         |
 | `SCRAPSCACHE_RETENTION_INACTIVE_DAYS`      |                            `0` | Delete accounts with no authenticated activity for this many days; `0` disables |

@@ -111,8 +111,9 @@ Each synced logical record is uploaded as:
 - **ciphertext** — authenticated encrypted blob
 
 The relay can replace or delete by slot without learning whether the payload is
-a note, image, label, or board. Usage counters track encrypted byte and envelope
-counts per account for quotas (default 1 GB / 50k envelopes).
+a note, image, label, or board. Usage counters track envelope counts and
+ciphertext bytes per account, with storage quotas based only on ciphertext bytes
+(default 1 GB).
 
 ## Deployment shapes
 

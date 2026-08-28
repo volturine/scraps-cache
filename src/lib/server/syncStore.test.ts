@@ -160,6 +160,27 @@ describe('SQLite sync store', () => {
 		});
 	});
 
+	it('does not impose a per-account record count quota', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		let result = store.sync('account', 0, [], [], 12);
+		let cursor = result.cursor;
+		for (let offset = 0; offset < 50_001; offset += 500) {
+			const uploads = Array.from({ length: Math.min(500, 50_001 - offset) }, (_, index) => {
+				const record = offset + index;
+				return {
+					id: `id-${record}`,
+					slot: record.toString(16).padStart(64, '0'),
+					ciphertext: 'a'
+				};
+			});
+			result = store.sync('account', cursor, uploads, [], 12);
+			cursor = result.cursor;
+		}
+
+		expect(result.usage).toMatchObject({ envelopeCount: 50_001, ciphertextBytes: 50_001 });
+	});
+
 	it('rolls back deletions together with an over-quota replacement batch', () => {
 		const { store } = createStore({ maxAccountBytes: 5 });
 		store.createAccount('account', 'credential');

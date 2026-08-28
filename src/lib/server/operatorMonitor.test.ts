@@ -22,7 +22,7 @@ describe('operator snapshot', () => {
 				activeByWindowDays: { '1': 1, '7': 2, '30': 3 },
 				staleAccounts: 1
 			},
-			{ maxAccountBytes: 1_000_000_000, maxAccountEnvelopes: 50_000 },
+			{ maxAccountBytes: 1_000_000_000 },
 			emptyActivity,
 			{
 				enabled: true,
@@ -63,7 +63,7 @@ describe('operator snapshot', () => {
 				activeByWindowDays: { '1': 1 },
 				staleAccounts: 0
 			},
-			{ maxAccountBytes: 1, maxAccountEnvelopes: 1 },
+			{ maxAccountBytes: 1 },
 			emptyActivity,
 			{
 				enabled: false,
