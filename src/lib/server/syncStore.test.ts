@@ -50,6 +50,58 @@ describe('SQLite sync store', () => {
 		expect(store.getAuthCredential('account')).toBe('public-key');
 	});
 
+	it('defaults each account to one GiB of ciphertext storage', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		expect(store.sync('account', 0, [], [], 1).usage.maxBytes).toBe(1024 ** 3);
+	});
+
+	it('enforces a durable per-account byte quota and can restore the default', () => {
+		const { store, directory } = createStore({ maxAccountBytes: 100 });
+		store.createAccount('limited-account', 'credential');
+		store.createAccount('default-account', 'credential');
+
+		expect(store.setAccountByteQuota('limited-account', 5)).toBe(true);
+		store.close();
+		stores.splice(stores.indexOf(store), 1);
+		const reopened = new SyncStore(directory, { maxAccountBytes: 100 });
+		stores.push(reopened);
+
+		expect(reopened.getAccountByteQuota('limited-account')).toEqual({
+			maxBytes: 5,
+			overridden: true
+		});
+		expect(reopened.sync('limited-account', 0, [], [], 1).usage.maxBytes).toBe(5);
+		expect(() =>
+			reopened.sync(
+				'limited-account',
+				0,
+				[{ id: 'too-large', slot: slot('a'), ciphertext: 'abcdef' }],
+				[],
+				1
+			)
+		).toThrow(SyncQuotaExceededError);
+		expect(reopened.sync('default-account', 0, [], [], 1).usage.maxBytes).toBe(100);
+
+		expect(reopened.clearAccountByteQuota('limited-account')).toBe(true);
+		expect(reopened.getAccountByteQuota('limited-account')).toEqual({
+			maxBytes: 100,
+			overridden: false
+		});
+	});
+
+	it('rejects invalid or nonexistent account quota overrides', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		expect(() => store.setAccountByteQuota('account', 0)).toThrow(RangeError);
+		expect(() => store.setAccountByteQuota('account', Number.MAX_SAFE_INTEGER + 1)).toThrow(
+			RangeError
+		);
+		expect(store.setAccountByteQuota('missing', 10)).toBe(false);
+		expect(store.clearAccountByteQuota('missing')).toBe(false);
+		expect(store.getAccountByteQuota('missing')).toBeNull();
+	});
+
 	it('pages more than 480 envelopes without dropping the tail', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');

@@ -7,11 +7,7 @@ import {
 	type KanbanColumn
 } from '$lib/kanban';
 import { syncStore } from '$lib/stores/sync.svelte';
-import {
-	loadBoardsFromDevice,
-	saveBoardsToDevice,
-	writeBoardTombstones
-} from '$lib/syncTombstones';
+import { loadBoardsFromDevice, writeKanbanState } from '$lib/syncTombstones';
 import { uid } from '$lib/utils';
 
 const BOARDS_KEY = 'scrapscache-kanban-boards-v1';
@@ -152,8 +148,6 @@ export class KanbanStore {
 		localStorage.setItem(BOARDS_KEY, JSON.stringify(this.#boards));
 		localStorage.setItem(ACTIVE_BOARD_KEY, this.#activeBoardId);
 		localStorage.setItem(BOARD_TOMBSTONES_KEY, JSON.stringify(this.#boardTombstones));
-		const write = this.pendingDeviceWrites.then(() => this.persistSyncState());
-		this.pendingDeviceWrites = write.catch(() => undefined);
 	}
 
 	async hydrateFromDevice(remoteTombstones: Record<string, number> = {}): Promise<void> {
@@ -163,9 +157,7 @@ export class KanbanStore {
 		const tombstones = { ...this.boardTombstones, ...remoteTombstones };
 		this.boardTombstones = tombstones;
 		this.boards = mergeKanbanBoards(fromLs, fromIdb, tombstones);
-		if (!this.boards.length) {
-			this.boards = [createKanbanBoard()];
-		}
+		if (!this.boards.length) this.boards = [createKanbanBoard()];
 		if (!this.boards.some((board) => board.id === this.activeBoardId))
 			this.activeBoardId = this.boards[0].id;
 		const idbById = new Map(fromIdb.map((board) => [board.id, board]));
@@ -173,10 +165,8 @@ export class KanbanStore {
 			const current = idbById.get(board.id);
 			return !current || current.updatedAt < board.updatedAt;
 		});
-		if (recovered.length) {
-			await this.persistSyncState();
-			this.requestSync(recovered.map((board) => `board:${board.id}`));
-		}
+		if (recovered.length) this.requestSync(recovered.map((board) => `board:${board.id}`));
+		await this.pendingDeviceWrites;
 	}
 
 	get activeBoard(): KanbanBoard {
@@ -212,11 +202,8 @@ export class KanbanStore {
 			this.activeBoardId = this.boards[0].id;
 	}
 
-	async persistSyncState(): Promise<void> {
-		await Promise.all([
-			saveBoardsToDevice(this.boardsForSync()),
-			writeBoardTombstones(this.boardTombstonesForSync())
-		]);
+	async persistSyncState(syncOutboxKeys: Iterable<string> = []): Promise<void> {
+		await writeKanbanState(this.boardsForSync(), this.boardTombstonesForSync(), syncOutboxKeys);
 	}
 
 	/** Used for the explicit “discard local data” link flow. */
@@ -260,7 +247,7 @@ export class KanbanStore {
 		const existing = this.boards.find((board) => board.id === boardId);
 		if (!existing) return;
 
-		const deletedAt = Date.now();
+		const deletedAt = this.nextVersion(existing.updatedAt);
 		this.boardTombstones = { ...this.boardTombstones, [boardId]: deletedAt };
 		const remaining = this.boards.filter((board) => board.id !== boardId);
 		const syncKeys = [`board-tombstone:${boardId}`];
@@ -317,6 +304,11 @@ export class KanbanStore {
 		this.changeBoard(boardId, (candidate) => ({ ...candidate, backlogFilter: next }));
 	}
 
+	/** Monotonic version: same-millisecond edits and backward clock jumps must still win. */
+	private nextVersion(previous: number | undefined): number {
+		return Math.max(Date.now(), (previous ?? 0) + 1);
+	}
+
 	private changeBoard(
 		boardId: string,
 		change: (
@@ -324,7 +316,8 @@ export class KanbanStore {
 		) => Omit<KanbanBoard, 'updatedAt'> & Partial<Pick<KanbanBoard, 'updatedAt'>>
 	): void {
 		let changed = false;
-		const updatedAt = Date.now();
+		const previous = this.boards.find((board) => board.id === boardId);
+		const updatedAt = this.nextVersion(previous?.updatedAt);
 		this.boards = this.boards.map((board) => {
 			if (board.id !== boardId) return board;
 			changed = true;
@@ -334,7 +327,11 @@ export class KanbanStore {
 	}
 
 	private requestSync(keys: Iterable<string> = []): void {
-		syncStore.requestAutoSync(keys);
+		const write = this.pendingDeviceWrites.then(() => this.persistSyncState(keys));
+		this.pendingDeviceWrites = write.catch(() => undefined);
+		// Empty re-mark: the atomic write above already queued the keys; this
+		// only nudges the debounced push via the shared data-change hook.
+		syncStore.requestAutoSync([]);
 	}
 }
 

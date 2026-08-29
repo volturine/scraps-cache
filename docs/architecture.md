@@ -113,7 +113,7 @@ Each synced logical record is uploaded as:
 The relay can replace or delete by slot without learning whether the payload is
 a note, image, label, or board. Usage counters track envelope counts and
 ciphertext bytes per account, with storage quotas based only on ciphertext bytes
-(default 1 GB).
+(default 1 GiB).
 
 ## Deployment shapes
 

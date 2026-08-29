@@ -33,6 +33,11 @@ type AccountRow = {
 	wake_revision: number;
 };
 
+export type AccountByteQuota = {
+	maxBytes: number;
+	overridden: boolean;
+};
+
 type UsageRow = {
 	envelopeCount: number;
 	ciphertextBytes: number;
@@ -48,7 +53,7 @@ export type OperatorUsage = UsageRow & {
 	staleAccounts: number;
 };
 
-const DEFAULT_MAX_ACCOUNT_BYTES = 1_000_000_000;
+const DEFAULT_MAX_ACCOUNT_BYTES = 1024 ** 3;
 export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
@@ -131,6 +136,11 @@ export class SyncStore {
 				UNIQUE (account_id, id),
 				FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
 			);
+			CREATE TABLE IF NOT EXISTS account_quotas (
+				account_id TEXT PRIMARY KEY,
+				max_bytes INTEGER NOT NULL CHECK(max_bytes > 0),
+				FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+			);
 			CREATE INDEX IF NOT EXISTS envelopes_account_seq
 				ON envelopes(account_id, seq);
 			CREATE TABLE IF NOT EXISTS deleted_envelopes (
@@ -211,6 +221,42 @@ export class SyncStore {
 		return result.changes === 1;
 	}
 
+	getAccountByteQuota(accountId: string): AccountByteQuota | null {
+		const row = this.database
+			.prepare(
+				`SELECT quotas.max_bytes AS maxBytes
+				 FROM accounts
+				 LEFT JOIN account_quotas AS quotas USING(account_id)
+				 WHERE account_id = ?`
+			)
+			.get(accountId) as { maxBytes: number | null } | undefined;
+		if (!row) return null;
+		return {
+			maxBytes: row.maxBytes ?? this.maxAccountBytes,
+			overridden: row.maxBytes !== null
+		};
+	}
+
+	setAccountByteQuota(accountId: string, maxBytes: number): boolean {
+		if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+			throw new RangeError('Account byte quota must be a positive safe integer');
+		}
+		const result = this.database
+			.prepare(
+				`INSERT INTO account_quotas(account_id, max_bytes)
+				 SELECT account_id, ? FROM accounts WHERE account_id = ?
+				 ON CONFLICT(account_id) DO UPDATE SET max_bytes = excluded.max_bytes`
+			)
+			.run(maxBytes, accountId);
+		return result.changes === 1;
+	}
+
+	clearAccountByteQuota(accountId: string): boolean {
+		if (!this.getAuthCredential(accountId)) return false;
+		this.database.prepare('DELETE FROM account_quotas WHERE account_id = ?').run(accountId);
+		return true;
+	}
+
 	sync(
 		accountId: string,
 		cursor: number,
@@ -229,6 +275,7 @@ export class SyncStore {
 				)
 				.get(accountId) as AccountRow | undefined;
 			if (!account) throw new Error('Sync account does not exist');
+			const maxAccountBytes = this.getAccountByteQuota(accountId)?.maxBytes ?? this.maxAccountBytes;
 
 			let envelopeCount = account.envelope_count;
 			let ciphertextBytes = account.ciphertext_bytes;
@@ -249,7 +296,7 @@ export class SyncStore {
 					usage: {
 						envelopeCount,
 						ciphertextBytes,
-						maxBytes: this.maxAccountBytes
+						maxBytes: maxAccountBytes
 					}
 				};
 			}
@@ -279,7 +326,7 @@ export class SyncStore {
 					usage: {
 						envelopeCount,
 						ciphertextBytes,
-						maxBytes: this.maxAccountBytes
+						maxBytes: maxAccountBytes
 					}
 				};
 			}
@@ -307,7 +354,7 @@ export class SyncStore {
 					usage: {
 						envelopeCount,
 						ciphertextBytes,
-						maxBytes: this.maxAccountBytes
+						maxBytes: maxAccountBytes
 					}
 				};
 			}
@@ -357,7 +404,7 @@ export class SyncStore {
 				const projectedCount = envelopeCount + (prior ? 0 : 1);
 				const projectedBytes =
 					ciphertextBytes + upload.ciphertext.length - (prior?.ciphertext.length ?? 0);
-				if (projectedBytes > this.maxAccountBytes) {
+				if (projectedBytes > maxAccountBytes) {
 					throw new SyncQuotaExceededError();
 				}
 				sequence += 1;
@@ -392,7 +439,7 @@ export class SyncStore {
 				usage: {
 					envelopeCount,
 					ciphertextBytes,
-					maxBytes: this.maxAccountBytes
+					maxBytes: maxAccountBytes
 				}
 			};
 		})();

@@ -505,8 +505,7 @@ describe('notes store sync apply', () => {
 				usage: {
 					ciphertextBytes: 0,
 					envelopeCount: 0,
-					maxBytes: 1000,
-					maxEnvelopes: 50
+					maxBytes: 1000
 				}
 			}
 		});

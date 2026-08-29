@@ -930,9 +930,12 @@ export class SyncStore {
 					}
 				}
 
+				const pendingOutboxUpload = [...outboxKeys].some(
+					(key) => !acknowledgedOutbox.has(key) && !quotaBlockedKeys.has(key)
+				);
 				const remainingUploads =
 					!pullOnly &&
-					(!startedWithDownloadsDrained ||
+					((!startedWithDownloadsDrained && (firstFullUpload || pendingOutboxUpload)) ||
 						(!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) ||
 						changed.filter((record) => !quotaBlockedKeys.has(record.key)).length > outgoing.length);
 				const pendingDeletes =

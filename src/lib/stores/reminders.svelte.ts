@@ -71,7 +71,6 @@ export class ReminderStore {
 			tickAppClock();
 			this.scan();
 			this.arm();
-			void registerReminderDevice();
 		}, 60_000);
 		const onWake = () => {
 			if (document.visibilityState === 'hidden') return;
@@ -111,11 +110,14 @@ export class ReminderStore {
 	/** Publish only state that has completed cloud reconciliation. */
 	publish(notes: ReminderNote[]): void {
 		const candidateIds = new Set(relayReminderWakes(notes, Date.now()).map((wake) => wake.id));
-		if (notificationPermission() === 'granted') this.armed = candidateIds;
+		if (notificationPermission() === 'granted') {
+			this.armed = candidateIds;
+			void registerReminderDevice();
+		}
 		this.sync(notes);
-		void Promise.all([publishReminderWakes(notes), registerReminderDevice()])
-			.then(([wakes, registered]) => {
-				if (wakes && registered) {
+		void publishReminderWakes(notes)
+			.then((wakes) => {
+				if (wakes) {
 					this.armed = new Set(wakes.map((wake) => wake.id));
 					return;
 				}

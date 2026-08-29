@@ -104,6 +104,8 @@ export class NotesStore {
 	private attachmentLoads = new Map<string, Promise<void>>();
 	private attachmentPass: Promise<void> | null = null;
 	private lastAutoSyncAt = 0;
+	/** Notes whose photos failed to load for upload; retried on the next sync. */
+	private attachmentHydrationFailures = new Set<string>();
 	private visibleAttachmentQueue = new AttachmentHydrationQueue((noteId) =>
 		this.ensureNoteAttachments(noteId)
 	);
@@ -229,6 +231,16 @@ export class NotesStore {
 		const source = cloneNote(existing);
 		const load = hydrateNoteAttachments(source)
 			.then((hydrated) => {
+				const missingBytes = (hydrated.images ?? []).some((image) => !image.dataUrl);
+				if (missingBytes) {
+					this.attachmentHydrationFailures.add(noteId);
+					this.recordPersistenceError(
+						`Could not load attachments for note ${noteId}`,
+						new Error('Attachment bytes are missing from device storage')
+					);
+				} else {
+					this.attachmentHydrationFailures.delete(noteId);
+				}
 				const index = this.notes.findIndex((note) => note.id === noteId);
 				if (index === -1) return;
 				const current = this.notes[index];
@@ -237,9 +249,10 @@ export class NotesStore {
 					this.notes[index] = { ...current, images };
 				}
 			})
-			.catch((err) =>
-				this.recordPersistenceError(`Could not load attachments for note ${noteId}`, err)
-			);
+			.catch((err) => {
+				this.attachmentHydrationFailures.add(noteId);
+				this.recordPersistenceError(`Could not load attachments for note ${noteId}`, err);
+			});
 		this.attachmentLoads.set(noteId, load);
 		return load.finally(() => {
 			if (this.attachmentLoads.get(noteId) === load) this.attachmentLoads.delete(noteId);
@@ -271,16 +284,29 @@ export class NotesStore {
 
 	/** Only hydrate a few notes per sync so photo-heavy accounts transfer in fractions. */
 	private async hydrateAttachmentsForSync(): Promise<void> {
+		this.pruneAttachmentHydrationFailures();
 		const dirtyKeys = new Set(await getSyncOutboxKeys().catch(() => []));
 		const ids = this.notes
 			.filter(
 				(note) =>
-					(dirtyKeys.has(`note:${note.id}`) ||
+					(this.attachmentHydrationFailures.has(note.id) ||
+						dirtyKeys.has(`note:${note.id}`) ||
 						(note.images ?? []).some((image) => dirtyKeys.has(`attachment:${image.id}`))) &&
 					(note.images ?? []).some((image) => !image.dataUrl)
 			)
 			.map((note) => note.id);
 		for (const noteId of ids) await this.ensureNoteAttachments(noteId);
+	}
+
+	private pruneAttachmentHydrationFailures(): void {
+		const retryable = new Set(
+			this.notes
+				.filter((note) => (note.images ?? []).some((image) => !image.dataUrl))
+				.map((note) => note.id)
+		);
+		for (const noteId of this.attachmentHydrationFailures) {
+			if (!retryable.has(noteId)) this.attachmentHydrationFailures.delete(noteId);
+		}
 	}
 
 	/** Queue attachment bytes only when a note card enters the viewport. */
@@ -494,7 +520,9 @@ export class NotesStore {
 		const label: Label = { id: uid(), name: trimmed, createdAt: now, updatedAt: now };
 		this.labels = [...this.labels, label].sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
-		putLabel(label).catch((err) => this.recordPersistenceError('Could not save label', err));
+		putLabel(label, [`label:${label.id}`]).catch((err) =>
+			this.recordPersistenceError('Could not save label', err)
+		);
 		this.markLabelsDirty([`label:${label.id}`]);
 		return label;
 	}
@@ -504,11 +532,18 @@ export class NotesStore {
 		if (!trimmed) return;
 		const idx = this.labels.findIndex((l) => l.id === id);
 		if (idx === -1) return;
-		const renamed = { ...this.labels[idx], name: trimmed, updatedAt: Date.now() };
+		const renamed = {
+			...this.labels[idx],
+			name: trimmed,
+			// Same-millisecond renames and backward clock jumps must still win.
+			updatedAt: Math.max(Date.now(), this.labels[idx].updatedAt + 1)
+		};
 		this.labels[idx] = renamed;
 		this.labels.sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
-		putLabel(renamed).catch((err) => this.recordPersistenceError('Could not rename label', err));
+		putLabel(renamed, [`label:${renamed.id}`]).catch((err) =>
+			this.recordPersistenceError('Could not rename label', err)
+		);
 		this.markLabelsDirty([`label:${renamed.id}`]);
 	}
 
@@ -542,7 +577,9 @@ export class NotesStore {
 			});
 			this.labels = this.labels.filter((label) => label.id !== id);
 			this.mirrorToLS();
-			deleteLabel(id).catch((err) => this.recordPersistenceError('Could not delete label', err));
+			deleteLabel(id, [`label-tombstone:${id}`]).catch((err) =>
+				this.recordPersistenceError('Could not delete label', err)
+			);
 			for (const note of affected) this.persist(note.id);
 			this.markLabelsDeleted([id], deletedAt);
 			return;
@@ -560,7 +597,9 @@ export class NotesStore {
 			);
 		});
 		this.mirrorToLS();
-		deleteLabel(id).catch((err) => this.recordPersistenceError('Could not delete label', err));
+		deleteLabel(id, [`label-tombstone:${id}`]).catch((err) =>
+			this.recordPersistenceError('Could not delete label', err)
+		);
 		for (const noteId of affectedNoteIds) this.persist(noteId);
 		this.markLabelsDeleted([id], deletedAt);
 	}
@@ -773,9 +812,10 @@ export class NotesStore {
 	private markLabelsDeleted(ids: string[], deletedAt = Date.now()): void {
 		if (ids.length === 0) return;
 		for (const id of ids) this.deletedLabelIds[id] = deletedAt;
-		void writeLabelTombstones(this.deletedLabelIds).then(() =>
-			this.markLabelsDirty(ids.map((id) => `label-tombstone:${id}`))
-		);
+		void writeLabelTombstones(
+			this.deletedLabelIds,
+			ids.map((id) => `label-tombstone:${id}`)
+		).then(() => this.markLabelsDirty());
 	}
 
 	private markLabelsDirty(keys: Iterable<string> = []): void {
@@ -901,9 +941,8 @@ export class NotesStore {
 			const leftover = synced ? await getSyncOutboxKeys().catch(() => []) : [];
 			if (synced && leftover.length === 0) {
 				this.dirty = false;
-			} else if (this.dirty || leftover.length > 0) {
+			} else {
 				this.dirty = true;
-				this.scheduleSyncPush();
 			}
 			return synced;
 		});
@@ -1151,12 +1190,16 @@ export class NotesStore {
 
 	// Manual sync — caller shows UI feedback (spinning cloud icon).
 	async syncWithCloudManual(): Promise<boolean> {
-		return this.queueSync(true);
+		return this.flushSync(true);
 	}
 
 	// Auto sync — silent, no UI feedback. Opportunistic pulls (boot, editor
 	// open) are throttled; pending local edits always sync via flushSync.
 	async syncWithCloud(): Promise<boolean> {
+		// Startup and foreground events can arrive together, especially on iOS.
+		// They all ask for the same opportunistic pull, so join the active flight.
+		// Durable edits request their own follow-up in scheduleSyncPush().
+		if (this.syncFlight) return this.syncFlight;
 		if (Date.now() - this.lastAutoSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return true;
 		const synced = await this.queueSync(false);
 		if (synced) this.lastAutoSyncAt = Date.now();
@@ -1231,7 +1274,16 @@ export class NotesStore {
 				await this.hydrateAllAttachments();
 				return this.doSyncLocked(indicate);
 			}
-			this.lastPersistError = null;
+			this.pruneAttachmentHydrationFailures();
+			// A photo that failed to load has no payload to upload: the sync is
+			// only partial. Keep the warning visible until the retry succeeds so
+			// "synced" never hides an unsynced photo.
+			if (this.attachmentHydrationFailures.size > 0) {
+				syncStore.lastError =
+					'Synced, but some photos could not be prepared for upload. They will retry on the next sync.';
+			} else if (!syncStore.lastError) {
+				this.lastPersistError = null;
+			}
 			this.onAfterSync?.();
 			return true;
 		} catch (err) {

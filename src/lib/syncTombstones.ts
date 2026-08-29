@@ -1,5 +1,5 @@
 // Durable delete manifests in IndexedDB. Permanent delete wins until cleared.
-import { getSyncState, setSyncState } from '$lib/db/idb';
+import { getSyncState, setSyncState, writeSyncStateWithOutbox } from '$lib/db/idb';
 
 const NOTE_IDB = 'scrapscache-idb-note-tombstones';
 const LABEL_IDB = 'scrapscache-idb-label-tombstones';
@@ -44,14 +44,12 @@ export async function writeTombstones(tombstones: Tombstones): Promise<void> {
 	await setSyncState(NOTE_IDB, noteCache);
 }
 
-export async function writeLabelTombstones(tombstones: Tombstones): Promise<void> {
+export async function writeLabelTombstones(
+	tombstones: Tombstones,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
 	labelCache = sanitize(tombstones);
-	await setSyncState(LABEL_IDB, labelCache);
-}
-
-export async function writeBoardTombstones(tombstones: Tombstones): Promise<void> {
-	boardCache = sanitize(tombstones);
-	await setSyncState(BOARD_IDB, boardCache);
+	await writeSyncStateWithOutbox([[LABEL_IDB, labelCache]], syncOutboxKeys);
 }
 
 export async function hydrateTombstones(): Promise<{
@@ -79,4 +77,20 @@ export async function saveBoardsToDevice<T>(boards: T): Promise<void> {
 	// `$state` board proxies throw DataCloneError in IndexedDB; JSON is already how
 	// localStorage snapshots them.
 	await setSyncState(BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? [])));
+}
+
+/** Persist boards, tombstones, and optional upload markers in one transaction. */
+export async function writeKanbanState(
+	boards: unknown,
+	boardTombstones: Tombstones,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
+	boardCache = sanitize(boardTombstones);
+	await writeSyncStateWithOutbox(
+		[
+			[BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? []))],
+			[BOARD_IDB, boardCache]
+		],
+		syncOutboxKeys
+	);
 }

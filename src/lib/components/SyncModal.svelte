@@ -169,6 +169,12 @@
 			: `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
+	function formatLimit(bytes: number): string {
+		if (bytes < 1024 ** 3) return formatBytes(bytes);
+		const gibibytes = bytes / 1024 ** 3;
+		return `${Number.isInteger(gibibytes) ? gibibytes : gibibytes.toFixed(1)} GiB`;
+	}
+
 	function progressPercent(loaded: number, total: number | null): number {
 		return total && total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
 	}
@@ -363,7 +369,7 @@
 							<span class="font-medium">Sync storage</span>
 							<span>
 								{formatBytes(syncStore.usage.ciphertextBytes)} of
-								{formatBytes(syncStore.usage.maxBytes)}
+								{formatLimit(syncStore.usage.maxBytes)}
 							</span>
 						</div>
 					</div>
