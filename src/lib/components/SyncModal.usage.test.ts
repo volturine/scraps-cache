@@ -5,7 +5,7 @@ import { createSyncIdentity } from '$lib/syncPairing';
 import { syncStore } from '$lib/stores/sync.svelte';
 import SyncModal from './SyncModal.svelte';
 
-const MIB = 1024 * 1024;
+const MB = 1_000_000;
 
 beforeEach(() => {
 	Object.defineProperty(Element.prototype, 'animate', {
@@ -14,13 +14,13 @@ beforeEach(() => {
 	});
 });
 
-function renderUsage(ciphertextBytes: number): HTMLElement {
+function renderUsage(ciphertextBytes: number, maxBytes = 10 * MB): HTMLElement {
 	syncStore.account = createSyncIdentity();
 	syncStore.usage = {
 		ciphertextBytes,
 		storageBytes: ciphertextBytes,
 		envelopeCount: 1,
-		maxBytes: 10 * MIB
+		maxBytes
 	};
 	render(SyncModal, { props: { onClose: vi.fn() } });
 	return screen.getByLabelText('Sync storage usage');
@@ -35,33 +35,38 @@ afterEach(() => {
 
 describe('SyncModal storage usage', () => {
 	it('shows current storage usage without warning below 80 percent', () => {
-		const usage = renderUsage(7 * MIB);
+		const usage = renderUsage(7 * MB);
 		const text = usage.textContent?.replace(/\s+/g, ' ');
 
-		expect(text).toContain('7.0 MB of 10.0 MB');
+		expect(text).toContain('7 MB of 10 MB');
 		expect(usage.classList.contains('scrapscache-status-warning')).toBe(false);
 		expect(usage.classList.contains('scrapscache-status-danger')).toBe(false);
 	});
 
 	it('warns at 80 percent and shows danger at the limit', async () => {
-		const warning = renderUsage(8 * MIB);
+		const warning = renderUsage(8 * MB);
 		expect(warning.classList.contains('scrapscache-status-warning')).toBe(true);
 
 		syncStore.usage = {
 			...syncStore.usage!,
-			ciphertextBytes: 10 * MIB,
-			storageBytes: 10 * MIB
+			ciphertextBytes: 10 * MB,
+			storageBytes: 10 * MB
 		};
 		await tick();
 		expect(warning.classList.contains('scrapscache-status-danger')).toBe(true);
 	});
 
 	it('shows a quota rejection as a persistent danger alert', async () => {
-		const usage = renderUsage(MIB);
+		const usage = renderUsage(MB);
 		syncStore.lastError = 'Sync incomplete: account storage quota prevented some uploads';
 		await tick();
 
 		expect(usage.classList.contains('scrapscache-status-danger')).toBe(true);
 		expect(screen.getByRole('alert').textContent).toMatch(/quota/);
+	});
+
+	it('displays the enforced decimal-billion-byte limit as 1000 MB', () => {
+		const usage = renderUsage(5_000, 1_000_000_000);
+		expect(usage.textContent?.replace(/\s+/g, ' ')).toContain('5 KB of 1000 MB');
 	});
 });

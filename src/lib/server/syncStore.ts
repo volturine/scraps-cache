@@ -54,7 +54,7 @@ export type OperatorUsage = UsageRow & {
 	staleAccounts: number;
 };
 
-const DEFAULT_MAX_ACCOUNT_BYTES = 1024 ** 3;
+const DEFAULT_MAX_ACCOUNT_BYTES = 1_000_000_000;
 /** Conservative allowance for row, key, and index storage beyond the ciphertext itself. */
 export const ENVELOPE_STORAGE_OVERHEAD_BYTES = 512;
 export const MAX_PUSH_DEVICES = 32;

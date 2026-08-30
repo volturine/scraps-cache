@@ -51,10 +51,10 @@ describe('SQLite sync store', () => {
 		expect(store.getAuthCredential('account')).toBe('public-key');
 	});
 
-	it('defaults each account to one GiB of estimated relay storage', () => {
+	it('defaults each account to 1000 MB of estimated relay storage', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
-		expect(store.sync('account', 0, [], [], 1).usage.maxBytes).toBe(1024 ** 3);
+		expect(store.sync('account', 0, [], [], 1).usage.maxBytes).toBe(1_000_000_000);
 	});
 
 	it('enforces a durable per-account byte quota and can restore the default', () => {

@@ -162,15 +162,13 @@
 	}
 
 	function formatBytes(bytes: number): string {
-		return bytes < 1024 * 1024
-			? `${Math.round(bytes / 1024)} KB`
-			: `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+		if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} KB`;
+		const megabytes = bytes / 1_000_000;
+		return `${Number.isInteger(megabytes) ? megabytes : megabytes.toFixed(1)} MB`;
 	}
 
 	function formatLimit(bytes: number): string {
-		if (bytes < 1024 ** 3) return formatBytes(bytes);
-		const gibibytes = bytes / 1024 ** 3;
-		return `${Number.isInteger(gibibytes) ? gibibytes : gibibytes.toFixed(1)} GiB`;
+		return formatBytes(bytes);
 	}
 
 	function progressPercent(loaded: number, total: number | null): number {
