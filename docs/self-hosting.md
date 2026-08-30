@@ -6,7 +6,7 @@ relay. This guide covers Docker production deployment and configuration.
 ## Requirements
 
 - Docker Engine with Compose v2
-- For public deployments: a reverse proxy that terminates TLS
+- For public deployments: a reverse proxy or tunnel that terminates TLS
 - A persistent volume for sync data
 
 ## Production (recommended)
@@ -19,12 +19,15 @@ cp docker/.env.example docker/.env
 
 Edit `docker/.env` at minimum:
 
-| Variable                  | Guidance                                                                          |
-| ------------------------- | --------------------------------------------------------------------------------- |
-| `SCRAPSCACHE_IMAGE`       | Pin a release, e.g. `ghcr.io/volturine/scrapscache:1.2.3`, or an immutable digest |
-| `SCRAPSCACHE_ADMIN_TOKEN` | Long random secret (metrics, JSON status, retention)                              |
-| `SCRAPSCACHE_ORIGIN`      | Exact public origin, e.g. `https://scrapscache.com`                               |
-| `SCRAPSCACHE_PORT`        | Host port (default `3000`)                                                        |
+| Variable             | Guidance                                                                          |
+| -------------------- | --------------------------------------------------------------------------------- |
+| `SCRAPSCACHE_IMAGE`  | Pin a release, e.g. `ghcr.io/volturine/scrapscache:1.2.3`, or an immutable digest |
+| `SCRAPSCACHE_ORIGIN` | Exact public origin, e.g. `https://scrapscache.com`                               |
+| `SCRAPSCACHE_PORT`   | Host port (default `3000`)                                                        |
+
+Optionally set `SCRAPSCACHE_ADMIN_TOKEN` (long random secret, e.g.
+`openssl rand -hex 32`) to enable `/metrics` and the admin API; leaving it unset
+disables them entirely.
 
 ```sh
 docker compose --project-directory . -f docker/compose.yaml --env-file docker/.env pull
@@ -32,7 +35,8 @@ docker compose --project-directory . -f docker/compose.yaml --env-file docker/.e
 docker compose --project-directory . -f docker/compose.yaml --env-file docker/.env ps
 ```
 
-Scraps Cache listens on container port **3000**. The production template:
+Scraps Cache listens on container port **3000**, published on `127.0.0.1` by
+default (`SCRAPSCACHE_BIND` to override). The production template:
 
 - Runs with a read-only application filesystem
 - Stores SQLite under the `scrapscache-sync-data` volume
@@ -98,8 +102,8 @@ docker compose --project-directory . \
 
 The app is then `https://scrapscache.your-tailnet.ts.net` from any device on the
 tailnet. The first HTTPS request can take a few seconds while the certificate is
-issued. Host ports stay published for local health checks; use the `*.ts.net`
-origin in the browser.
+issued. The host port stays published on loopback for local health checks; use
+the `*.ts.net` origin in the browser.
 
 The sidecar uses userspace networking (works on Docker Desktop / macOS) and
 persists identity in the `tailscale-state` volume. Serve config lives in
@@ -125,6 +129,15 @@ Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
      configure the proxy to **replace** (not append untrusted) `X-Forwarded-For`.
    - Increase depth only for a known multi-proxy chain.
 
+### Cloudflare Tunnel
+
+Run `cloudflared` on the host with the tunnel service pointing at
+`http://localhost:3000`. The Compose port binds to loopback by default, so the
+origin is reachable only through the tunnel — do not change `SCRAPSCACHE_BIND`
+without another trusted path in front. Set `SCRAPSCACHE_ORIGIN` to the exact
+`https://<tunnel-hostname>` origin and apply the one-trusted-proxy
+client-address settings above so rate limits see real client IPs.
+
 ## Environment reference
 
 ### Application / Node
@@ -135,7 +148,7 @@ Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
 | `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                   `1000000000` | Ciphertext quota per account                                                    |
 | `SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES`   |                        `50000` | Record quota per account                                                        |
 | `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight                                                     |
-| `SCRAPSCACHE_ADMIN_TOKEN`                  |                              — | Protects metrics, JSON status, and retention (required in prod Compose)         |
+| `SCRAPSCACHE_ADMIN_TOKEN`                  |                          unset | Enables and protects metrics, JSON status, and retention; unset disables them   |
 | `SCRAPSCACHE_RETENTION_INACTIVE_DAYS`      |                            `0` | Delete accounts with no authenticated activity for this many days; `0` disables |
 | `SCRAPSCACHE_VAPID_PUBLIC_KEY`             |                 auto-generated | Optional stable Web Push VAPID public key                                       |
 | `SCRAPSCACHE_VAPID_PRIVATE_KEY`            |                 auto-generated | Optional stable Web Push VAPID private key                                      |
@@ -160,7 +173,8 @@ variables explicitly.
 
 | Variable                      |                 Default | Purpose                                                       |
 | ----------------------------- | ----------------------: | ------------------------------------------------------------- |
-| `SCRAPSCACHE_PORT`            |                  `3000` | Host port published by Compose                                |
+| `SCRAPSCACHE_BIND`            |             `127.0.0.1` | Host interface the port publishes to                          |
+| `SCRAPSCACHE_PORT`            |                  `3000` | Host port published by Compose (loopback by default)          |
 | `SCRAPSCACHE_IMAGE`           |         required (prod) | Pinned image tag or digest                                    |
 | `SCRAPSCACHE_ORIGIN`          | `http://localhost:3000` | Exact public origin used by SvelteKit                         |
 | `SCRAPSCACHE_BODY_SIZE_LIMIT` |                  `110M` | Node adapter request limit; must exceed the 101 MB sync cap   |
@@ -183,6 +197,9 @@ and left in place as a recovery copy.
 | `GET /metrics`              | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                            |
 | `GET /api/admin/status`     | same bearer token                                | Anonymous JSON: storage, users, activity, retention |
 | `POST /api/admin/retention` | same bearer token                                | Run the inactive-account sweeper now                |
+
+With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the three token-protected
+endpoints return 404 — the admin API is disabled.
 
 `GET /api/admin/status` is the JSON companion to `/metrics`. It reports
 ciphertext bytes and decimal GB, account totals, activity in the last 1 / 7 / 30

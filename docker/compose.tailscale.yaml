@@ -9,7 +9,7 @@
 #     up -d
 #
 # Preview stack: swap in docker/compose.dev.yaml and --env-file docker/.env.dev.
-# Host ports stay published; use the https://<TS_HOSTNAME>.<tailnet>.ts.net origin.
+# Host port stays published on loopback; use the https://<TS_HOSTNAME>.<tailnet>.ts.net origin.
 
 services:
   tailscale:
