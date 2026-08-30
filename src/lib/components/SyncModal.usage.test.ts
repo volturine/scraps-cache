@@ -18,6 +18,7 @@ function renderUsage(ciphertextBytes: number): HTMLElement {
 	syncStore.account = createSyncIdentity();
 	syncStore.usage = {
 		ciphertextBytes,
+		storageBytes: ciphertextBytes,
 		envelopeCount: 1,
 		maxBytes: 10 * MIB
 	};
@@ -46,7 +47,11 @@ describe('SyncModal storage usage', () => {
 		const warning = renderUsage(8 * MIB);
 		expect(warning.classList.contains('scrapscache-status-warning')).toBe(true);
 
-		syncStore.usage = { ...syncStore.usage!, ciphertextBytes: 10 * MIB };
+		syncStore.usage = {
+			...syncStore.usage!,
+			ciphertextBytes: 10 * MIB,
+			storageBytes: 10 * MIB
+		};
 		await tick();
 		expect(warning.classList.contains('scrapscache-status-danger')).toBe(true);
 	});

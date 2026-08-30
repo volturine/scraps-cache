@@ -19,6 +19,7 @@ describe('operator snapshot', () => {
 				accounts: 3,
 				envelopeCount: 10,
 				ciphertextBytes: 2_000_000_000,
+				storageBytes: 2_000_000_000,
 				activeByWindowDays: { '1': 1, '7': 2, '30': 3 },
 				staleAccounts: 1
 			},
@@ -42,6 +43,7 @@ describe('operator snapshot', () => {
 
 		expect(snapshot.storage).toEqual({
 			ciphertextBytes: 2_000_000_000,
+			storageBytes: 2_000_000_000,
 			gigabytes: 2,
 			envelopes: 10
 		});
@@ -60,6 +62,7 @@ describe('operator snapshot', () => {
 				accounts: 1,
 				envelopeCount: 0,
 				ciphertextBytes: 0,
+				storageBytes: 0,
 				activeByWindowDays: { '1': 1 },
 				staleAccounts: 0
 			},

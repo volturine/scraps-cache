@@ -89,6 +89,7 @@ export interface SyncProgress {
 export interface SyncUsage {
 	ciphertextBytes: number;
 	envelopeCount: number;
+	storageBytes: number;
 	maxBytes: number;
 }
 
@@ -139,7 +140,8 @@ export class SyncStore {
 	private bootstrapRequested = false;
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
 	private session: { accountId: string; accessToken: string; expiresAt: number } | null = null;
-	private pendingSession: Promise<string> | null = null;
+	private pendingSessions = new Map<string, Promise<string>>();
+	private authenticationGeneration = 0;
 
 	// Non-reactive callbacks avoid re-rendering the note grid for cloud feedback.
 	onSyncStart: (() => void) | null = null;
@@ -206,6 +208,13 @@ export class SyncStore {
 		}
 	}
 
+	private activateAccount(account: SyncAccount): void {
+		this.authenticationGeneration += 1;
+		this.pendingSessions.clear();
+		this.session = null;
+		this.account = account;
+	}
+
 	async register(): Promise<{ success: boolean; error?: string }> {
 		const account = createSyncIdentity();
 		try {
@@ -224,7 +233,7 @@ export class SyncStore {
 					success: false,
 					error: typeof data.error === 'string' ? data.error : 'Registration failed'
 				};
-			this.account = account;
+			this.activateAccount(account);
 			this.lastError = null;
 			this.saveAccount();
 			return { success: true };
@@ -319,10 +328,12 @@ export class SyncStore {
 			const grant = data.grant as { existingPublicKey?: unknown; ciphertext?: unknown };
 			if (typeof grant.ciphertext !== 'string')
 				return { success: false, error: 'Invalid encrypted sync key' };
-			this.account = identityFromSyncKey(
-				openSyncKeyFromPeer(link.syncCode, link.pake, data.peerPublicKey ?? '', {
-					ciphertext: grant.ciphertext
-				})
+			this.activateAccount(
+				identityFromSyncKey(
+					openSyncKeyFromPeer(link.syncCode, link.pake, data.peerPublicKey ?? '', {
+						ciphertext: grant.ciphertext
+					})
+				)
 			);
 			this.lastError = null;
 			this.saveAccount();
@@ -342,8 +353,10 @@ export class SyncStore {
 			this.session.expiresAt - Date.now() > 5_000
 		)
 			return this.session.accessToken;
-		if (this.pendingSession) return this.pendingSession;
-		this.pendingSession = (async () => {
+		const pendingSession = this.pendingSessions.get(account.accountId);
+		if (pendingSession) return pendingSession;
+		const generation = this.authenticationGeneration;
+		const sessionRequest = (async () => {
 			const challengeResponse = await fetch('/api/sync/auth/challenge', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
@@ -365,7 +378,7 @@ export class SyncStore {
 						signature: signSyncMigration(account.syncKey, account.accountId, account.authPublicKey)
 					})
 				});
-				return this.acceptIssuedSession(account, migrationResponse);
+				return this.acceptIssuedSession(account, migrationResponse, generation);
 			}
 			if (
 				!challengeResponse.ok ||
@@ -383,16 +396,22 @@ export class SyncStore {
 					signature: signSyncChallenge(account.syncKey, account.accountId, challenge.challenge)
 				})
 			});
-			return this.acceptIssuedSession(account, sessionResponse);
+			return this.acceptIssuedSession(account, sessionResponse, generation);
 		})();
+		this.pendingSessions.set(account.accountId, sessionRequest);
 		try {
-			return await this.pendingSession;
+			return await sessionRequest;
 		} finally {
-			this.pendingSession = null;
+			if (this.pendingSessions.get(account.accountId) === sessionRequest)
+				this.pendingSessions.delete(account.accountId);
 		}
 	}
 
-	private async acceptIssuedSession(account: SyncAccount, response: Response): Promise<string> {
+	private async acceptIssuedSession(
+		account: SyncAccount,
+		response: Response,
+		generation: number
+	): Promise<string> {
 		const issued = (await response.json().catch(() => ({}))) as {
 			accessToken?: unknown;
 			expiresAt?: unknown;
@@ -404,12 +423,21 @@ export class SyncStore {
 		) {
 			throw new Error('Sync authentication failed');
 		}
-		this.session = {
-			accountId: account.accountId,
-			accessToken: issued.accessToken,
-			expiresAt: issued.expiresAt
-		};
+		if (generation !== this.authenticationGeneration)
+			throw new Error('Sync authentication was cancelled');
+		if (this.account?.accountId === account.accountId) {
+			this.session = {
+				accountId: account.accountId,
+				accessToken: issued.accessToken,
+				expiresAt: issued.expiresAt
+			};
+		}
 		return issued.accessToken;
+	}
+
+	private invalidateSession(accountId: string, accessToken: string): void {
+		if (this.session?.accountId === accountId && this.session.accessToken === accessToken)
+			this.session = null;
 	}
 
 	async authorizedFetch(
@@ -417,27 +445,56 @@ export class SyncStore {
 		init: RequestInit = {},
 		account: SyncAccount | null = this.account
 	): Promise<Response> {
-		const accessToken = await this.accessToken(account);
-		const headers = new Headers(init.headers);
-		headers.set('authorization', `Bearer ${accessToken}`);
-		return fetch(input, { ...init, headers });
+		if (!account) throw new Error('Sync is not set up on this device');
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			const accessToken = await this.accessToken(account);
+			const headers = new Headers(init.headers);
+			headers.set('authorization', `Bearer ${accessToken}`);
+			const response = await fetch(input, { ...init, headers });
+			if (response.status !== 401 || attempt === 1) return response;
+			this.invalidateSession(account.accountId, accessToken);
+		}
+		throw new Error('Sync authentication failed');
 	}
 
 	private async sendSyncRequest(
 		path: string,
 		payload: string,
 		uploadBytes: number,
-		indicate: boolean
+		indicate: boolean,
+		account: SyncAccount | null = this.account
 	): Promise<SyncResult> {
-		let accessToken: string;
-		try {
-			accessToken = await this.accessToken();
-		} catch (error) {
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : 'Authentication failed'
-			};
+		if (!account) return { success: false, error: 'Not linked' };
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			let accessToken: string;
+			try {
+				accessToken = await this.accessToken(account);
+			} catch (error) {
+				return {
+					success: false,
+					error: error instanceof Error ? error.message : 'Authentication failed'
+				};
+			}
+			const result = await this.sendSyncRequestWithToken(
+				path,
+				payload,
+				uploadBytes,
+				indicate,
+				accessToken
+			);
+			if (result.status !== 401 || attempt === 1) return result;
+			this.invalidateSession(account.accountId, accessToken);
 		}
+		return { success: false, error: 'Sync authentication failed' };
+	}
+
+	private sendSyncRequestWithToken(
+		path: string,
+		payload: string,
+		uploadBytes: number,
+		indicate: boolean,
+		accessToken: string
+	): Promise<SyncResult> {
 		return new Promise((resolve) => {
 			const xhr = new XMLHttpRequest();
 			xhr.open('POST', path);
@@ -476,7 +533,6 @@ export class SyncStore {
 					/* handled below */
 				}
 				if (xhr.status < 200 || xhr.status >= 300) {
-					if (xhr.status === 401) this.session = null;
 					resolve({
 						success: false,
 						status: xhr.status,
@@ -672,7 +728,8 @@ export class SyncStore {
 					'/api/sync/delta',
 					payload,
 					new Blob([payload]).size,
-					indicate
+					indicate,
+					account
 				);
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				if (!response.success && response.status === 507 && outgoing.length > 0) {
@@ -692,9 +749,12 @@ export class SyncStore {
 				if (remoteUsage && typeof remoteUsage === 'object') {
 					const candidate = remoteUsage as Partial<SyncUsage>;
 					if (
-						[candidate.ciphertextBytes, candidate.envelopeCount, candidate.maxBytes].every(
-							(value) => typeof value === 'number' && Number.isFinite(value)
-						)
+						[
+							candidate.ciphertextBytes,
+							candidate.envelopeCount,
+							candidate.storageBytes,
+							candidate.maxBytes
+						].every((value) => typeof value === 'number' && Number.isFinite(value))
 					) {
 						this.usage = candidate as SyncUsage;
 					}
@@ -1027,6 +1087,8 @@ export class SyncStore {
 
 	logout(): void {
 		const accountId = this.account?.accountId;
+		this.authenticationGeneration += 1;
+		this.pendingSessions.clear();
 		this.account = null;
 		this.lastError = null;
 		this.progress = null;

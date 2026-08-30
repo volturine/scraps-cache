@@ -36,6 +36,12 @@ function noteWithPhoto(dataUrl: string): Note {
 	};
 }
 
+async function settleIndexedDb(): Promise<void> {
+	for (let pass = 0; pass < 4; pass += 1) {
+		await new Promise<void>((resolve) => setImmediate(resolve));
+	}
+}
+
 describe('syncing when a note closes', () => {
 	beforeEach(async () => {
 		await clearSyncOutbox(await getSyncOutboxKeys());
@@ -48,8 +54,23 @@ describe('syncing when a note closes', () => {
 	});
 
 	afterEach(async () => {
+		vi.clearAllTimers();
+		vi.useRealTimers();
+		const internals = notesStore as unknown as {
+			dirty: boolean;
+			syncPushTimer: ReturnType<typeof setTimeout> | null;
+			syncRetryTimer: ReturnType<typeof setTimeout> | null;
+			syncRetryAttempt: number;
+		};
+		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
+		if (internals.syncRetryTimer) clearTimeout(internals.syncRetryTimer);
+		internals.syncPushTimer = null;
+		internals.syncRetryTimer = null;
+		internals.syncRetryAttempt = 0;
+		internals.dirty = false;
 		vi.restoreAllMocks();
 		syncStore.account = null;
+		syncStore.lastError = null;
 		notesStore.notes = [];
 		(
 			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
@@ -149,39 +170,98 @@ describe('syncing when a note closes', () => {
 		expect(hydrate).toHaveBeenCalledWith(note.id);
 	});
 
-	it('does not loop automatic sync when an outbox record remains queued', async () => {
+	it('retries a successful partial sync while an outbox record remains queued', async () => {
 		notesStore.notes = [noteWithPhoto('')];
 		(
 			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
 		).attachmentHydrationFailures.add('photo-note');
 		await markSyncOutbox(['attachment:photo-1']);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		(notesStore as unknown as { dirty: boolean }).dirty = true;
-		vi.spyOn(
+		const queue = vi.spyOn(
 			notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
 			'queueSync'
-		).mockResolvedValue(true);
+		);
+		queue.mockResolvedValueOnce(true).mockImplementationOnce(async () => {
+			await clearSyncOutbox(['attachment:photo-1']);
+			return true;
+		});
 
 		expect(await notesStore.flushSync()).toBe(true);
 		expect(
-			(notesStore as unknown as { syncPushTimer: ReturnType<typeof setTimeout> | null })
-				.syncPushTimer
-		).toBeNull();
+			(notesStore as unknown as { syncRetryTimer: ReturnType<typeof setTimeout> | null })
+				.syncRetryTimer
+		).not.toBeNull();
+		await vi.advanceTimersByTimeAsync(5_000);
+		await settleIndexedDb();
+		expect(queue).toHaveBeenCalledTimes(2);
+		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(false);
 	});
 
-	it('does not loop automatic sync after a relay failure', async () => {
+	it('retries a relay failure with bounded backoff', async () => {
 		await markSyncOutbox(['note:note-1']);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		(notesStore as unknown as { dirty: boolean }).dirty = true;
-		vi.spyOn(
+		const queue = vi.spyOn(
 			notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
 			'queueSync'
-		).mockResolvedValue(false);
+		);
+		queue.mockResolvedValueOnce(false).mockImplementationOnce(async () => {
+			await clearSyncOutbox(['note:note-1']);
+			return true;
+		});
 
 		expect(await notesStore.flushSync()).toBe(false);
 		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(true);
 		expect(
-			(notesStore as unknown as { syncPushTimer: ReturnType<typeof setTimeout> | null })
-				.syncPushTimer
-		).toBeNull();
+			(notesStore as unknown as { syncRetryTimer: ReturnType<typeof setTimeout> | null })
+				.syncRetryTimer
+		).not.toBeNull();
 		expect(await getSyncOutboxKeys()).toEqual(['note:note-1']);
+		await vi.advanceTimersByTimeAsync(5_000);
+		await settleIndexedDb();
+		expect(queue).toHaveBeenCalledTimes(2);
+		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(false);
+	});
+
+	it('does not automatically retry a quota failure', async () => {
+		await markSyncOutbox(['note:note-1']);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		(notesStore as unknown as { dirty: boolean }).dirty = true;
+		syncStore.lastError = 'Sync account storage quota exceeded';
+		const queue = vi
+			.spyOn(
+				notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
+				'queueSync'
+			)
+			.mockResolvedValue(false);
+
+		expect(await notesStore.flushSync()).toBe(false);
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+		expect(queue).toHaveBeenCalledOnce();
+	});
+
+	it('retries dirty sync immediately when the browser comes online', async () => {
+		await markSyncOutbox(['note:note-1']);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		(notesStore as unknown as { dirty: boolean }).dirty = true;
+		const queue = vi
+			.spyOn(
+				notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
+				'queueSync'
+			)
+			.mockResolvedValueOnce(false)
+			.mockImplementationOnce(async () => {
+				await clearSyncOutbox(['note:note-1']);
+				return true;
+			});
+		await notesStore.flushSync();
+
+		window.dispatchEvent(new Event('online'));
+		await vi.advanceTimersByTimeAsync(0);
+		await settleIndexedDb();
+
+		expect(queue).toHaveBeenCalledTimes(2);
+		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(false);
 	});
 });

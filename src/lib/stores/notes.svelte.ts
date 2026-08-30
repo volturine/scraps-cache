@@ -39,6 +39,7 @@ import {
 } from '$lib/noteStorage';
 import {
 	hydrateTombstones,
+	deleteLabelWithTombstone,
 	readLabelTombstones,
 	readTombstones,
 	writeLabelTombstones,
@@ -125,6 +126,9 @@ export class NotesStore {
 				if (document.visibilityState === 'hidden') this.mirrorToLS();
 			});
 			window.addEventListener('pagehide', () => this.mirrorToLS());
+			window.addEventListener('online', () => {
+				if (this.dirty && syncStore.isLoggedIn) this.scheduleSyncPush(0);
+			});
 		}
 	}
 
@@ -577,9 +581,6 @@ export class NotesStore {
 			});
 			this.labels = this.labels.filter((label) => label.id !== id);
 			this.mirrorToLS();
-			deleteLabel(id, [`label-tombstone:${id}`]).catch((err) =>
-				this.recordPersistenceError('Could not delete label', err)
-			);
 			for (const note of affected) this.persist(note.id);
 			this.markLabelsDeleted([id], deletedAt);
 			return;
@@ -597,9 +598,6 @@ export class NotesStore {
 			);
 		});
 		this.mirrorToLS();
-		deleteLabel(id, [`label-tombstone:${id}`]).catch((err) =>
-			this.recordPersistenceError('Could not delete label', err)
-		);
 		for (const noteId of affectedNoteIds) this.persist(noteId);
 		this.markLabelsDeleted([id], deletedAt);
 	}
@@ -811,11 +809,12 @@ export class NotesStore {
 
 	private markLabelsDeleted(ids: string[], deletedAt = Date.now()): void {
 		if (ids.length === 0) return;
-		for (const id of ids) this.deletedLabelIds[id] = deletedAt;
-		void writeLabelTombstones(
-			this.deletedLabelIds,
-			ids.map((id) => `label-tombstone:${id}`)
-		).then(() => this.markLabelsDirty());
+		const next = { ...this.deletedLabelIds };
+		for (const id of ids) next[id] = deletedAt;
+		this.deletedLabelIds = next;
+		void Promise.all(ids.map((id) => deleteLabelWithTombstone(id, next, [`label-tombstone:${id}`])))
+			.then(() => this.markLabelsDirty())
+			.catch((err) => this.recordPersistenceError('Could not delete label', err));
 	}
 
 	private markLabelsDirty(keys: Iterable<string> = []): void {
@@ -841,6 +840,8 @@ export class NotesStore {
 	}
 
 	private syncPushTimer: ReturnType<typeof setTimeout> | null = null;
+	private syncRetryTimer: ReturnType<typeof setTimeout> | null = null;
+	private syncRetryAttempt = 0;
 	private noteRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private noteRetryAttempts = new Map<string, number>();
 	private dirty = false;
@@ -923,13 +924,34 @@ export class NotesStore {
 		this.scheduleSyncPush();
 	}
 
-	private scheduleSyncPush() {
+	private scheduleSyncPush(delay = 5000) {
 		if (this.syncFlight) this.syncFollowupRequested = true;
 		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
+		if (this.syncRetryTimer) {
+			clearTimeout(this.syncRetryTimer);
+			this.syncRetryTimer = null;
+		}
 		this.syncPushTimer = setTimeout(() => {
+			this.syncPushTimer = null;
 			if (!this.dirty) return;
 			void this.flushSync();
-		}, 5000);
+		}, delay);
+	}
+
+	private scheduleSyncRetry(): void {
+		if (this.syncRetryTimer || !syncStore.isLoggedIn) return;
+		const delay = Math.min(5 * 60_000, 5_000 * 2 ** this.syncRetryAttempt);
+		this.syncRetryAttempt = Math.min(this.syncRetryAttempt + 1, 6);
+		this.syncRetryTimer = setTimeout(() => {
+			this.syncRetryTimer = null;
+			if (this.dirty && syncStore.isLoggedIn) void this.flushSync();
+		}, delay);
+	}
+
+	private clearSyncRetry(): void {
+		if (this.syncRetryTimer) clearTimeout(this.syncRetryTimer);
+		this.syncRetryTimer = null;
+		this.syncRetryAttempt = 0;
 	}
 
 	flushSync(indicate = false): Promise<boolean> {
@@ -937,12 +959,19 @@ export class NotesStore {
 			clearTimeout(this.syncPushTimer);
 			this.syncPushTimer = null;
 		}
+		if (this.syncRetryTimer) {
+			clearTimeout(this.syncRetryTimer);
+			this.syncRetryTimer = null;
+		}
 		return this.queueSync(indicate).then(async (synced) => {
 			const leftover = synced ? await getSyncOutboxKeys().catch(() => []) : [];
 			if (synced && leftover.length === 0) {
 				this.dirty = false;
+				this.clearSyncRetry();
 			} else {
 				this.dirty = true;
+				if (/quota/i.test(syncStore.lastError ?? '')) this.clearSyncRetry();
+				else this.scheduleSyncRetry();
 			}
 			return synced;
 		});

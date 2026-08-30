@@ -110,14 +110,12 @@ export class ReminderStore {
 	/** Publish only state that has completed cloud reconciliation. */
 	publish(notes: ReminderNote[]): void {
 		const candidateIds = new Set(relayReminderWakes(notes, Date.now()).map((wake) => wake.id));
-		if (notificationPermission() === 'granted') {
-			this.armed = candidateIds;
-			void registerReminderDevice();
-		}
 		this.sync(notes);
-		void publishReminderWakes(notes)
-			.then((wakes) => {
-				if (wakes) {
+		const registration =
+			notificationPermission() === 'granted' ? registerReminderDevice() : Promise.resolve(false);
+		void Promise.all([publishReminderWakes(notes), registration])
+			.then(([wakes, registered]) => {
+				if (wakes && registered) {
 					this.armed = new Set(wakes.map((wake) => wake.id));
 					return;
 				}

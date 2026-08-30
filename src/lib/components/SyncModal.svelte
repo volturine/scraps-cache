@@ -25,13 +25,11 @@
 	let deleteConfirm = $state(false);
 	let quotaRatio = $derived.by(() => {
 		if (!syncStore.usage) return 0;
-		return syncStore.usage.ciphertextBytes / syncStore.usage.maxBytes;
+		return syncStore.usage.storageBytes / syncStore.usage.maxBytes;
 	});
-	let quotaError = $derived(
-		syncStore.lastError?.toLowerCase().includes('quota') ? syncStore.lastError : ''
-	);
+	let syncError = $derived(syncStore.lastError ?? '');
 	let quotaStatus = $derived(
-		quotaError || quotaRatio >= 1 ? 'danger' : quotaRatio >= 0.8 ? 'warning' : 'normal'
+		syncError || quotaRatio >= 1 ? 'danger' : quotaRatio >= 0.8 ? 'warning' : 'normal'
 	);
 
 	function stopWaiting() {
@@ -336,8 +334,8 @@
 				{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]">{info}</p>{/if}
 				{#if error}
 					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{error}</p>
-				{:else if quotaError}
-					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{quotaError}</p>
+				{:else if syncError}
+					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{syncError}</p>
 				{/if}
 				<button
 					type="button"
@@ -368,7 +366,7 @@
 						<div class="flex items-center justify-between gap-3">
 							<span class="font-medium">Sync storage</span>
 							<span>
-								{formatBytes(syncStore.usage.ciphertextBytes)} of
+								{formatBytes(syncStore.usage.storageBytes)} of
 								{formatLimit(syncStore.usage.maxBytes)}
 							</span>
 						</div>

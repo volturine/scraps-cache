@@ -429,6 +429,7 @@ describe('notes store sync apply', () => {
 						writesAccepted: true,
 						usage: {
 							ciphertextBytes: 20,
+							storageBytes: 532,
 							envelopeCount: 1,
 							maxBytes: 1000
 						}
@@ -456,6 +457,7 @@ describe('notes store sync apply', () => {
 					writesAccepted: true,
 					usage: {
 						ciphertextBytes: 20,
+						storageBytes: 532,
 						envelopeCount: 1,
 						maxBytes: 1000
 					}
@@ -504,6 +506,7 @@ describe('notes store sync apply', () => {
 				writesAccepted: true,
 				usage: {
 					ciphertextBytes: 0,
+					storageBytes: 0,
 					envelopeCount: 0,
 					maxBytes: 1000
 				}

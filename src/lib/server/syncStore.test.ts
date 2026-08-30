@@ -7,6 +7,7 @@ import {
 	SyncQuotaExceededError,
 	SyncStore,
 	DELETED_SLOT_GRACE_MS,
+	ENVELOPE_STORAGE_OVERHEAD_BYTES,
 	WAKE_CLAIM_LEASE_MS
 } from './syncStore';
 
@@ -50,28 +51,30 @@ describe('SQLite sync store', () => {
 		expect(store.getAuthCredential('account')).toBe('public-key');
 	});
 
-	it('defaults each account to one GiB of ciphertext storage', () => {
+	it('defaults each account to one GiB of estimated relay storage', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
 		expect(store.sync('account', 0, [], [], 1).usage.maxBytes).toBe(1024 ** 3);
 	});
 
 	it('enforces a durable per-account byte quota and can restore the default', () => {
-		const { store, directory } = createStore({ maxAccountBytes: 100 });
+		const defaultQuota = ENVELOPE_STORAGE_OVERHEAD_BYTES + 100;
+		const limitedQuota = ENVELOPE_STORAGE_OVERHEAD_BYTES + 5;
+		const { store, directory } = createStore({ maxAccountBytes: defaultQuota });
 		store.createAccount('limited-account', 'credential');
 		store.createAccount('default-account', 'credential');
 
-		expect(store.setAccountByteQuota('limited-account', 5)).toBe(true);
+		expect(store.setAccountByteQuota('limited-account', limitedQuota)).toBe(true);
 		store.close();
 		stores.splice(stores.indexOf(store), 1);
-		const reopened = new SyncStore(directory, { maxAccountBytes: 100 });
+		const reopened = new SyncStore(directory, { maxAccountBytes: defaultQuota });
 		stores.push(reopened);
 
 		expect(reopened.getAccountByteQuota('limited-account')).toEqual({
-			maxBytes: 5,
+			maxBytes: limitedQuota,
 			overridden: true
 		});
-		expect(reopened.sync('limited-account', 0, [], [], 1).usage.maxBytes).toBe(5);
+		expect(reopened.sync('limited-account', 0, [], [], 1).usage.maxBytes).toBe(limitedQuota);
 		expect(() =>
 			reopened.sync(
 				'limited-account',
@@ -81,11 +84,11 @@ describe('SQLite sync store', () => {
 				1
 			)
 		).toThrow(SyncQuotaExceededError);
-		expect(reopened.sync('default-account', 0, [], [], 1).usage.maxBytes).toBe(100);
+		expect(reopened.sync('default-account', 0, [], [], 1).usage.maxBytes).toBe(defaultQuota);
 
 		expect(reopened.clearAccountByteQuota('limited-account')).toBe(true);
 		expect(reopened.getAccountByteQuota('limited-account')).toEqual({
-			maxBytes: 100,
+			maxBytes: defaultQuota,
 			overridden: false
 		});
 	});
@@ -190,7 +193,9 @@ describe('SQLite sync store', () => {
 	});
 
 	it('rolls back the entire upload batch when an account quota is exceeded', () => {
-		const { store } = createStore({ maxAccountBytes: 5 });
+		const { store } = createStore({
+			maxAccountBytes: ENVELOPE_STORAGE_OVERHEAD_BYTES + 5
+		});
 		store.createAccount('account', 'credential');
 		expect(() =>
 			store.sync(
@@ -234,7 +239,9 @@ describe('SQLite sync store', () => {
 	});
 
 	it('rolls back deletions together with an over-quota replacement batch', () => {
-		const { store } = createStore({ maxAccountBytes: 5 });
+		const { store } = createStore({
+			maxAccountBytes: ENVELOPE_STORAGE_OVERHEAD_BYTES + 5
+		});
 		store.createAccount('account', 'credential');
 		store.sync('account', 0, [{ id: 'kept', slot: slot('a'), ciphertext: '123' }], [], 10);
 
@@ -289,6 +296,7 @@ describe('SQLite sync store', () => {
 			10
 		);
 		expect(removed.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0 });
+		expect(removed.usage.storageBytes).toBe(ENVELOPE_STORAGE_OVERHEAD_BYTES + 'replacement'.length);
 	});
 
 	it('hides deleted slots from downloads immediately but keeps their ciphertext during grace', () => {
@@ -314,7 +322,9 @@ describe('SQLite sync store', () => {
 		);
 		expect(removed.usage).toMatchObject({
 			envelopeCount: 1,
-			ciphertextBytes: 'cipher-note'.length
+			ciphertextBytes: 'cipher-note'.length,
+			storageBytes:
+				2 * ENVELOPE_STORAGE_OVERHEAD_BYTES + 'cipher-note'.length + 'cipher-photo'.length
 		});
 
 		// A slower device rewinding behind the deletion never sees the slot again.
@@ -327,6 +337,43 @@ describe('SQLite sync store', () => {
 					.prepare('SELECT id, ciphertext FROM deleted_envelopes WHERE account_id = ? AND slot = ?')
 					.get('account', slot('b'))
 			).toEqual({ id: 'photo', ciphertext: 'cipher-photo' });
+		} finally {
+			raw.close();
+		}
+	});
+
+	it('charges record overhead and purges retained ciphertext only when space is needed', () => {
+		const maxAccountBytes = ENVELOPE_STORAGE_OVERHEAD_BYTES + 5;
+		const { store, directory } = createStore({ maxAccountBytes });
+		store.createAccount('account', 'credential');
+		expect(() =>
+			store.sync('account', 0, [{ id: 'too-large', slot: slot('z'), ciphertext: '123456' }], [], 10)
+		).toThrow(SyncQuotaExceededError);
+
+		const first = store.sync(
+			'account',
+			0,
+			[{ id: 'old', slot: slot('a'), ciphertext: '12345' }],
+			[],
+			10
+		);
+		const deleted = store.sync('account', first.cursor, [], [{ id: 'old', slot: slot('a') }], 10);
+		expect(deleted.usage.storageBytes).toBe(maxAccountBytes);
+
+		const replacement = store.sync(
+			'account',
+			deleted.cursor,
+			[{ id: 'new', slot: slot('b'), ciphertext: 'abcde' }],
+			[],
+			10
+		);
+		expect(replacement.usage.storageBytes).toBe(maxAccountBytes);
+		const raw = new Database(join(directory, 'sync.sqlite'));
+		try {
+			expect(
+				(raw.prepare('SELECT COUNT(*) AS count FROM deleted_envelopes').get() as { count: number })
+					.count
+			).toBe(0);
 		} finally {
 			raw.close();
 		}
@@ -711,6 +758,7 @@ describe('SQLite sync store', () => {
 			accounts: 3,
 			envelopeCount: 1,
 			ciphertextBytes: 'opaque'.length,
+			storageBytes: ENVELOPE_STORAGE_OVERHEAD_BYTES + 'opaque'.length,
 			activeByWindowDays: { '1': 1, '7': 1, '30': 2 },
 			staleAccounts: 1
 		});

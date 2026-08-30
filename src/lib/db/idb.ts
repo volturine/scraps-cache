@@ -434,7 +434,34 @@ export async function deleteLabel(
 			'readwrite'
 		);
 		try {
-			tx.objectStore(LABELS_STORE).delete(id);
+			await tx.objectStore(LABELS_STORE).delete(id);
+			await writeOutboxKeys(tx, outboxKeys);
+			await tx.done;
+		} catch (error) {
+			await abortWrite(tx, previousGeneration);
+			throw error;
+		}
+	});
+}
+
+/** Delete a label while durably committing related sync state and outbox markers. */
+export async function deleteLabelWithSyncState(
+	id: string,
+	state: Iterable<readonly [key: string, value: unknown]>,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
+	const entries = [...state];
+	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
+	const generation = writeGeneration;
+	await enqueueDeviceWrite(async () => {
+		if (generation !== writeGeneration) return;
+		const db = await getDB();
+		const previousGeneration = outboxGenerationCache;
+		const tx = db.transaction([LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+		try {
+			await tx.objectStore(LABELS_STORE).delete(id);
+			const stateStore = tx.objectStore(SYNC_STATE_STORE);
+			for (const [key, value] of entries) await stateStore.put(value, key);
 			await writeOutboxKeys(tx, outboxKeys);
 			await tx.done;
 		} catch (error) {

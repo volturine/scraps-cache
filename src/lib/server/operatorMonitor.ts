@@ -11,6 +11,7 @@ export type OperatorSnapshot = {
 	generatedAt: number;
 	storage: {
 		ciphertextBytes: number;
+		storageBytes: number;
 		gigabytes: number;
 		envelopes: number;
 	};
@@ -36,7 +37,8 @@ export function buildOperatorSnapshot(
 		generatedAt: now,
 		storage: {
 			ciphertextBytes: usage.ciphertextBytes,
-			gigabytes: bytesToGigabytes(usage.ciphertextBytes),
+			storageBytes: usage.storageBytes,
+			gigabytes: bytesToGigabytes(usage.storageBytes),
 			envelopes: usage.envelopeCount
 		},
 		accounts: {

@@ -12,7 +12,7 @@ import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = publicApiLimiter.check(`auth-migrate-ip:${clientAddress(getClientAddress)}`, {
-		capacity: 5,
+		capacity: 120,
 		refillWindowMs: 60 * 60 * 1000
 	});
 	if (!limited.allowed) return rateLimitResponse(limited);
@@ -39,6 +39,11 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	) {
 		return json({ error: 'Authentication upgrade failed' }, { status: 401 });
 	}
+	const accountLimited = publicApiLimiter.check(`auth-migrate-account:${body.accountId}`, {
+		capacity: 5,
+		refillWindowMs: 60 * 60 * 1000
+	});
+	if (!accountLimited.allowed) return rateLimitResponse(accountLimited);
 	const store = getSyncStore();
 	const credential = store.getAuthCredential(body.accountId);
 	if (

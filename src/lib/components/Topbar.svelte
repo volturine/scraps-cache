@@ -42,6 +42,19 @@
 	let pendingEncryptedBackup = $state<EncryptedScrapsCacheBackup | null>(null);
 	let pendingImportData = $state.raw<unknown>(null);
 	let choosingImportMode = $state(false);
+	let syncStatus = $derived.by(() => {
+		if (syncStore.lastError) return 'danger';
+		if (!syncStore.usage) return 'normal';
+		const ratio = syncStore.usage.storageBytes / syncStore.usage.maxBytes;
+		return ratio >= 1 ? 'danger' : ratio >= 0.8 ? 'warning' : 'normal';
+	});
+	let syncControlLabel = $derived(
+		syncStatus === 'danger'
+			? 'Sync settings, sync needs attention'
+			: syncStatus === 'warning'
+				? 'Sync settings, storage nearly full'
+				: 'Sync settings'
+	);
 
 	function startBackupExport() {
 		settingsOpen = false;
@@ -195,14 +208,25 @@
 	<button
 		type="button"
 		class="icon-btn h-10 w-10 p-2"
-		title="Sync settings"
+		title={syncControlLabel}
 		onclick={() => {
 			syncOpen = true;
 		}}
-		aria-label="Sync settings"
+		aria-label={syncControlLabel}
 		data-scrapscache-sync-control
 	>
-		<Cloud class="h-5 w-5" data-scrapscache-sync-icon aria-hidden="true" />
+		<Cloud
+			class={[
+				'h-5 w-5',
+				syncStatus === 'danger'
+					? 'text-[var(--scrapscache-danger)]'
+					: syncStatus === 'warning'
+						? 'text-[var(--scrapscache-warning)]'
+						: ''
+			]}
+			data-scrapscache-sync-icon
+			aria-hidden="true"
+		/>
 	</button>
 
 	<button

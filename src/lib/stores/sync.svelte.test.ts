@@ -28,6 +28,7 @@ type RelayData = {
 	usage?: {
 		ciphertextBytes: number;
 		envelopeCount: number;
+		storageBytes: number;
 		maxBytes: number;
 	};
 };
@@ -193,6 +194,162 @@ describe('client sync state machine', () => {
 			authPublicKey: account.authPublicKey
 		});
 		expect(migration.signature).toMatch(/^[A-Za-z0-9_-]+$/);
+	});
+
+	it('keeps concurrent authentication scoped to the requested account', async () => {
+		const accountA = createSyncIdentity();
+		const accountB = createSyncIdentity();
+		const store = new SyncStore();
+		store.account = accountB;
+		let releaseAccountA: ((response: Response) => void) | undefined;
+		const accountAChallenge = new Promise<Response>((resolve) => {
+			releaseAccountA = resolve;
+		});
+		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const path = String(input);
+			const request = JSON.parse(String(init?.body ?? '{}')) as { accountId?: string };
+			if (path.endsWith('/challenge')) {
+				if (request.accountId === accountA.accountId) return accountAChallenge;
+				return new Response(JSON.stringify({ challengeId: 'b', challenge: 'challenge-b' }));
+			}
+			return new Response(
+				JSON.stringify({
+					accessToken: `token-${request.accountId}`,
+					expiresAt: Date.now() + 60_000
+				})
+			);
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const privateStore = store as unknown as {
+			accessToken(account: SyncIdentity): Promise<string>;
+			session: { accountId: string; accessToken: string; expiresAt: number } | null;
+		};
+
+		const tokenA = privateStore.accessToken(accountA);
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+		const tokenB = privateStore.accessToken(accountB);
+		await expect(tokenB).resolves.toBe(`token-${accountB.accountId}`);
+		releaseAccountA?.(new Response(JSON.stringify({ challengeId: 'a', challenge: 'challenge-a' })));
+		await expect(tokenA).resolves.toBe(`token-${accountA.accountId}`);
+		expect(fetchMock).toHaveBeenCalledTimes(4);
+		expect(privateStore.session?.accountId).toBe(accountB.accountId);
+	});
+
+	it('does not accept an authentication session that finishes after logout', async () => {
+		const account = createSyncIdentity();
+		const store = new SyncStore();
+		store.account = account;
+		let releaseChallenge: ((response: Response) => void) | undefined;
+		const challenge = new Promise<Response>((resolve) => {
+			releaseChallenge = resolve;
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi
+				.fn()
+				.mockImplementationOnce(() => challenge)
+				.mockResolvedValueOnce(
+					new Response(
+						JSON.stringify({ accessToken: 'late-token', expiresAt: Date.now() + 60_000 })
+					)
+				)
+		);
+		const privateStore = store as unknown as {
+			accessToken(): Promise<string>;
+			session: { accountId: string; accessToken: string; expiresAt: number } | null;
+		};
+		const pending = privateStore.accessToken();
+		store.logout();
+		releaseChallenge?.(
+			new Response(JSON.stringify({ challengeId: 'late', challenge: 'challenge' }))
+		);
+
+		await expect(pending).rejects.toThrow('Sync authentication was cancelled');
+		expect(privateStore.session).toBeNull();
+	});
+
+	it('reauthenticates and retries an authorized request once after a rejected session', async () => {
+		const account = createSyncIdentity();
+		const store = new SyncStore();
+		store.account = account;
+		(
+			store as unknown as {
+				session: { accountId: string; accessToken: string; expiresAt: number };
+			}
+		).session = {
+			accountId: account.accountId,
+			accessToken: 'stale-token',
+			expiresAt: Date.now() + 60_000
+		};
+		const resourceTokens: string[] = [];
+		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const path = String(input);
+			if (path === '/resource') {
+				resourceTokens.push(new Headers(init?.headers).get('authorization') ?? '');
+				return new Response(null, { status: resourceTokens.length === 1 ? 401 : 204 });
+			}
+			if (path.endsWith('/challenge'))
+				return new Response(JSON.stringify({ challengeId: 'fresh', challenge: 'challenge' }));
+			return new Response(
+				JSON.stringify({ accessToken: 'fresh-token', expiresAt: Date.now() + 60_000 })
+			);
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		const response = await store.authorizedFetch('/resource');
+
+		expect(response.status).toBe(204);
+		expect(resourceTokens).toEqual(['Bearer stale-token', 'Bearer fresh-token']);
+	});
+
+	it('reauthenticates and retries the same delta request once after HTTP 401', async () => {
+		const account = createSyncIdentity();
+		const store = new SyncStore();
+		store.account = account;
+		const privateStore = store as unknown as {
+			session: { accountId: string; accessToken: string; expiresAt: number };
+			sendSyncRequest(
+				path: string,
+				payload: string,
+				uploadBytes: number,
+				indicate: boolean
+			): Promise<{ success: boolean; status?: number; data?: RelayData }>;
+			sendSyncRequestWithToken(
+				path: string,
+				payload: string,
+				uploadBytes: number,
+				indicate: boolean,
+				accessToken: string
+			): Promise<{ success: boolean; status?: number; data?: RelayData }>;
+		};
+		privateStore.session = {
+			accountId: account.accountId,
+			accessToken: 'stale-token',
+			expiresAt: Date.now() + 60_000
+		};
+		const request = vi
+			.spyOn(privateStore, 'sendSyncRequestWithToken')
+			.mockResolvedValueOnce({ success: false, status: 401 })
+			.mockResolvedValueOnce({ success: true, data: emptyData() });
+		vi.stubGlobal(
+			'fetch',
+			vi
+				.fn()
+				.mockResolvedValueOnce(
+					new Response(JSON.stringify({ challengeId: 'fresh', challenge: 'challenge' }))
+				)
+				.mockResolvedValueOnce(
+					new Response(
+						JSON.stringify({ accessToken: 'fresh-token', expiresAt: Date.now() + 60_000 })
+					)
+				)
+		);
+
+		await expect(privateStore.sendSyncRequest('/api/sync/delta', '{}', 0, false)).resolves.toEqual({
+			success: true,
+			data: emptyData()
+		});
+		expect(request.mock.calls.map((call) => call[4])).toEqual(['stale-token', 'fresh-token']);
 	});
 
 	it('reports an outbox failure and allows the next durable marker write to retry', async () => {
@@ -447,7 +604,7 @@ describe('client sync state machine', () => {
 					success: true,
 					data: emptyData({
 						cursor: request.cursor,
-						usage: { ciphertextBytes: 10, envelopeCount: 1, maxBytes: 1000 }
+						usage: { ciphertextBytes: 10, envelopeCount: 1, storageBytes: 522, maxBytes: 1000 }
 					})
 				};
 			}
@@ -456,7 +613,7 @@ describe('client sync state machine', () => {
 				data: emptyData({
 					cursor: 1,
 					envelopes: [envelope(account, 'cloud-id', 1, { kind: 'note', value: pulled })],
-					usage: { ciphertextBytes: 10, envelopeCount: 1, maxBytes: 1000 }
+					usage: { ciphertextBytes: 10, envelopeCount: 1, storageBytes: 522, maxBytes: 1000 }
 				})
 			};
 		});

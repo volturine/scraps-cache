@@ -1,5 +1,10 @@
 // Durable delete manifests in IndexedDB. Permanent delete wins until cleared.
-import { getSyncState, setSyncState, writeSyncStateWithOutbox } from '$lib/db/idb';
+import {
+	deleteLabelWithSyncState,
+	getSyncState,
+	setSyncState,
+	writeSyncStateWithOutbox
+} from '$lib/db/idb';
 
 const NOTE_IDB = 'scrapscache-idb-note-tombstones';
 const LABEL_IDB = 'scrapscache-idb-label-tombstones';
@@ -50,6 +55,16 @@ export async function writeLabelTombstones(
 ): Promise<void> {
 	labelCache = sanitize(tombstones);
 	await writeSyncStateWithOutbox([[LABEL_IDB, labelCache]], syncOutboxKeys);
+}
+
+export async function deleteLabelWithTombstone(
+	id: string,
+	tombstones: Tombstones,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
+	const next = sanitize(tombstones);
+	await deleteLabelWithSyncState(id, [[LABEL_IDB, next]], syncOutboxKeys);
+	labelCache = next;
 }
 
 export async function hydrateTombstones(): Promise<{

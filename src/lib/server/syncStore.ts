@@ -41,6 +41,7 @@ export type AccountByteQuota = {
 type UsageRow = {
 	envelopeCount: number;
 	ciphertextBytes: number;
+	storageBytes: number;
 };
 
 export type SyncQuotas = {
@@ -54,6 +55,8 @@ export type OperatorUsage = UsageRow & {
 };
 
 const DEFAULT_MAX_ACCOUNT_BYTES = 1024 ** 3;
+/** Conservative allowance for row, key, and index storage beyond the ciphertext itself. */
+export const ENVELOPE_STORAGE_OVERHEAD_BYTES = 512;
 export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
@@ -279,6 +282,25 @@ export class SyncStore {
 
 			let envelopeCount = account.envelope_count;
 			let ciphertextBytes = account.ciphertext_bytes;
+			const retained = this.database
+				.prepare(
+					`SELECT COUNT(*) AS envelopeCount,
+						COALESCE(SUM(length(ciphertext)), 0) AS ciphertextBytes
+					 FROM deleted_envelopes WHERE account_id = ?`
+				)
+				.get(accountId) as { envelopeCount: number; ciphertextBytes: number };
+			let retainedEnvelopeCount = retained.envelopeCount;
+			let retainedCiphertextBytes = retained.ciphertextBytes;
+			const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes): number =>
+				activeBytes +
+				retainedCiphertextBytes +
+				(activeCount + retainedEnvelopeCount) * ENVELOPE_STORAGE_OVERHEAD_BYTES;
+			const usage = (): UsageRow & { maxBytes: number } => ({
+				envelopeCount,
+				ciphertextBytes,
+				storageBytes: storageBytes(),
+				maxBytes: maxAccountBytes
+			});
 			if (cursor > account.next_seq) {
 				// Wake revisions live in cursor space; a sequence reset rewinds that
 				// space, so the guard must rewind with it or wake publishing stalls.
@@ -293,11 +315,7 @@ export class SyncStore {
 					hasMore: false,
 					reset: true,
 					writesAccepted: false,
-					usage: {
-						envelopeCount,
-						ciphertextBytes,
-						maxBytes: maxAccountBytes
-					}
+					usage: usage()
 				};
 			}
 			const page = this.database
@@ -323,11 +341,7 @@ export class SyncStore {
 					hasMore,
 					reset: false,
 					writesAccepted: !attemptedWrites,
-					usage: {
-						envelopeCount,
-						ciphertextBytes,
-						maxBytes: maxAccountBytes
-					}
+					usage: usage()
 				};
 			}
 
@@ -351,11 +365,7 @@ export class SyncStore {
 					hasMore: false,
 					reset: false,
 					writesAccepted: false,
-					usage: {
-						envelopeCount,
-						ciphertextBytes,
-						maxBytes: maxAccountBytes
-					}
+					usage: usage()
 				};
 			}
 
@@ -372,12 +382,21 @@ export class SyncStore {
 			`);
 			const deletedAt = Date.now();
 			for (const deletion of deletions) {
+				const previouslyRetained = this.database
+					.prepare(
+						`SELECT length(ciphertext) AS ciphertextBytes FROM deleted_envelopes
+						 WHERE account_id = ? AND slot = ?`
+					)
+					.get(accountId, deletion.slot) as { ciphertextBytes: number } | undefined;
 				stageDeletion.run(deletedAt, accountId, deletion.slot, deletion.id);
 				const removed = remove.get(accountId, deletion.slot, deletion.id) as
 					{ ciphertext_bytes: number } | undefined;
 				if (!removed) continue;
 				envelopeCount -= 1;
 				ciphertextBytes -= removed.ciphertext_bytes;
+				if (!previouslyRetained) retainedEnvelopeCount += 1;
+				retainedCiphertextBytes +=
+					removed.ciphertext_bytes - (previouslyRetained?.ciphertextBytes ?? 0);
 			}
 
 			let sequence = account.next_seq;
@@ -394,6 +413,13 @@ export class SyncStore {
 					id = excluded.id,
 					ciphertext = excluded.ciphertext
 			`);
+			const retainedOldestFirst = this.database.prepare(
+				`SELECT slot, length(ciphertext) AS ciphertextBytes
+				 FROM deleted_envelopes WHERE account_id = ? ORDER BY deleted_at ASC, slot ASC`
+			);
+			const removeRetained = this.database.prepare(
+				'DELETE FROM deleted_envelopes WHERE account_id = ? AND slot = ?'
+			);
 
 			for (const upload of uploads) {
 				if (hasId.get(accountId, upload.id)) continue;
@@ -404,7 +430,21 @@ export class SyncStore {
 				const projectedCount = envelopeCount + (prior ? 0 : 1);
 				const projectedBytes =
 					ciphertextBytes + upload.ciphertext.length - (prior?.ciphertext.length ?? 0);
-				if (projectedBytes > maxAccountBytes) {
+				let projectedStorageBytes = storageBytes(projectedCount, projectedBytes);
+				if (projectedStorageBytes > maxAccountBytes && retainedEnvelopeCount > 0) {
+					const retainedRows = retainedOldestFirst.all(accountId) as Array<{
+						slot: string;
+						ciphertextBytes: number;
+					}>;
+					for (const row of retainedRows) {
+						removeRetained.run(accountId, row.slot);
+						retainedEnvelopeCount -= 1;
+						retainedCiphertextBytes -= row.ciphertextBytes;
+						projectedStorageBytes = storageBytes(projectedCount, projectedBytes);
+						if (projectedStorageBytes <= maxAccountBytes) break;
+					}
+				}
+				if (projectedStorageBytes > maxAccountBytes && projectedStorageBytes >= storageBytes()) {
 					throw new SyncQuotaExceededError();
 				}
 				sequence += 1;
@@ -436,11 +476,7 @@ export class SyncStore {
 				hasMore: false,
 				reset: false,
 				writesAccepted: true,
-				usage: {
-					envelopeCount,
-					ciphertextBytes,
-					maxBytes: maxAccountBytes
-				}
+				usage: usage()
 			};
 		})();
 	}
@@ -484,6 +520,9 @@ export class SyncStore {
 				COUNT(*) AS accounts,
 				COALESCE(SUM(envelope_count), 0) AS envelopeCount,
 				COALESCE(SUM(ciphertext_bytes), 0) AS ciphertextBytes,
+				(SELECT COUNT(*) FROM deleted_envelopes) AS retainedEnvelopeCount,
+				(SELECT COALESCE(SUM(length(ciphertext)), 0) FROM deleted_envelopes)
+					AS retainedCiphertextBytes,
 				${activeSelects ? `${activeSelects},` : ''}
 				COALESCE(SUM(CASE WHEN last_seen_at < ? THEN 1 ELSE 0 END), 0) AS staleAccounts
 			FROM accounts
@@ -502,6 +541,10 @@ export class SyncStore {
 			accounts: row.accounts,
 			envelopeCount: row.envelopeCount,
 			ciphertextBytes: row.ciphertextBytes,
+			storageBytes:
+				row.ciphertextBytes +
+				row.retainedCiphertextBytes +
+				(row.envelopeCount + row.retainedEnvelopeCount) * ENVELOPE_STORAGE_OVERHEAD_BYTES,
 			activeByWindowDays,
 			staleAccounts: staleBefore == null ? 0 : row.staleAccounts
 		};
