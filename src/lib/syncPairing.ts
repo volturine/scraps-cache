@@ -3,6 +3,7 @@ import { cpace } from '@cipherman/pake-js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { ed25519 } from '@noble/curves/ed25519.js';
+import type { PairingGrant } from '$lib/pairingProtocol';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -15,7 +16,6 @@ export type SyncIdentity = {
 	pairingCode: string;
 };
 export type PairingRequestKey = { ephemeralSecret: string; share: string };
-export type PairingGrant = { ciphertext: string };
 
 function bytesToBase64Url(bytes: Uint8Array): string {
 	let binary = '';

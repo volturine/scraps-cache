@@ -7,7 +7,8 @@
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
-	import type { BackupImportMode } from '$lib/backup';
+	import { BackupImportMode, BackupImportPhase, BackupOperation } from '$lib/backup';
+	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
 	import { useEditorActions } from '$lib/editorContext';
 	import {
 		decryptBackup,
@@ -30,6 +31,17 @@
 		X
 	} from '@lucide/svelte';
 
+	const SYNC_CONTROL_LABEL: Record<SyncStatus, string> = {
+		[SyncStatus.Normal]: 'Sync settings',
+		[SyncStatus.Warning]: 'Sync settings, storage nearly full',
+		[SyncStatus.Danger]: 'Sync settings, sync needs attention'
+	};
+	const SYNC_STATUS_CLASS: Record<SyncStatus, string> = {
+		[SyncStatus.Normal]: '',
+		[SyncStatus.Warning]: 'text-[var(--scrapscache-warning)]',
+		[SyncStatus.Danger]: 'text-[var(--scrapscache-danger)]'
+	};
+
 	const { startNewNote, closeNote } = useEditorActions();
 
 	let fileInputEl: HTMLInputElement | null = $state(null);
@@ -37,36 +49,25 @@
 	let syncOpen = $state(false);
 	let importingBackup = $state(false);
 	let backupImportError = $state('');
-	let backupDialogMode = $state<'export' | 'import' | null>(null);
+	let backupDialogMode = $state<BackupOperation | null>(null);
 	let backupBusy = $state(false);
 	let pendingEncryptedBackup = $state<EncryptedScrapsCacheBackup | null>(null);
 	let pendingImportData = $state.raw<unknown>(null);
 	let choosingImportMode = $state(false);
-	let syncStatus = $derived.by(() => {
-		if (syncStore.lastError) return 'danger';
-		if (!syncStore.usage) return 'normal';
-		const ratio = syncStore.usage.storageBytes / syncStore.usage.maxBytes;
-		return ratio >= 1 ? 'danger' : ratio >= 0.8 ? 'warning' : 'normal';
-	});
-	let syncControlLabel = $derived(
-		syncStatus === 'danger'
-			? 'Sync settings, sync needs attention'
-			: syncStatus === 'warning'
-				? 'Sync settings, storage nearly full'
-				: 'Sync settings'
-	);
+	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
+	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
 	function startBackupExport() {
 		settingsOpen = false;
 		backupImportError = '';
-		backupDialogMode = 'export';
+		backupDialogMode = BackupOperation.Export;
 	}
 
 	async function submitBackupPassphrase(passphrase: string) {
 		backupBusy = true;
 		backupImportError = '';
 		try {
-			if (backupDialogMode === 'export') {
+			if (backupDialogMode === BackupOperation.Export) {
 				const data = await notesStore.exportBackup();
 				const encrypted = await encryptBackup(data, passphrase);
 				downloadJSON(
@@ -76,7 +77,7 @@
 				backupDialogMode = null;
 				return;
 			}
-			if (backupDialogMode === 'import' && pendingEncryptedBackup) {
+			if (backupDialogMode === BackupOperation.Import && pendingEncryptedBackup) {
 				const decrypted = await decryptBackup(pendingEncryptedBackup, passphrase);
 				pendingImportData = decrypted;
 				pendingEncryptedBackup = null;
@@ -126,7 +127,7 @@
 				if (!isEncryptedScrapsCacheBackup(data))
 					throw new Error('This is not a current encrypted Scraps Cache backup.');
 				pendingEncryptedBackup = data;
-				backupDialogMode = 'import';
+				backupDialogMode = BackupOperation.Import;
 				settingsOpen = false;
 			} catch (err) {
 				backupImportError = err instanceof Error ? err.message : 'Could not read that backup file.';
@@ -216,14 +217,7 @@
 		data-scrapscache-sync-control
 	>
 		<Cloud
-			class={[
-				'h-5 w-5',
-				syncStatus === 'danger'
-					? 'text-[var(--scrapscache-danger)]'
-					: syncStatus === 'warning'
-						? 'text-[var(--scrapscache-warning)]'
-						: ''
-			]}
+			class={['h-5 w-5', SYNC_STATUS_CLASS[syncStatus]]}
 			data-scrapscache-sync-icon
 			aria-hidden="true"
 		/>
@@ -264,7 +258,7 @@
 					>
 						<div class="flex justify-between gap-2">
 							<span
-								>{progress?.phase === 'finishing'
+								>{progress?.phase === BackupImportPhase.Finishing
 									? 'Finishing backup…'
 									: progress
 										? 'Importing backup…'

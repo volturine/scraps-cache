@@ -41,12 +41,28 @@ export type ScrapsCacheBackup = {
 };
 
 export type BackupImportProgress = {
-	phase: 'writing' | 'finishing';
+	phase: BackupImportPhase;
 	completed: number;
 	total: number;
 };
 
-export type BackupImportMode = 'keep' | 'replace';
+export const BackupImportPhase = {
+	Writing: 'writing',
+	Finishing: 'finishing'
+} as const;
+export type BackupImportPhase = (typeof BackupImportPhase)[keyof typeof BackupImportPhase];
+
+export const BackupImportMode = {
+	Keep: 'keep',
+	Replace: 'replace'
+} as const;
+export type BackupImportMode = (typeof BackupImportMode)[keyof typeof BackupImportMode];
+
+export const BackupOperation = {
+	Export: 'export',
+	Import: 'import'
+} as const;
+export type BackupOperation = (typeof BackupOperation)[keyof typeof BackupOperation];
 
 /** Make imported notes current; additive imports also need fresh record identities. */
 export function prepareImportedNotes(
@@ -59,14 +75,14 @@ export function prepareImportedNotes(
 		const note = cloneNote(source);
 		return {
 			...note,
-			id: mode === 'keep' ? uid() : note.id,
+			id: mode === BackupImportMode.Keep ? uid() : note.id,
 			createdAt: now,
 			updatedAt: now,
 			trashedAt: note.trashed ? now : null,
 			fieldTimes: { ...fieldTimes },
 			images: (note.images ?? []).map((image) => ({
 				...image,
-				id: mode === 'keep' ? uid() : image.id,
+				id: mode === BackupImportMode.Keep ? uid() : image.id,
 				createdAt: now
 			}))
 		};
@@ -157,27 +173,43 @@ function normalizeBoard(value: unknown): KanbanBoard | null {
 	};
 }
 
+type CurrentBackupRaw = Record<string, unknown> & {
+	version: 4;
+	exportedAt: number;
+	notes: unknown[];
+	labels: unknown[];
+	boards: unknown[];
+	activeBoardId: string;
+	tombstones: object;
+	labelTombstones: object;
+	boardTombstones: object;
+	ui: object;
+};
+
+function isCurrentBackupRaw(raw: Record<string, unknown>): raw is CurrentBackupRaw {
+	const valid =
+		raw.version === 4 &&
+		typeof raw.exportedAt === 'number' &&
+		Array.isArray(raw.notes) &&
+		Array.isArray(raw.labels) &&
+		Array.isArray(raw.boards) &&
+		typeof raw.activeBoardId === 'string' &&
+		!!raw.tombstones &&
+		typeof raw.tombstones === 'object' &&
+		!!raw.labelTombstones &&
+		typeof raw.labelTombstones === 'object' &&
+		!!raw.boardTombstones &&
+		typeof raw.boardTombstones === 'object' &&
+		!!raw.ui &&
+		typeof raw.ui === 'object';
+	return valid;
+}
+
 /** Validate and normalize the current backup format into a safe in-memory shape. */
 export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 	if (!data || typeof data !== 'object') return null;
 	const raw = data as Record<string, unknown>;
-	if (
-		raw.version !== 4 ||
-		typeof raw.exportedAt !== 'number' ||
-		!Array.isArray(raw.notes) ||
-		!Array.isArray(raw.labels) ||
-		!Array.isArray(raw.boards) ||
-		typeof raw.activeBoardId !== 'string' ||
-		!raw.tombstones ||
-		typeof raw.tombstones !== 'object' ||
-		!raw.labelTombstones ||
-		typeof raw.labelTombstones !== 'object' ||
-		!raw.boardTombstones ||
-		typeof raw.boardTombstones !== 'object' ||
-		!raw.ui ||
-		typeof raw.ui !== 'object'
-	)
-		return null;
+	if (!isCurrentBackupRaw(raw)) return null;
 	const notes = (raw.notes as unknown[]).flatMap((item): Note[] => {
 		if (!item || typeof item !== 'object') return [];
 		const note = item as Partial<Note>;

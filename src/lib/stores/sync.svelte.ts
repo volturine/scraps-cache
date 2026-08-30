@@ -40,6 +40,7 @@ import {
 	decryptSyncPayload,
 	randomOpaqueId
 } from '$lib/syncPairing';
+import { PairingRole, PairingState, type PairingPoll } from '$lib/pairingProtocol';
 import {
 	commitSyncControl,
 	deleteSyncState,
@@ -62,15 +63,10 @@ export interface SyncAccount {
 export type StartedDeviceLink = {
 	id: string;
 	expiresAt: number;
-	role: 'existing' | 'new';
+	role: PairingRole;
 	syncCode: string;
 	pake: { ephemeralSecret: string; share: string };
 };
-type LinkPoll =
-	| { state: 'waiting'; expiresAt: number }
-	| { state: 'matched'; expiresAt: number; peerPublicKey: string }
-	| { state: 'connected'; expiresAt: number; peerPublicKey: string; grant: { ciphertext: string } }
-	| { state: 'expired' | 'not-found' };
 
 interface SyncStatus {
 	lastSync: number;
@@ -245,7 +241,7 @@ export class SyncStore {
 	async startDeviceLink(
 		input: string
 	): Promise<{ success: boolean; link?: StartedDeviceLink; error?: string }> {
-		return this.startRendezvous('new', input);
+		return this.startRendezvous(PairingRole.New, input);
 	}
 
 	async startExistingDeviceLink(): Promise<{
@@ -254,11 +250,11 @@ export class SyncStore {
 		error?: string;
 	}> {
 		if (!this.account) return { success: false, error: 'Sync is not set up on this device' };
-		return this.startRendezvous('existing', createOneTimePairingCode());
+		return this.startRendezvous(PairingRole.Existing, createOneTimePairingCode());
 	}
 
 	private async startRendezvous(
-		role: 'existing' | 'new',
+		role: PairingRole,
 		input: string
 	): Promise<{ success: boolean; link?: StartedDeviceLink; error?: string }> {
 		try {
@@ -299,13 +295,13 @@ export class SyncStore {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ sessionId: link.id })
 			});
-			const data = (await res.json().catch(() => ({}))) as Partial<LinkPoll>;
+			const data = (await res.json().catch(() => ({}))) as Partial<PairingPoll>;
 			if (!res.ok) return { success: false, error: 'Could not check device rendezvous' };
-			if (data.state === 'waiting') return { success: true };
-			if (data.state === 'expired' || data.state === 'not-found')
+			if (data.state === PairingState.Waiting) return { success: true };
+			if (data.state === PairingState.Expired || data.state === PairingState.NotFound)
 				return { success: true, expired: true };
-			if (data.state === 'matched' && typeof data.peerPublicKey === 'string') {
-				if (link.role === 'new') return { success: true, matched: true };
+			if (data.state === PairingState.Matched && typeof data.peerPublicKey === 'string') {
+				if (link.role === PairingRole.New) return { success: true, matched: true };
 				if (!this.account) return { success: false, error: 'Sync is not set up on this device' };
 				const grant = sealSyncKeyForPeer(
 					this.account.syncKey,
@@ -322,9 +318,9 @@ export class SyncStore {
 					? { success: true, linked: true }
 					: { success: false, error: 'Could not deliver encrypted sync key' };
 			}
-			if (data.state !== 'connected' || !data.grant || typeof data.grant !== 'object')
+			if (data.state !== PairingState.Connected || !data.grant || typeof data.grant !== 'object')
 				return { success: false, error: 'Invalid device rendezvous response' };
-			if (link.role !== 'new') return { success: true, linked: true };
+			if (link.role !== PairingRole.New) return { success: true, linked: true };
 			const grant = data.grant as { existingPublicKey?: unknown; ciphertext?: unknown };
 			if (typeof grant.ciphertext !== 'string')
 				return { success: false, error: 'Invalid encrypted sync key' };

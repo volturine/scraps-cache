@@ -51,9 +51,10 @@ import { replacementFitsStorage } from '$lib/storageCapacity';
 import { formatStorageError } from '$lib/imageBlob';
 import type { NoteImage } from '$lib/types';
 import {
+	BackupImportMode,
+	BackupImportPhase,
 	normalizeBackup,
 	prepareImportedNotes,
-	type BackupImportMode,
 	type BackupImportProgress,
 	type ScrapsCacheBackup
 } from '$lib/backup';
@@ -670,7 +671,8 @@ export class NotesStore {
 		try {
 			const now = Date.now();
 			const importedNotes = prepareImportedNotes(backup.notes, mode, now);
-			const replacedNoteIds = mode === 'replace' ? this.notes.map((note) => note.id) : [];
+			const replacedNoteIds =
+				mode === BackupImportMode.Replace ? this.notes.map((note) => note.id) : [];
 			if (navigator.storage?.estimate) {
 				const estimate = await navigator.storage.estimate();
 				if (!replacementFitsStorage(importedNotes, estimate)) {
@@ -680,8 +682,12 @@ export class NotesStore {
 					};
 				}
 			}
-			this.backupImportProgress = { phase: 'writing', completed: 0, total: importedNotes.length };
-			if (mode === 'keep') {
+			this.backupImportProgress = {
+				phase: BackupImportPhase.Writing,
+				completed: 0,
+				total: importedNotes.length
+			};
+			if (mode === BackupImportMode.Keep) {
 				const labelsByName = new Map(
 					this.labels.map((label) => [label.name.trim().toLowerCase(), label])
 				);
@@ -739,12 +745,12 @@ export class NotesStore {
 			}
 
 			this.backupImportProgress = {
-				phase: 'finishing',
+				phase: BackupImportPhase.Finishing,
 				completed: importedNotes.length,
 				total: importedNotes.length
 			};
 			this.mirrorToLS();
-			if (mode === 'replace') {
+			if (mode === BackupImportMode.Replace) {
 				const outbox = [
 					...this.notes.flatMap((note) => noteSyncKeys(note)),
 					...this.labels.map((label) => `label:${label.id}`),
