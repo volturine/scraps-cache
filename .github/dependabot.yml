@@ -3,14 +3,26 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      monthly-batch:
+        patterns:
+          - '*'
 
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      monthly-batch:
+        patterns:
+          - '*'
 
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      monthly-batch:
+        patterns:
+          - '*'
