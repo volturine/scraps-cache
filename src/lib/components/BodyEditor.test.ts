@@ -145,6 +145,31 @@ describe('BodyEditor native editing', () => {
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
 	});
 
+	it('copies the whole body from a select-all anchored on the editor host', () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] First task\nplain middle\n[ ] Last task' }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		// Ctrl/Cmd+A anchors the selection on the host element itself, not a text node.
+		const range = document.createRange();
+		range.setStart(editor, 0);
+		range.setEnd(editor, editor.childNodes.length);
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+
+		const setData = vi.fn();
+		const copy = new Event('copy', { bubbles: true, cancelable: true });
+		Object.defineProperty(copy, 'clipboardData', { value: { setData } });
+		editor.dispatchEvent(copy);
+
+		expect(copy.defaultPrevented).toBe(true);
+		expect(setData).toHaveBeenCalledWith(
+			'text/plain',
+			'[ ] First task\nplain middle\n[ ] Last task'
+		);
+	});
+
 	it('keeps task focus when selected text is deleted from the focused task', async () => {
 		const onExitTaskFocus = vi.fn();
 		const { container } = render(BodyEditor, {
