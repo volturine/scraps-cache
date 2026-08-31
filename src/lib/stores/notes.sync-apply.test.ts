@@ -315,7 +315,6 @@ describe('notes store sync apply', () => {
 		await deleteSyncState(keys.cursor);
 		await deleteSyncState(keys.baseline);
 		await deleteSyncState(keys.recordIds);
-		await deleteSyncState(keys.migration);
 
 		vi.spyOn(
 			syncStore as unknown as {
@@ -430,9 +429,9 @@ describe('notes store sync apply', () => {
 						writesAccepted: true,
 						usage: {
 							ciphertextBytes: 20,
+							storageBytes: 532,
 							envelopeCount: 1,
-							maxBytes: 1000,
-							maxEnvelopes: 50
+							maxBytes: 1000
 						}
 					}
 				};
@@ -458,9 +457,9 @@ describe('notes store sync apply', () => {
 					writesAccepted: true,
 					usage: {
 						ciphertextBytes: 20,
+						storageBytes: 532,
 						envelopeCount: 1,
-						maxBytes: 1000,
-						maxEnvelopes: 50
+						maxBytes: 1000
 					}
 				}
 			};
@@ -507,9 +506,9 @@ describe('notes store sync apply', () => {
 				writesAccepted: true,
 				usage: {
 					ciphertextBytes: 0,
+					storageBytes: 0,
 					envelopeCount: 0,
-					maxBytes: 1000,
-					maxEnvelopes: 50
+					maxBytes: 1000
 				}
 			}
 		});

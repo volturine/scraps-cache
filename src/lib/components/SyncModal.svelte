@@ -7,10 +7,28 @@
 	import { unregisterReminderDevice } from '$lib/reminderWake';
 	import { Cloud, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
+	import { PairingRole } from '$lib/pairingProtocol';
+	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
+
+	const SyncModalMode = {
+		Menu: 'menu',
+		Register: 'register',
+		Link: 'link',
+		Waiting: 'waiting',
+		Linked: 'linked'
+	} as const;
+	type SyncModalMode = (typeof SyncModalMode)[keyof typeof SyncModalMode];
+
+	const SYNC_STATUS_CLASS: Record<SyncStatus, string> = {
+		[SyncStatus.Normal]:
+			'border border-[var(--scrapscache-border)] text-[var(--scrapscache-text-muted)]',
+		[SyncStatus.Warning]: 'scrapscache-status-warning',
+		[SyncStatus.Danger]: 'scrapscache-status-danger'
+	};
 
 	let { onClose }: { onClose: () => void } = $props();
-	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'linked'>(
-		syncStore.isLoggedIn ? 'linked' : 'menu'
+	let mode = $state<SyncModalMode>(
+		syncStore.isLoggedIn ? SyncModalMode.Linked : SyncModalMode.Menu
 	);
 	let code = $state('');
 	let error = $state('');
@@ -23,6 +41,8 @@
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let deleteConfirm = $state(false);
+	let syncError = $derived(syncStore.lastError ?? '');
+	let quotaStatus = $derived(resolveSyncStatus(syncError, syncStore.usage));
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -59,7 +79,7 @@
 			error = friendlyError(result.error, 'Could not create sync');
 			return;
 		}
-		mode = 'linked';
+		mode = SyncModalMode.Linked;
 		syncing = true;
 		const ok = await notesStore.syncWithCloudManual();
 		syncing = false;
@@ -84,7 +104,7 @@
 		}
 		waiting = result.link;
 		now = Date.now();
-		mode = 'waiting';
+		mode = SyncModalMode.Waiting;
 		stopWaiting();
 		timer = setInterval(() => {
 			void pollLink();
@@ -99,15 +119,15 @@
 		const result = await syncStore.pollDeviceLink(active);
 		if (waiting !== active) return;
 		if (result.linked) {
-			const wasExisting = active.role === 'existing';
+			const wasExisting = active.role === PairingRole.Existing;
 			stopWaiting();
 			waiting = null;
 			if (wasExisting) {
-				mode = 'linked';
+				mode = SyncModalMode.Linked;
 				info = 'Key sent. This device can go offline.';
 				error = '';
 			} else {
-				mode = 'linked';
+				mode = SyncModalMode.Linked;
 				error = '';
 				info = '';
 				syncing = true;
@@ -120,7 +140,7 @@
 					);
 					info = '';
 					syncStore.logout();
-					mode = 'link';
+					mode = SyncModalMode.Link;
 				}
 			}
 			return;
@@ -128,7 +148,7 @@
 		if (result.expired || !result.success) {
 			stopWaiting();
 			waiting = null;
-			mode = active.role === 'existing' ? 'linked' : 'link';
+			mode = active.role === PairingRole.Existing ? SyncModalMode.Linked : SyncModalMode.Link;
 			error = friendlyError(result.error, 'Connection timed out. Try again on both devices.');
 		}
 	}
@@ -145,7 +165,7 @@
 		}
 		waiting = result.link;
 		now = Date.now();
-		mode = 'waiting';
+		mode = SyncModalMode.Waiting;
 		stopWaiting();
 		timer = setInterval(() => {
 			void pollLink();
@@ -154,9 +174,13 @@
 	}
 
 	function formatBytes(bytes: number): string {
-		return bytes < 1024 * 1024
-			? `${Math.round(bytes / 1024)} KB`
-			: `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+		if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} KB`;
+		const megabytes = bytes / 1_000_000;
+		return `${Number.isInteger(megabytes) ? megabytes : megabytes.toFixed(1)} MB`;
+	}
+
+	function formatLimit(bytes: number): string {
+		return formatBytes(bytes);
 	}
 
 	function progressPercent(loaded: number, total: number | null): number {
@@ -176,7 +200,7 @@
 	function unlinkDevice() {
 		const account = syncStore.account;
 		syncStore.logout();
-		mode = 'menu';
+		mode = SyncModalMode.Menu;
 		error = '';
 		info = '';
 		// Sign-out is local and immediate; a failed server-side unsubscribe must
@@ -230,7 +254,7 @@
 			return;
 		}
 		deleteConfirm = false;
-		mode = 'menu';
+		mode = SyncModalMode.Menu;
 		info = 'Cloud data deleted. Notes on this device were kept.';
 	}
 
@@ -286,7 +310,7 @@
 			</button>
 		</div>
 
-		{#if mode === 'linked' && syncStore.account}
+		{#if mode === SyncModalMode.Linked && syncStore.account}
 			<div class="space-y-4">
 				<p class="text-sm text-[var(--scrapscache-text-muted)]">
 					This device is linked. Connect another device with a one-time code that expires in 60
@@ -318,7 +342,11 @@
 					</div>
 				{:else if syncing}<p class="text-sm text-[var(--scrapscache-text-muted)]">Syncing…</p>{/if}
 				{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]">{info}</p>{/if}
-				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
+				{#if error}
+					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{error}</p>
+				{:else if syncError}
+					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{syncError}</p>
+				{/if}
 				<button
 					type="button"
 					onclick={() => void syncNow()}
@@ -334,8 +362,20 @@
 					>Connect another device</button
 				>
 				{#if syncStore.usage}
-					<div class="text-center text-xs text-[var(--scrapscache-text-muted)]">
-						{formatBytes(syncStore.usage.ciphertextBytes)} stored for this account
+					<div
+						aria-label="Sync storage usage"
+						class={[
+							'rounded-[var(--scrapscache-radius-md)] p-3 text-xs',
+							SYNC_STATUS_CLASS[quotaStatus]
+						]}
+					>
+						<div class="flex items-center justify-between gap-3">
+							<span class="font-medium">Sync storage</span>
+							<span>
+								{formatBytes(syncStore.usage.storageBytes)} of
+								{formatLimit(syncStore.usage.maxBytes)}
+							</span>
+						</div>
 					</div>
 				{/if}
 				<button
@@ -379,7 +419,7 @@
 					>
 				{/if}
 			</div>
-		{:else if mode === 'menu'}
+		{:else if mode === SyncModalMode.Menu}
 			<div class="space-y-3">
 				<p class="text-sm text-[var(--scrapscache-text-muted)]">
 					Create one private sync key, then connect your own devices by starting the connection on
@@ -388,7 +428,7 @@
 				<button
 					type="button"
 					onclick={() => {
-						mode = 'register';
+						mode = SyncModalMode.Register;
 						error = '';
 						info = '';
 					}}
@@ -397,7 +437,7 @@
 				><button
 					type="button"
 					onclick={() => {
-						mode = 'link';
+						mode = SyncModalMode.Link;
 						error = '';
 						info = '';
 					}}
@@ -406,7 +446,7 @@
 				>
 				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
 			</div>
-		{:else if mode === 'register'}
+		{:else if mode === SyncModalMode.Register}
 			<div class="space-y-3">
 				<p class="text-sm text-[var(--scrapscache-text-muted)]">
 					Creates a private account on this device. Other devices join with a one-time code, not a
@@ -420,12 +460,12 @@
 					>{loading ? 'Creating…' : 'Create my sync key'}</button
 				><button
 					type="button"
-					onclick={() => (mode = 'menu')}
+					onclick={() => (mode = SyncModalMode.Menu)}
 					class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
 					>← Back</button
 				>
 			</div>
-		{:else if mode === 'link'}
+		{:else if mode === SyncModalMode.Link}
 			<div class="space-y-3">
 				<p class="text-sm text-[var(--scrapscache-text-muted)]">
 					On your other device open Sync and choose Connect another device. Enter the one-time code
@@ -448,14 +488,14 @@
 					>{loading ? 'Starting…' : 'Start connection'}</button
 				><button
 					type="button"
-					onclick={() => (mode = 'menu')}
+					onclick={() => (mode = SyncModalMode.Menu)}
 					class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
 					>← Back</button
 				>
 			</div>
-		{:else if mode === 'waiting'}
+		{:else if mode === SyncModalMode.Waiting}
 			<div class="space-y-5">
-				{#if waiting?.role === 'existing'}
+				{#if waiting?.role === PairingRole.Existing}
 					<div>
 						<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
 							On the new device

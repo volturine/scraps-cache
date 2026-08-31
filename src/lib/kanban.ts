@@ -8,6 +8,12 @@ export interface KanbanColumn {
 	labelId: string | null;
 }
 
+export const BacklogFilterMode = {
+	AllNonColumn: 'all-non-column',
+	Custom: 'custom'
+} as const;
+export type BacklogFilterMode = (typeof BacklogFilterMode)[keyof typeof BacklogFilterMode];
+
 /**
  * Controls which notes appear in the backlog column.
  * Notes that already match a tag column never appear here.
@@ -16,7 +22,7 @@ export interface KanbanColumn {
  * - `custom`: only untagged and/or notes that carry one of `labelIds`
  */
 export interface BacklogFilter {
-	mode: 'all-non-column' | 'custom';
+	mode: BacklogFilterMode;
 	includeUntagged: boolean;
 	/** Tag ids that qualify a note for the backlog when mode is `custom`. */
 	labelIds: string[];
@@ -32,14 +38,17 @@ export interface KanbanBoard {
 }
 
 export function defaultBacklogFilter(): BacklogFilter {
-	return { mode: 'all-non-column', includeUntagged: true, labelIds: [] };
+	return { mode: BacklogFilterMode.AllNonColumn, includeUntagged: true, labelIds: [] };
 }
 
 export function normalizeBacklogFilter(value: unknown): BacklogFilter {
 	const fallback = defaultBacklogFilter();
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
 	const raw = value as Partial<BacklogFilter>;
-	const mode = raw.mode === 'custom' ? 'custom' : 'all-non-column';
+	const mode =
+		raw.mode === BacklogFilterMode.Custom
+			? BacklogFilterMode.Custom
+			: BacklogFilterMode.AllNonColumn;
 	const includeUntagged = raw.includeUntagged !== false;
 	const labelIds = Array.isArray(raw.labelIds)
 		? [
@@ -77,9 +86,8 @@ export function noteMatchesBacklog(board: KanbanBoard, note: Note): boolean {
 	const columnLabels = boardColumnLabelIds(board);
 	if (note.labels.some((labelId) => columnLabels.has(labelId))) return false;
 
-	const filter = board.backlogFilter ?? defaultBacklogFilter();
-	if (filter.mode !== 'custom') {
-		// Legacy / default: everything that is not already in a tag column.
+	const filter = board.backlogFilter;
+	if (filter.mode !== BacklogFilterMode.Custom) {
 		return true;
 	}
 

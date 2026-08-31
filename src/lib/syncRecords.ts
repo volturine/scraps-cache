@@ -318,61 +318,6 @@ export function isSyncRecordPayload(value: unknown): value is SyncRecordPayload 
 	);
 }
 
-/**
- * Reads pre-delta encrypted snapshots already stored by this same account. Expands inline
- * photos into attachment records so later title-only edits stay small.
- */
-export async function legacySnapshotPayloads(value: unknown): Promise<SyncRecordPayload[] | null> {
-	if (
-		!object(value) ||
-		!Array.isArray(value.notes) ||
-		!Array.isArray(value.labels) ||
-		!Array.isArray(value.boards)
-	)
-		return null;
-	const snapshot = value as {
-		notes: unknown[];
-		labels: unknown[];
-		boards: unknown[];
-		tombstones?: unknown;
-		labelTombstones?: unknown;
-		boardTombstones?: unknown;
-	};
-	const records: SyncRecordPayload[] = [];
-	for (const raw of snapshot.notes) {
-		if (!versioned(raw)) continue;
-		const note = raw as Note;
-		if (
-			Array.isArray(note.images) &&
-			note.images.some((image) => typeof image?.dataUrl === 'string' && image.dataUrl.length > 0)
-		) {
-			const split = await splitNoteForSync(note);
-			records.push({ kind: 'note', value: split.note });
-			for (const attachment of split.attachments)
-				records.push({ kind: 'attachment', value: attachment });
-		} else {
-			records.push({ kind: 'note', value: note as SyncNote });
-		}
-	}
-	for (const label of snapshot.labels.filter(versioned))
-		records.push({ kind: 'label', value: label as Label });
-	for (const board of snapshot.boards.filter(versioned))
-		records.push({ kind: 'board', value: board as KanbanBoard });
-	for (const [kind, tombstones] of [
-		['note-tombstone', snapshot.tombstones],
-		['label-tombstone', snapshot.labelTombstones],
-		['board-tombstone', snapshot.boardTombstones]
-	] as const) {
-		if (!object(tombstones)) continue;
-		for (const [id, deletedAt] of Object.entries(tombstones)) {
-			if (typeof deletedAt === 'number' && Number.isFinite(deletedAt) && deletedAt > 0) {
-				records.push({ kind, id, deletedAt } as SyncRecordPayload);
-			}
-		}
-	}
-	return records;
-}
-
 /** Approximate serialized byte size of outgoing records — used by tests for title-only edits. */
 export function approximatePayloadBytes(records: SyncRecord[]): number {
 	return records.reduce((total, record) => total + JSON.stringify(record.payload).length, 0);

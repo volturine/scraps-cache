@@ -20,7 +20,7 @@ export const GET: RequestHandler = ({ request }) => {
 		renderMetrics(
 			{
 				...usage,
-				gigabytes: bytesToGigabytes(usage.ciphertextBytes)
+				gigabytes: bytesToGigabytes(usage.storageBytes)
 			},
 			retentionManager.getStatus()
 		),

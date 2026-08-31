@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { portalToAppOverlay } from '$lib/appViewport';
+	import { BackupOperation } from '$lib/backup';
 	import { onMount } from 'svelte';
 
 	let {
@@ -9,7 +10,7 @@
 		onSubmit,
 		onClose
 	}: {
-		mode: 'export' | 'import';
+		mode: BackupOperation;
 		busy?: boolean;
 		error?: string;
 		onSubmit: (passphrase: string) => void | Promise<void>;
@@ -21,7 +22,7 @@
 	let localError = $state('');
 	let dialogElement: HTMLDivElement | null = $state(null);
 	let passphraseInput: HTMLInputElement | null = $state(null);
-	const exporting = $derived(mode === 'export');
+	const exporting = $derived(mode === BackupOperation.Export);
 
 	onMount(() => {
 		passphraseInput?.focus({ preventScroll: true });

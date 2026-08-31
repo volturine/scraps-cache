@@ -51,7 +51,7 @@ describe('RetentionManager', () => {
 		expect(status.enabled).toBe(false);
 		expect(status.lastDeletedAccounts).toBe(0);
 		expect(status.lastPurgedSlots).toBe(1);
-		expect(store.getCredentialHash('account')).toBe('credential');
+		expect(store.getAuthCredential('account')).toBe('credential');
 		expect(info).toHaveBeenCalledOnce();
 		const payload = JSON.parse(String(info.mock.calls[0]?.[0])) as Record<string, unknown>;
 		expect(payload).toMatchObject({
@@ -86,7 +86,7 @@ describe('RetentionManager', () => {
 		const status = await manager.runNow();
 		expect(status.lastDeletedAccounts).toBe(1);
 		expect(status.lastPurgedSlots).toBe(0);
-		expect(store.getCredentialHash('stale')).toBeNull();
+		expect(store.getAuthCredential('stale')).toBeNull();
 		expect(store.aggregateUsage()).toMatchObject({ accounts: 1 });
 	});
 
@@ -109,8 +109,8 @@ describe('RetentionManager', () => {
 		expect(status.enabled).toBe(true);
 		expect(status.lastDeletedAccounts).toBe(1);
 		expect(status.deletedAccountsTotal).toBe(1);
-		expect(store.getCredentialHash('keep-account')).toBe('credential');
-		expect(store.getCredentialHash('drop-account')).toBeNull();
+		expect(store.getAuthCredential('keep-account')).toBe('credential');
+		expect(store.getAuthCredential('drop-account')).toBeNull();
 		expect(info).toHaveBeenCalledOnce();
 		const payload = JSON.parse(String(info.mock.calls[0]?.[0])) as Record<string, unknown>;
 		expect(payload).toMatchObject({

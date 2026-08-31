@@ -163,12 +163,10 @@ export function syncControlKeys(accountId: string): {
 	cursor: string;
 	baseline: string;
 	recordIds: string;
-	migration: string;
 } {
 	return {
 		cursor: `scrapscache-sync-cursor:${accountId}`,
 		baseline: `scrapscache-sync-record-fingerprints:${accountId}`,
-		recordIds: `scrapscache-sync-record-ids:${accountId}`,
-		migration: `scrapscache-sync-slot-migration:${accountId}`
+		recordIds: `scrapscache-sync-record-ids:${accountId}`
 	};
 }

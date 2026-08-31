@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	SyncQuotaExceededError,
 	SyncStore,
 	DELETED_SLOT_GRACE_MS,
+	ENVELOPE_STORAGE_OVERHEAD_BYTES,
 	WAKE_CLAIM_LEASE_MS
 } from './syncStore';
 
@@ -38,7 +39,70 @@ describe('SQLite sync store', () => {
 		const { store } = createStore();
 		expect(store.createAccount('account', 'first')).toBe(true);
 		expect(store.createAccount('account', 'second')).toBe(false);
-		expect(store.getCredentialHash('account')).toBe('first');
+		expect(store.getAuthCredential('account')).toBe('first');
+	});
+
+	it('replaces an authentication credential only when the legacy value still matches', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'legacy');
+		expect(store.replaceAuthCredential('account', 'wrong', 'public-key')).toBe(false);
+		expect(store.replaceAuthCredential('account', 'legacy', 'public-key')).toBe(true);
+		expect(store.replaceAuthCredential('account', 'legacy', 'attacker-key')).toBe(false);
+		expect(store.getAuthCredential('account')).toBe('public-key');
+	});
+
+	it('defaults each account to 1000 MB of estimated relay storage', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		expect(store.sync('account', 0, [], [], 1).usage.maxBytes).toBe(1_000_000_000);
+	});
+
+	it('enforces a durable per-account byte quota and can restore the default', () => {
+		const defaultQuota = ENVELOPE_STORAGE_OVERHEAD_BYTES + 100;
+		const limitedQuota = ENVELOPE_STORAGE_OVERHEAD_BYTES + 5;
+		const { store, directory } = createStore({ maxAccountBytes: defaultQuota });
+		store.createAccount('limited-account', 'credential');
+		store.createAccount('default-account', 'credential');
+
+		expect(store.setAccountByteQuota('limited-account', limitedQuota)).toBe(true);
+		store.close();
+		stores.splice(stores.indexOf(store), 1);
+		const reopened = new SyncStore(directory, { maxAccountBytes: defaultQuota });
+		stores.push(reopened);
+
+		expect(reopened.getAccountByteQuota('limited-account')).toEqual({
+			maxBytes: limitedQuota,
+			overridden: true
+		});
+		expect(reopened.sync('limited-account', 0, [], [], 1).usage.maxBytes).toBe(limitedQuota);
+		expect(() =>
+			reopened.sync(
+				'limited-account',
+				0,
+				[{ id: 'too-large', slot: slot('a'), ciphertext: 'abcdef' }],
+				[],
+				1
+			)
+		).toThrow(SyncQuotaExceededError);
+		expect(reopened.sync('default-account', 0, [], [], 1).usage.maxBytes).toBe(defaultQuota);
+
+		expect(reopened.clearAccountByteQuota('limited-account')).toBe(true);
+		expect(reopened.getAccountByteQuota('limited-account')).toEqual({
+			maxBytes: defaultQuota,
+			overridden: false
+		});
+	});
+
+	it('rejects invalid or nonexistent account quota overrides', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		expect(() => store.setAccountByteQuota('account', 0)).toThrow(RangeError);
+		expect(() => store.setAccountByteQuota('account', Number.MAX_SAFE_INTEGER + 1)).toThrow(
+			RangeError
+		);
+		expect(store.setAccountByteQuota('missing', 10)).toBe(false);
+		expect(store.clearAccountByteQuota('missing')).toBe(false);
+		expect(store.getAccountByteQuota('missing')).toBeNull();
 	});
 
 	it('pages more than 480 envelopes without dropping the tail', () => {
@@ -129,7 +193,9 @@ describe('SQLite sync store', () => {
 	});
 
 	it('rolls back the entire upload batch when an account quota is exceeded', () => {
-		const { store } = createStore({ maxAccountBytes: 5 });
+		const { store } = createStore({
+			maxAccountBytes: ENVELOPE_STORAGE_OVERHEAD_BYTES + 5
+		});
 		store.createAccount('account', 'credential');
 		expect(() =>
 			store.sync(
@@ -151,8 +217,31 @@ describe('SQLite sync store', () => {
 		});
 	});
 
+	it('does not impose a per-account record count quota', () => {
+		const { store } = createStore();
+		store.createAccount('account', 'credential');
+		let result = store.sync('account', 0, [], [], 12);
+		let cursor = result.cursor;
+		for (let offset = 0; offset < 50_001; offset += 500) {
+			const uploads = Array.from({ length: Math.min(500, 50_001 - offset) }, (_, index) => {
+				const record = offset + index;
+				return {
+					id: `id-${record}`,
+					slot: record.toString(16).padStart(64, '0'),
+					ciphertext: 'a'
+				};
+			});
+			result = store.sync('account', cursor, uploads, [], 12);
+			cursor = result.cursor;
+		}
+
+		expect(result.usage).toMatchObject({ envelopeCount: 50_001, ciphertextBytes: 50_001 });
+	});
+
 	it('rolls back deletions together with an over-quota replacement batch', () => {
-		const { store } = createStore({ maxAccountBytes: 5 });
+		const { store } = createStore({
+			maxAccountBytes: ENVELOPE_STORAGE_OVERHEAD_BYTES + 5
+		});
 		store.createAccount('account', 'credential');
 		store.sync('account', 0, [{ id: 'kept', slot: slot('a'), ciphertext: '123' }], [], 10);
 
@@ -207,6 +296,7 @@ describe('SQLite sync store', () => {
 			10
 		);
 		expect(removed.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0 });
+		expect(removed.usage.storageBytes).toBe(ENVELOPE_STORAGE_OVERHEAD_BYTES + 'replacement'.length);
 	});
 
 	it('hides deleted slots from downloads immediately but keeps their ciphertext during grace', () => {
@@ -232,7 +322,9 @@ describe('SQLite sync store', () => {
 		);
 		expect(removed.usage).toMatchObject({
 			envelopeCount: 1,
-			ciphertextBytes: 'cipher-note'.length
+			ciphertextBytes: 'cipher-note'.length,
+			storageBytes:
+				2 * ENVELOPE_STORAGE_OVERHEAD_BYTES + 'cipher-note'.length + 'cipher-photo'.length
 		});
 
 		// A slower device rewinding behind the deletion never sees the slot again.
@@ -245,6 +337,43 @@ describe('SQLite sync store', () => {
 					.prepare('SELECT id, ciphertext FROM deleted_envelopes WHERE account_id = ? AND slot = ?')
 					.get('account', slot('b'))
 			).toEqual({ id: 'photo', ciphertext: 'cipher-photo' });
+		} finally {
+			raw.close();
+		}
+	});
+
+	it('charges record overhead and purges retained ciphertext only when space is needed', () => {
+		const maxAccountBytes = ENVELOPE_STORAGE_OVERHEAD_BYTES + 5;
+		const { store, directory } = createStore({ maxAccountBytes });
+		store.createAccount('account', 'credential');
+		expect(() =>
+			store.sync('account', 0, [{ id: 'too-large', slot: slot('z'), ciphertext: '123456' }], [], 10)
+		).toThrow(SyncQuotaExceededError);
+
+		const first = store.sync(
+			'account',
+			0,
+			[{ id: 'old', slot: slot('a'), ciphertext: '12345' }],
+			[],
+			10
+		);
+		const deleted = store.sync('account', first.cursor, [], [{ id: 'old', slot: slot('a') }], 10);
+		expect(deleted.usage.storageBytes).toBe(maxAccountBytes);
+
+		const replacement = store.sync(
+			'account',
+			deleted.cursor,
+			[{ id: 'new', slot: slot('b'), ciphertext: 'abcde' }],
+			[],
+			10
+		);
+		expect(replacement.usage.storageBytes).toBe(maxAccountBytes);
+		const raw = new Database(join(directory, 'sync.sqlite'));
+		try {
+			expect(
+				(raw.prepare('SELECT COUNT(*) AS count FROM deleted_envelopes').get() as { count: number })
+					.count
+			).toBe(0);
 		} finally {
 			raw.close();
 		}
@@ -629,14 +758,15 @@ describe('SQLite sync store', () => {
 			accounts: 3,
 			envelopeCount: 1,
 			ciphertextBytes: 'opaque'.length,
+			storageBytes: ENVELOPE_STORAGE_OVERHEAD_BYTES + 'opaque'.length,
 			activeByWindowDays: { '1': 1, '7': 1, '30': 2 },
 			staleAccounts: 1
 		});
 
 		expect(store.deleteInactiveAccounts(now - 20 * 24 * 60 * 60 * 1000)).toBe(1);
-		expect(store.getCredentialHash('stale')).toBeNull();
-		expect(store.getCredentialHash('fresh')).toBe('credential');
-		expect(store.getCredentialHash('week-old')).toBe('credential');
+		expect(store.getAuthCredential('stale')).toBeNull();
+		expect(store.getAuthCredential('fresh')).toBe('credential');
+		expect(store.getAuthCredential('week-old')).toBe('credential');
 	});
 
 	it('treats pull-only sync as activity without changing stored ciphertext', () => {
@@ -645,7 +775,7 @@ describe('SQLite sync store', () => {
 		store.touchAccount('account', 1);
 		store.sync('account', 0, [], [], 10);
 		expect(store.deleteInactiveAccounts(Date.now() - 1_000)).toBe(0);
-		expect(store.getCredentialHash('account')).toBe('credential');
+		expect(store.getAuthCredential('account')).toBe('credential');
 		expect(store.aggregateUsage()).toEqual({
 			accounts: 1,
 			envelopeCount: 0,
@@ -665,40 +795,6 @@ describe('SQLite sync store', () => {
 		});
 	});
 
-	it('backfills last_seen_at from updated_at on existing databases', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
-		directories.push(directory);
-		const legacy = new Database(join(directory, 'sync.sqlite'));
-		legacy.exec(`
-			CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-			CREATE TABLE accounts (
-				account_id TEXT PRIMARY KEY,
-				credential_hash TEXT NOT NULL,
-				next_seq INTEGER NOT NULL DEFAULT 0,
-				envelope_count INTEGER NOT NULL DEFAULT 0,
-				ciphertext_bytes INTEGER NOT NULL DEFAULT 0,
-				updated_at INTEGER NOT NULL
-			);
-			INSERT INTO accounts(account_id, credential_hash, next_seq, envelope_count, ciphertext_bytes, updated_at)
-			VALUES ('old-account', 'credential', 0, 0, 0, 42);
-		`);
-		legacy.close();
-
-		const store = new SyncStore(directory);
-		stores.push(store);
-		expect(
-			store.operatorUsage({
-				now: 40 * 24 * 60 * 60 * 1000,
-				staleBefore: 50
-			})
-		).toMatchObject({
-			accounts: 1,
-			staleAccounts: 1,
-			activeByWindowDays: { '1': 0, '7': 0, '30': 0 }
-		});
-		expect(store.deleteInactiveAccounts(50)).toBe(1);
-	});
-
 	it('deletes an account and all of its opaque envelopes', () => {
 		const { store } = createStore();
 		store.createAccount('account', 'credential');
@@ -712,7 +808,7 @@ describe('SQLite sync store', () => {
 		});
 		store.replaceReminderWakes('account', [wake('a', 1_000)]);
 		expect(store.deleteAccount('account')).toBe(true);
-		expect(store.getCredentialHash('account')).toBeNull();
+		expect(store.getAuthCredential('account')).toBeNull();
 		expect(store.countPushDevices()).toBe(0);
 		expect(store.listWakeTimes('account')).toEqual([]);
 		expect(store.aggregateUsage()).toEqual({
@@ -720,64 +816,5 @@ describe('SQLite sync store', () => {
 			envelopeCount: 0,
 			ciphertextBytes: 0
 		});
-	});
-
-	it('imports the legacy JSON once and leaves it available for recovery', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
-		directories.push(directory);
-		const legacyFile = join(directory, 'users.json');
-		const legacy = JSON.stringify({
-			account: {
-				credentialHash: 'credential',
-				nextSeq: 7,
-				updatedAt: 123,
-				envelopes: [
-					{ seq: 2, id: 'old', slot: slot('a'), ciphertext: 'old' },
-					{ seq: 7, id: 'new', slot: slot('a'), ciphertext: 'new' }
-				]
-			}
-		});
-		writeFileSync(legacyFile, legacy);
-
-		const store = new SyncStore(directory);
-		stores.push(store);
-		expect(store.getCredentialHash('account')).toBe('credential');
-		expect(store.sync('account', 0, [], [], 10).envelopes).toEqual([
-			{ seq: 7, id: 'new', slot: slot('a'), ciphertext: 'new' }
-		]);
-		expect(readFileSync(legacyFile, 'utf8')).toBe(legacy);
-	});
-
-	it('skips garbage legacy entries instead of failing startup', () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
-		directories.push(directory);
-		writeFileSync(
-			join(directory, 'users.json'),
-			JSON.stringify({
-				junk: null,
-				'also-junk': 'a string',
-				'no-hash': { envelopes: [{ seq: 1, id: 'x', slot: slot('x'), ciphertext: 'x' }] },
-				account: {
-					credentialHash: 'credential',
-					nextSeq: 3,
-					updatedAt: 123,
-					envelopes: [
-						'garbage',
-						null,
-						{ seq: 0, id: 'zero', slot: slot('z'), ciphertext: 'zz' },
-						{ seq: 3, id: 'bad-cipher', slot: slot('b'), ciphertext: 'not+base64url' },
-						{ seq: 2, id: 'good', slot: slot('a'), ciphertext: 'aa' }
-					]
-				}
-			})
-		);
-
-		const store = new SyncStore(directory);
-		stores.push(store);
-		expect(store.getCredentialHash('account')).toBe('credential');
-		expect(store.getCredentialHash('junk')).toBeNull();
-		expect(store.sync('account', 0, [], [], 10).envelopes).toEqual([
-			{ seq: 2, id: 'good', slot: slot('a'), ciphertext: 'aa' }
-		]);
 	});
 });

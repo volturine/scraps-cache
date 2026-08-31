@@ -1,6 +1,5 @@
 const HTTP_URL_RE = /https?:\/\/[^\s<>"'`]+/gi;
 
-/** Legacy metadata shape retained only so older notes/backups can be read safely. */
 export type LinkPreview = {
 	url: string;
 	hostname: string;
@@ -47,20 +46,6 @@ export function extractHttpUrls(text: string): string[] {
 	}
 
 	return urls;
-}
-
-/** Legacy validation used only while normalizing older backup data. */
-export function isUsableLinkPreview(
-	preview: LinkPreview | null | undefined
-): preview is LinkPreview {
-	if (!preview?.title) return false;
-	const host = preview.hostname?.toLowerCase?.() ?? '';
-	const title = preview.title.trim().toLowerCase();
-	if (!title) return false;
-	if (host && (title === host || title === `www.${host}`)) {
-		return Boolean(preview.image || preview.icon);
-	}
-	return true;
 }
 
 /** Build a deterministic card from the URL alone. This function never performs I/O. */

@@ -73,18 +73,23 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 
 From a random 32-byte sync key the client derives:
 
-- `accountId` — server-visible account handle (hash-derived)
-- `authSecret` — credential presented to the relay (hash-derived)
+- an Ed25519 signing key; only its public key is registered with the relay
+- `accountId` — the stable v1 server-visible account handle derived from the sync key
 - One-time pairing code — random 80-bit rendezvous code, shown only while connecting another device
 
 Payload encryption key material is also derived from the sync key. The server
-verifies `accountId` + `authSecret` but cannot decrypt envelopes.
+verifies signed one-time challenges and issues 30-minute sessions, but cannot
+decrypt envelopes.
+
+Accounts created before proof-of-possession authentication upgrade automatically
+replace their stored scrypt credential with the public key after one final legacy
+authentication. The account ID and encrypted relay data do not move.
 
 ## Server
 
 | Area            | Location                                                 | Responsibility                                     |
 | --------------- | -------------------------------------------------------- | -------------------------------------------------- |
-| Sync store      | `src/lib/server/syncStore.ts`                            | SQLite accounts, envelopes, quotas, migrations     |
+| Sync store      | `src/lib/server/syncStore.ts`                            | SQLite accounts, envelopes, and quotas             |
 | Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes    |
 | Register        | `src/routes/api/sync/register/`                          | Create account credentials                         |
 | Pairing         | `src/routes/api/sync/pair/*`                             | Rendezvous for PAKE shares (no plaintext key)      |
@@ -106,8 +111,9 @@ Each synced logical record is uploaded as:
 - **ciphertext** — authenticated encrypted blob
 
 The relay can replace or delete by slot without learning whether the payload is
-a note, image, label, or board. Usage counters track encrypted byte and envelope
-counts per account for quotas (default 1 GB / 50k envelopes).
+a note, image, label, or board. The storage quota covers active ciphertext,
+temporarily retained deletions, and estimated per-record database overhead
+(default 1000 MB).
 
 ## Deployment shapes
 

@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => {
 	class QuotaError extends Error {}
 	return {
 		QuotaError,
-		getCredentialHash: vi.fn((): string | null => 'credential-hash'),
+		authenticate: vi.fn((): string | null => 'account-123456789'),
 		sync: vi.fn(),
 		limitChecks: vi.fn<(key: string) => { allowed: true }>(() => ({ allowed: true }))
 	};
@@ -13,11 +13,10 @@ const mocks = vi.hoisted(() => {
 vi.mock('$lib/server/syncStore', () => ({
 	SyncQuotaExceededError: mocks.QuotaError,
 	getSyncStore: () => ({
-		getCredentialHash: mocks.getCredentialHash,
 		sync: mocks.sync
 	})
 }));
-vi.mock('$lib/server/syncAuth', () => ({ sameSyncSecret: () => true }));
+vi.mock('$lib/server/syncAuth', () => ({ authenticateSyncRequest: mocks.authenticate }));
 vi.mock('$lib/server/rateLimit', () => ({
 	clientAddress: () => '127.0.0.1',
 	enterSyncRequest: () => vi.fn(),
@@ -31,10 +30,7 @@ vi.mock('$lib/server/metrics', () => ({
 
 import { POST } from './+server';
 
-const credentials = {
-	accountId: 'account-123456789',
-	authSecret: 'a'.repeat(32)
-};
+const accountId = 'account-123456789';
 
 const validEnvelope = {
 	id: 'envelope-id',
@@ -52,7 +48,7 @@ async function post(body: unknown): Promise<Response> {
 	)({
 		request: new Request('http://localhost/api/sync/delta', {
 			method: 'POST',
-			headers: { 'content-type': 'application/json' },
+			headers: { 'content-type': 'application/json', authorization: 'Bearer token' },
 			body: JSON.stringify(body)
 		}),
 		getClientAddress: () => '127.0.0.1'
@@ -63,7 +59,7 @@ describe('sync delta route', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mocks.limitChecks.mockImplementation(() => ({ allowed: true }));
-		mocks.getCredentialHash.mockReturnValue('credential-hash');
+		mocks.authenticate.mockReturnValue(accountId);
 		mocks.sync.mockReturnValue({
 			cursor: 2,
 			envelopes: [],
@@ -71,14 +67,13 @@ describe('sync delta route', () => {
 			hasMore: false,
 			reset: false,
 			writesAccepted: true,
-			usage: { envelopeCount: 2, ciphertextBytes: 12, maxBytes: 100, maxEnvelopes: 10 }
+			usage: { envelopeCount: 2, ciphertextBytes: 12, storageBytes: 1_036, maxBytes: 2_000 }
 		});
 	});
 
 	it('passes validated conditional writes and bounded cursors to the relay', async () => {
 		const replacement = { ...validEnvelope, id: 'replacement', expectedId: 'current-id' };
 		const response = await post({
-			...credentials,
 			cursor: -1,
 			limit: 999,
 			envelopes: [validEnvelope, replacement],
@@ -87,7 +82,7 @@ describe('sync delta route', () => {
 
 		expect(response.status).toBe(200);
 		expect(mocks.sync).toHaveBeenCalledWith(
-			credentials.accountId,
+			accountId,
 			0,
 			[validEnvelope, replacement],
 			[{ id: 'deleted-id', slot: 'b'.repeat(64) }],
@@ -106,7 +101,7 @@ describe('sync delta route', () => {
 		if (expectedId !== undefined) envelope.expectedId = expectedId;
 		else delete envelope.expectedId;
 
-		const response = await post({ ...credentials, envelopes: [envelope], deleteSlots: [] });
+		const response = await post({ envelopes: [envelope], deleteSlots: [] });
 
 		expect(response.status).toBe(400);
 		expect(await response.json()).toEqual({ error: 'Invalid encrypted envelope batch' });
@@ -118,7 +113,7 @@ describe('sync delta route', () => {
 			...validEnvelope,
 			id: `envelope-${index}`
 		}));
-		const response = await post({ ...credentials, envelopes, deleteSlots: [] });
+		const response = await post({ envelopes, deleteSlots: [] });
 
 		expect(response.status).toBe(400);
 		expect(mocks.sync).not.toHaveBeenCalled();
@@ -128,27 +123,27 @@ describe('sync delta route', () => {
 		['empty id', { id: '', slot: 'b'.repeat(64) }],
 		['non-hash slot', { id: 'deleted-id', slot: 'not-a-slot' }]
 	])('rejects an invalid deletion with %s', async (_label, deletion) => {
-		const response = await post({ ...credentials, envelopes: [], deleteSlots: [deletion] });
+		const response = await post({ envelopes: [], deleteSlots: [deletion] });
 
 		expect(response.status).toBe(400);
 		expect(mocks.sync).not.toHaveBeenCalled();
 	});
 
-	it('does not reveal whether an account exists when authentication fails', async () => {
-		mocks.getCredentialHash.mockReturnValue(null);
-		const response = await post({ ...credentials, envelopes: [], deleteSlots: [] });
+	it('rejects an invalid or expired session', async () => {
+		mocks.authenticate.mockReturnValue(null);
+		const response = await post({ envelopes: [], deleteSlots: [] });
 
-		expect(response.status).toBe(404);
-		expect(await response.json()).toEqual({ error: 'Invalid sync account credentials' });
+		expect(response.status).toBe(401);
+		expect(await response.json()).toEqual({ error: 'Invalid sync session' });
 	});
 
-	it('consumes the per-account bucket only after credentials verify', async () => {
-		mocks.getCredentialHash.mockReturnValue(null);
-		await post({ ...credentials, envelopes: [], deleteSlots: [] });
+	it('consumes the per-account bucket only after session authentication', async () => {
+		mocks.authenticate.mockReturnValue(null);
+		await post({ envelopes: [], deleteSlots: [] });
 		expect(mocks.limitChecks.mock.calls.map(([key]) => key)).toEqual(['sync-ip:127.0.0.1']);
 
-		mocks.getCredentialHash.mockReturnValue('credential-hash');
-		await post({ ...credentials, envelopes: [], deleteSlots: [] });
+		mocks.authenticate.mockReturnValue(accountId);
+		await post({ envelopes: [], deleteSlots: [] });
 		expect(mocks.limitChecks.mock.calls.map(([key]) => key)).toEqual([
 			'sync-ip:127.0.0.1',
 			'sync-ip:127.0.0.1',
@@ -160,7 +155,7 @@ describe('sync delta route', () => {
 		mocks.sync.mockImplementation(() => {
 			throw new mocks.QuotaError();
 		});
-		const response = await post({ ...credentials, envelopes: [], deleteSlots: [] });
+		const response = await post({ envelopes: [], deleteSlots: [] });
 
 		expect(response.status).toBe(507);
 		expect(await response.json()).toEqual({ error: 'Sync account storage quota exceeded' });

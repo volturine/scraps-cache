@@ -145,8 +145,7 @@ client-address settings above so rate limits see real client IPs.
 | Variable                                   |                        Default | Purpose                                                                         |
 | ------------------------------------------ | -----------------------------: | ------------------------------------------------------------------------------- |
 | `SCRAPSCACHE_SYNC_DATA_DIR`                |                    `sync-data` | Persistent sync-data directory (`/data` in Compose)                             |
-| `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                   `1000000000` | Ciphertext quota per account                                                    |
-| `SCRAPSCACHE_SYNC_MAX_ACCOUNT_ENVELOPES`   |                        `50000` | Record quota per account                                                        |
+| `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                   `1000000000` | Relay storage quota per account (1000 MB)                                       |
 | `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight                                                     |
 | `SCRAPSCACHE_ADMIN_TOKEN`                  |                          unset | Enables and protects metrics, JSON status, and retention; unset disables them   |
 | `SCRAPSCACHE_RETENTION_INACTIVE_DAYS`      |                            `0` | Delete accounts with no authenticated activity for this many days; `0` disables |
@@ -185,18 +184,16 @@ variables explicitly.
 Inside Compose, `HOST`, `PORT`, and `SCRAPSCACHE_SYNC_DATA_DIR` are fixed to
 `0.0.0.0`, `3000`, and `/data`. Direct `docker run` may override them.
 
-An existing `users.json` under the data directory is imported once into SQLite
-and left in place as a recovery copy.
-
 ## Health, metrics, and administration
 
-| Endpoint                    | Auth                                             | Purpose                                             |
-| --------------------------- | ------------------------------------------------ | --------------------------------------------------- |
-| `GET /health/live`          | none                                             | Process liveness                                    |
-| `GET /health/ready`         | none                                             | SQLite + migrations + volume readiness              |
-| `GET /metrics`              | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                            |
-| `GET /api/admin/status`     | same bearer token                                | Anonymous JSON: storage, users, activity, retention |
-| `POST /api/admin/retention` | same bearer token                                | Run the inactive-account sweeper now                |
+| Endpoint                                   | Auth                                             | Purpose                                             |
+| ------------------------------------------ | ------------------------------------------------ | --------------------------------------------------- |
+| `GET /health/live`                         | none                                             | Process liveness                                    |
+| `GET /health/ready`                        | none                                             | SQLite and volume readiness                         |
+| `GET /metrics`                             | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                            |
+| `GET /api/admin/status`                    | same bearer token                                | Anonymous JSON: storage, users, activity, retention |
+| `POST /api/admin/retention`                | same bearer token                                | Run the inactive-account sweeper now                |
+| `POST/PUT/DELETE /api/admin/account-quota` | same bearer token                                | Inspect, set, or clear one account's byte quota     |
 
 With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the three token-protected
 endpoints return 404 — the admin API is disabled.
@@ -210,14 +207,31 @@ Inactive-account retention is **off** unless
 `SCRAPSCACHE_RETENTION_INACTIVE_DAYS` is a positive integer. When enabled, a
 daily sweep deletes every account with no authenticated activity for that many
 days. Last-seen is updated on authenticated sync and push activity, including
-pull-only deltas. Existing databases backfill last-seen from the last ciphertext
-write, so enable retention only after live traffic has refreshed last-seen (or
-after a deliberate grace period). The sweeper logs deleted counts, never account
-IDs.
+pull-only deltas. Enable retention only after live traffic has refreshed
+last-seen, or after a deliberate grace period. The sweeper logs deleted counts,
+never account IDs.
 
 ```sh
 curl -fsS -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
   http://localhost:3000/api/admin/status
+```
+
+The environment value is the default for every account. An authenticated admin
+can set a durable per-account override in bytes, or delete it to restore the
+default:
+
+```sh
+curl -fsS -X PUT \
+  -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"accountId\":\"$ACCOUNT_ID\",\"maxBytes\":2147483648}" \
+  "http://localhost:3000/api/admin/account-quota"
+
+curl -fsS -X DELETE \
+	-H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d "{\"accountId\":\"$ACCOUNT_ID\"}" \
+	"http://localhost:3000/api/admin/account-quota"
 ```
 
 ## Images and CI

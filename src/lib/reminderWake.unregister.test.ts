@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { unregisterReminderDevice } from './reminderWake';
+import { syncStore } from '$lib/stores/sync.svelte';
 
 /**
  * Issue #85: the server-side device unsubscribe must be observable. A failed
@@ -14,7 +15,7 @@ describe('unregisterReminderDevice failure visibility', () => {
 	const account = {
 		syncKey: 'key',
 		accountId: 'acct',
-		authSecret: 'secret',
+		authPublicKey: 'secret',
 		pairingCode: ''
 	};
 
@@ -28,34 +29,28 @@ describe('unregisterReminderDevice failure visibility', () => {
 
 	it('resolves when the relay accepts the unsubscribe', async () => {
 		stubBrowser();
-		const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
-		vi.stubGlobal('fetch', fetchMock);
+		const fetchMock = vi
+			.spyOn(syncStore, 'authorizedFetch')
+			.mockResolvedValue(new Response(null, { status: 204 }));
 
 		await expect(unregisterReminderDevice(account)).resolves.toBeUndefined();
 		expect(fetchMock).toHaveBeenCalledWith(
 			'/api/sync/push/wakes',
-			expect.objectContaining({ method: 'DELETE', keepalive: true })
+			expect.objectContaining({ method: 'DELETE', keepalive: true }),
+			account
 		);
 	});
 
 	it('rejects when the relay rejects the unsubscribe', async () => {
 		stubBrowser();
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => new Response(null, { status: 500 }))
-		);
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(new Response(null, { status: 500 }));
 
 		await expect(unregisterReminderDevice(account)).rejects.toThrow(/500/);
 	});
 
 	it('rejects when the request never leaves the device', async () => {
 		stubBrowser();
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => {
-				throw new TypeError('Failed to fetch');
-			})
-		);
+		vi.spyOn(syncStore, 'authorizedFetch').mockRejectedValue(new TypeError('Failed to fetch'));
 
 		await expect(unregisterReminderDevice(account)).rejects.toThrow(/relay/);
 	});

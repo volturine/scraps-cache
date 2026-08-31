@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { portalToAppOverlay } from '$lib/appViewport';
-	import type { BackupImportMode } from '$lib/backup';
+	import { BackupImportMode } from '$lib/backup';
 	import { onMount } from 'svelte';
 
 	let {
@@ -74,7 +74,7 @@
 				bind:this={keepButton}
 				type="button"
 				disabled={busy}
-				onclick={() => onSelect('keep')}
+				onclick={() => onSelect(BackupImportMode.Keep)}
 				class="scrapscache-button w-full px-4 py-3 text-left"
 			>
 				<span class="block font-medium">Keep local notes</span>
@@ -85,7 +85,7 @@
 			<button
 				type="button"
 				disabled={busy}
-				onclick={() => onSelect('replace')}
+				onclick={() => onSelect(BackupImportMode.Replace)}
 				class="scrapscache-button w-full px-4 py-3 text-left"
 			>
 				<span class="block font-medium text-[var(--scrapscache-danger)]">Replace local data</span>

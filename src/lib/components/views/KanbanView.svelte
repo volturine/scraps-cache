@@ -1,6 +1,7 @@
 <script lang="ts">
 	import KanbanCard from '$lib/components/KanbanCard.svelte';
 	import {
+		BacklogFilterMode,
 		columnNotes,
 		defaultBacklogFilter,
 		moveNoteLabels,
@@ -28,7 +29,7 @@
 	/** Labels that can be used in the backlog filter (not already a column). */
 	const backlogFilterTags = $derived(unusedTags);
 	const backlogFilter = $derived(board.backlogFilter ?? defaultBacklogFilter());
-	const backlogFilterActive = $derived(backlogFilter.mode === 'custom');
+	const backlogFilterActive = $derived(backlogFilter.mode === BacklogFilterMode.Custom);
 
 	let renamingBoard = $state(false);
 	let boardName = $derived(board.name);
@@ -87,13 +88,13 @@
 		if (event.key === 'Escape') tagPickerOpen = false;
 	}
 
-	function setBacklogMode(mode: BacklogFilter['mode']) {
-		if (mode === 'all-non-column') {
+	function setBacklogMode(mode: BacklogFilterMode) {
+		if (mode === BacklogFilterMode.AllNonColumn) {
 			kanbanStore.setBacklogFilter(board.id, defaultBacklogFilter());
 			return;
 		}
 		kanbanStore.setBacklogFilter(board.id, {
-			mode: 'custom',
+			mode: BacklogFilterMode.Custom,
 			includeUntagged: backlogFilter.includeUntagged,
 			labelIds: [...backlogFilter.labelIds]
 		});
@@ -101,7 +102,7 @@
 
 	function toggleBacklogUntagged() {
 		kanbanStore.setBacklogFilter(board.id, {
-			mode: 'custom',
+			mode: BacklogFilterMode.Custom,
 			includeUntagged: !backlogFilter.includeUntagged,
 			labelIds: [...backlogFilter.labelIds]
 		});
@@ -113,14 +114,14 @@
 			? backlogFilter.labelIds.filter((id) => id !== labelId)
 			: [...backlogFilter.labelIds, labelId];
 		kanbanStore.setBacklogFilter(board.id, {
-			mode: 'custom',
+			mode: BacklogFilterMode.Custom,
 			includeUntagged: backlogFilter.includeUntagged,
 			labelIds
 		});
 	}
 
 	function backlogFilterSummary(): string {
-		if (backlogFilter.mode !== 'custom') return 'All non-column notes';
+		if (backlogFilter.mode !== BacklogFilterMode.Custom) return 'All non-column notes';
 		const parts: string[] = [];
 		if (backlogFilter.includeUntagged) parts.push('No labels');
 		for (const id of backlogFilter.labelIds) {
@@ -292,8 +293,8 @@
 								<input
 									type="radio"
 									name="backlog-mode-{board.id}"
-									checked={backlogFilter.mode === 'all-non-column'}
-									onchange={() => setBacklogMode('all-non-column')}
+									checked={backlogFilter.mode === BacklogFilterMode.AllNonColumn}
+									onchange={() => setBacklogMode(BacklogFilterMode.AllNonColumn)}
 									class="mt-0.5"
 								/>
 								<span>
@@ -311,14 +312,14 @@
 								<input
 									type="radio"
 									name="backlog-mode-{board.id}"
-									checked={backlogFilter.mode === 'custom'}
-									onchange={() => setBacklogMode('custom')}
+									checked={backlogFilter.mode === BacklogFilterMode.Custom}
+									onchange={() => setBacklogMode(BacklogFilterMode.Custom)}
 									class="mt-0.5"
 								/>
 								<span class="font-medium text-[var(--scrapscache-text)]">Only selected…</span>
 							</label>
 
-							{#if backlogFilter.mode === 'custom'}
+							{#if backlogFilter.mode === BacklogFilterMode.Custom}
 								<div class="ml-1 space-y-1 border-l-2 border-black/10 pl-2 dark:border-white/10">
 									<label
 										class="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"

@@ -5,7 +5,6 @@ import {
 	changedRecords,
 	fingerprintMap,
 	hydrateNoteImages,
-	legacySnapshotPayloads,
 	splitNoteForSync
 } from './syncRecords';
 import type { Note, NoteImage } from './types';
@@ -115,21 +114,6 @@ describe('opaque per-record sync payloads', () => {
 			new Set(['note:two'])
 		);
 		expect(records.map((record) => record.key)).toEqual(['note:two']);
-	});
-
-	it('expands legacy inline-photo snapshots into note + attachment records', async () => {
-		const photo = image('pic', 'data:image/jpeg;base64,legacy');
-		const payloads = await legacySnapshotPayloads({
-			notes: [note('old', 10, 'body', [photo])],
-			labels: [],
-			boards: [],
-			tombstones: { deleted: 20 }
-		});
-		expect(payloads?.map((payload) => payload.kind).sort()).toEqual([
-			'attachment',
-			'note',
-			'note-tombstone'
-		]);
 	});
 
 	it('keeps a baseline after a no-op merge so the next sync uploads zero bytes', async () => {

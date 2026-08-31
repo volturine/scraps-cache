@@ -25,7 +25,6 @@ export type ReminderAlert = {
 
 const CHECKLIST_PREFIX = /^(?:\s*(?:[-*•]\s+)?)?\[[ xX]?\]\s*/;
 const WAKE_DOMAIN = 'scraps-cache-reminder-wake:v1\0';
-export const REMINDER_WAKE_ID_RE = /^[A-Za-z0-9_-]{43}$/;
 export const RELAY_WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
 export const MAX_RELAY_WAKES = 1_000;
 
@@ -93,11 +92,6 @@ export function unfiredDueReminders(
 	return dueReminderNotes(notes, now).filter(
 		(note) => !seen.has(reminderWakeId(note.id, note.reminder as number))
 	);
-}
-
-/** Drop only obsolete pre-wake-id values; unknown wake ids may represent generic alerts. */
-export function pruneFiredReminders(_notes: ReminderNote[], fired: Iterable<string>): Set<string> {
-	return new Set([...fired].filter((key) => REMINDER_WAKE_ID_RE.test(key)));
 }
 
 export function notificationPermission(): NotificationPermission | 'unsupported' {

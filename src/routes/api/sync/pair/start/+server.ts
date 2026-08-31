@@ -3,6 +3,7 @@ import { json } from '@sveltejs/kit';
 import { pairingSessions } from '$lib/server/pairingSessions';
 import { readJsonBody } from '$lib/server/request';
 import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { isPairingRole } from '$lib/pairingProtocol';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = publicApiLimiter.check(`pair:${clientAddress(getClientAddress)}`, {
@@ -19,7 +20,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (
 		typeof body.codeTag !== 'string' ||
 		!/^[0-9a-f]{64}$/.test(body.codeTag) ||
-		(body.role !== 'existing' && body.role !== 'new') ||
+		!isPairingRole(body.role) ||
 		typeof body.publicKey !== 'string' ||
 		!/^[A-Za-z0-9_-]{43}$/.test(body.publicKey)
 	)

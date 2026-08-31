@@ -1,13 +1,12 @@
 import { randomUUID } from 'crypto';
+import {
+	PairingRole,
+	PairingState,
+	type PairingGrant,
+	type PairingPoll
+} from '$lib/pairingProtocol';
 
-export type PairingGrant = { ciphertext: string };
-export type PairingRole = 'existing' | 'new';
 export type PairingParticipant = { id: string; expiresAt: number; role: PairingRole };
-export type PairingPoll =
-	| { state: 'waiting'; expiresAt: number }
-	| { state: 'matched'; expiresAt: number; peerPublicKey: string }
-	| { state: 'connected'; expiresAt: number; peerPublicKey: string; grant: PairingGrant }
-	| { state: 'expired' | 'not-found' };
 
 type Session = PairingParticipant & {
 	codeTag: string;
@@ -64,7 +63,7 @@ export class PairingSessions {
 			this.remove(session);
 			return { success: false, reason: 'expired' };
 		}
-		if (session.role !== 'existing' || !session.peerId)
+		if (session.role !== PairingRole.Existing || !session.peerId)
 			return { success: false, reason: 'unmatched' };
 		if (session.grant) return { success: false, reason: 'already-granted' };
 		session.grant = grant;
@@ -73,24 +72,28 @@ export class PairingSessions {
 
 	poll(id: string, now = Date.now()): PairingPoll {
 		const session = this.sessions.get(id);
-		if (!session) return { state: 'not-found' };
+		if (!session) return { state: PairingState.NotFound };
 		if (session.expiresAt <= now) {
 			this.remove(session);
-			return { state: 'expired' };
+			return { state: PairingState.Expired };
 		}
 		const peer = session.peerId ? this.sessions.get(session.peerId) : null;
 		if (!peer)
 			return session.peerId
-				? { state: 'expired' }
-				: { state: 'waiting', expiresAt: session.expiresAt };
-		if (session.role === 'new' && peer.grant)
+				? { state: PairingState.Expired }
+				: { state: PairingState.Waiting, expiresAt: session.expiresAt };
+		if (session.role === PairingRole.New && peer.grant)
 			return {
-				state: 'connected',
+				state: PairingState.Connected,
 				expiresAt: session.expiresAt,
 				peerPublicKey: peer.publicKey,
 				grant: peer.grant
 			};
-		return { state: 'matched', expiresAt: session.expiresAt, peerPublicKey: peer.publicKey };
+		return {
+			state: PairingState.Matched,
+			expiresAt: session.expiresAt,
+			peerPublicKey: peer.publicKey
+		};
 	}
 
 	private remove(session: Session): void {

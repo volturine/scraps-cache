@@ -1,4 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const wakeMocks = vi.hoisted(() => ({
+	publish: vi.fn(),
+	register: vi.fn()
+}));
+
+vi.mock('$lib/reminderWake', () => ({
+	publishReminderWakes: wakeMocks.publish,
+	registerReminderDevice: wakeMocks.register
+}));
+
 import { ReminderStore } from './reminders.svelte';
 import { reminderWakeId, type ReminderNote } from '$lib/reminderNotify';
 import { getFiredReminderKeys, setFiredReminderKeys } from '$lib/db/idb';
@@ -17,6 +28,8 @@ function note(partial: Partial<ReminderNote> = {}): ReminderNote {
 
 beforeEach(() => {
 	localStorage.clear();
+	wakeMocks.publish.mockReset().mockResolvedValue([]);
+	wakeMocks.register.mockReset().mockResolvedValue(false);
 });
 
 afterEach(() => {
@@ -33,6 +46,26 @@ describe('ReminderStore', () => {
 		await vi.waitFor(() =>
 			expect(store.alerts).toEqual([expect.objectContaining({ noteId: 'n1', title: 'Groceries' })])
 		);
+	});
+
+	it('keeps local reminder delivery active when relay device registration fails', async () => {
+		const showNotification = vi.fn(async () => undefined);
+		vi.stubGlobal('Notification', { permission: 'granted' });
+		vi.stubGlobal('navigator', {
+			serviceWorker: { ready: Promise.resolve({ showNotification }) }
+		});
+		const due = note({ id: 'registration-failed', reminder: Date.now() - 1 });
+		const wakeId = reminderWakeId(due.id, due.reminder as number);
+		wakeMocks.publish.mockResolvedValue([{ id: wakeId, fireAt: due.reminder }]);
+		wakeMocks.register.mockResolvedValue(false);
+		const store = new ReminderStore();
+		await store.whenReady();
+
+		store.publish([due]);
+
+		await vi.waitFor(() => expect(showNotification).toHaveBeenCalledOnce());
+		expect(wakeMocks.publish).toHaveBeenCalledWith([due]);
+		expect(wakeMocks.register).toHaveBeenCalledOnce();
 	});
 
 	it('does not re-alert a reminder the user already dismissed', async () => {

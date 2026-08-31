@@ -357,26 +357,143 @@ export async function getAllLabels(): Promise<Label[]> {
 	return (await db.getAll(LABELS_STORE)) as Label[];
 }
 
-export async function putLabel(label: Label): Promise<void> {
+function uniqueOutboxKeys(keys: Iterable<string>): string[] {
+	const unique = [...new Set(keys)];
+	for (const key of unique) {
+		if (typeof key !== 'string' || !key) throw new Error('Invalid sync outbox key');
+	}
+	return unique;
+}
+
+async function writeOutboxKeys(
+	tx: IDBPTransaction<unknown, string[], 'readwrite'>,
+	keys: string[]
+): Promise<void> {
+	if (!keys.length) return;
+	const generation = await nextOutboxGeneration(tx);
+	const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+	for (const key of keys) await outbox.put(generation, key);
+}
+
+function abortWrite(
+	tx: IDBPTransaction<unknown, string[], 'readwrite'>,
+	previousGeneration: number | null
+): Promise<void> {
+	try {
+		tx.abort();
+	} catch {
+		// The transaction may already have aborted after a failed request.
+	}
+	outboxGenerationCache = previousGeneration;
+	return tx.done.catch(() => undefined);
+}
+
+function labelRow(label: Label): Label {
+	return {
+		id: String(label.id),
+		name: String(label.name),
+		createdAt: Number(label.createdAt) || 0,
+		updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+	};
+}
+
+export async function putLabel(label: Label, syncOutboxKeys: Iterable<string> = []): Promise<void> {
+	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
 	const generation = writeGeneration;
 	await enqueueDeviceWrite(async () => {
 		if (generation !== writeGeneration) return;
 		const db = await getDB();
-		await db.put(LABELS_STORE, {
-			id: String(label.id),
-			name: String(label.name),
-			createdAt: Number(label.createdAt) || 0,
-			updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
-		});
+		const previousGeneration = outboxGenerationCache;
+		const tx = db.transaction(
+			outboxKeys.length ? [LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [LABELS_STORE],
+			'readwrite'
+		);
+		try {
+			tx.objectStore(LABELS_STORE).put(labelRow(label));
+			await writeOutboxKeys(tx, outboxKeys);
+			await tx.done;
+		} catch (error) {
+			await abortWrite(tx, previousGeneration);
+			throw error;
+		}
 	});
 }
 
-export async function deleteLabel(id: string): Promise<void> {
+export async function deleteLabel(
+	id: string,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
+	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
 	const generation = writeGeneration;
 	await enqueueDeviceWrite(async () => {
 		if (generation !== writeGeneration) return;
 		const db = await getDB();
-		await db.delete(LABELS_STORE, id);
+		const previousGeneration = outboxGenerationCache;
+		const tx = db.transaction(
+			outboxKeys.length ? [LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [LABELS_STORE],
+			'readwrite'
+		);
+		try {
+			await tx.objectStore(LABELS_STORE).delete(id);
+			await writeOutboxKeys(tx, outboxKeys);
+			await tx.done;
+		} catch (error) {
+			await abortWrite(tx, previousGeneration);
+			throw error;
+		}
+	});
+}
+
+/** Delete a label while durably committing related sync state and outbox markers. */
+export async function deleteLabelWithSyncState(
+	id: string,
+	state: Iterable<readonly [key: string, value: unknown]>,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
+	const entries = [...state];
+	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
+	const generation = writeGeneration;
+	await enqueueDeviceWrite(async () => {
+		if (generation !== writeGeneration) return;
+		const db = await getDB();
+		const previousGeneration = outboxGenerationCache;
+		const tx = db.transaction([LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+		try {
+			await tx.objectStore(LABELS_STORE).delete(id);
+			const stateStore = tx.objectStore(SYNC_STATE_STORE);
+			for (const [key, value] of entries) await stateStore.put(value, key);
+			await writeOutboxKeys(tx, outboxKeys);
+			await tx.done;
+		} catch (error) {
+			await abortWrite(tx, previousGeneration);
+			throw error;
+		}
+	});
+}
+
+/** Write durable sync-state keys and optional outbox markers in one transaction. */
+export async function writeSyncStateWithOutbox(
+	state: Iterable<readonly [key: string, value: unknown]>,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<void> {
+	const entries = [...state];
+	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB();
+		const previousGeneration = outboxGenerationCache;
+		const tx = db.transaction(
+			outboxKeys.length ? [SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [SYNC_STATE_STORE],
+			'readwrite'
+		);
+		try {
+			const store = tx.objectStore(SYNC_STATE_STORE);
+			for (const [key, value] of entries) await store.put(value, key);
+			await writeOutboxKeys(tx, outboxKeys);
+			await tx.done;
+		} catch (error) {
+			await abortWrite(tx, previousGeneration);
+			throw error;
+		}
 	});
 }
 

@@ -3,12 +3,15 @@ import type { Note } from '$lib/types';
 import {
 	clearSyncOutbox,
 	commitSyncControl,
+	deleteLabelWithSyncState,
+	getAllLabels,
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
 	getSyncState,
 	getOutboxGeneration,
 	hydrateNoteAttachments,
 	markSyncOutbox,
+	putLabel,
 	putNote,
 	setSyncState
 } from './idb';
@@ -93,6 +96,52 @@ describe('durable sync outbox', () => {
 
 		expect(await getSyncState('test-cursor')).toBe(4);
 		expect(await getSyncOutboxKeys()).toEqual(['note:atomic']);
+	});
+
+	it('commits a label and its outbox marker together or rolls both back', async () => {
+		await clearSyncOutbox(await getSyncOutboxKeys());
+		const label = {
+			id: 'atomic-label',
+			name: 'saved',
+			createdAt: 1,
+			updatedAt: 1
+		};
+		await putLabel(label, ['label:atomic-label']);
+		expect((await getAllLabels()).find(({ id }) => id === 'atomic-label')?.name).toBe('saved');
+		expect(await getSyncOutboxKeys()).toEqual(['label:atomic-label']);
+
+		await clearSyncOutbox(['label:atomic-label']);
+		await expect(
+			putLabel({ ...label, name: 'must roll back' }, [Number.NaN as unknown as string])
+		).rejects.toThrow();
+		expect((await getAllLabels()).find(({ id }) => id === 'atomic-label')?.name).toBe('saved');
+		expect(await getSyncOutboxKeys()).toEqual([]);
+	});
+
+	it('commits label deletion, its tombstone, and outbox marker in one transaction', async () => {
+		const label = { id: 'deleted-label', name: 'Delete me', createdAt: 1, updatedAt: 1 };
+		await putLabel(label);
+		await deleteLabelWithSyncState(
+			label.id,
+			[['label-tombstones', { [label.id]: 123 }]],
+			[`label-tombstone:${label.id}`]
+		);
+		expect(await getAllLabels()).toEqual([]);
+		expect(await getSyncState('label-tombstones')).toEqual({ [label.id]: 123 });
+		expect(await getSyncOutboxKeys()).toEqual([`label-tombstone:${label.id}`]);
+
+		await clearSyncOutbox(await getSyncOutboxKeys());
+		await putLabel(label);
+		await expect(
+			deleteLabelWithSyncState(
+				label.id,
+				[['label-tombstones', () => undefined]],
+				[`label-tombstone:${label.id}`]
+			)
+		).rejects.toThrow();
+		expect((await getAllLabels()).map(({ id }) => id)).toEqual([label.id]);
+		expect(await getSyncState('label-tombstones')).toEqual({ [label.id]: 123 });
+		expect(await getSyncOutboxKeys()).toEqual([]);
 	});
 
 	it('commits a note and its outbox marker together or rolls both back', async () => {
