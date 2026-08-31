@@ -1,7 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isAdminAuthorized, timingSafeStringEqual, unauthorizedAdminResponse } from './adminAuth';
 
+const envMock = vi.hoisted(() => ({}) as Record<string, string | undefined>);
+
+vi.mock('$env/dynamic/private', () => ({ env: envMock }));
+
 describe('admin auth', () => {
+	afterEach(() => {
+		delete envMock.SCRAPSCACHE_ADMIN_TOKEN;
+	});
+
 	it('accepts only the exact bearer token', () => {
 		const request = new Request('https://example.test/api/admin/status', {
 			headers: { authorization: 'Bearer secret-token' }
@@ -32,5 +40,16 @@ describe('admin auth', () => {
 		const response = unauthorizedAdminResponse();
 		expect(response.status).toBe(404);
 		await expect(response.text()).resolves.toBe('Not found\n');
+	});
+
+	it('fails closed when no admin token is configured', () => {
+		const request = new Request('https://example.test/api/admin/status', {
+			headers: { authorization: 'Bearer secret-token' }
+		});
+		expect(isAdminAuthorized(request)).toBe(false);
+		envMock.SCRAPSCACHE_ADMIN_TOKEN = '';
+		expect(isAdminAuthorized(request)).toBe(false);
+		envMock.SCRAPSCACHE_ADMIN_TOKEN = 'secret-token';
+		expect(isAdminAuthorized(request)).toBe(true);
 	});
 });

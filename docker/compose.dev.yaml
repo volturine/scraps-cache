@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "${SCRAPSCACHE_PORT:-3000}:3000"
+      - "${SCRAPSCACHE_BIND:-127.0.0.1}:${SCRAPSCACHE_PORT:-3000}:3000"
     environment:
       ORIGIN: "${SCRAPSCACHE_ORIGIN:-http://localhost:3000}"
       SCRAPSCACHE_ORIGIN: "${SCRAPSCACHE_ORIGIN:-http://localhost:3000}"
@@ -33,7 +33,7 @@ services:
       SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES: "${SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES:-1000000000}"
       SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS: "${SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS:-8}"
       SCRAPSCACHE_RETENTION_INACTIVE_DAYS: "${SCRAPSCACHE_RETENTION_INACTIVE_DAYS:-0}"
-      SCRAPSCACHE_ADMIN_TOKEN: "${SCRAPSCACHE_ADMIN_TOKEN:-development-only-admin-token}"
+      SCRAPSCACHE_ADMIN_TOKEN: "${SCRAPSCACHE_ADMIN_TOKEN:-}"
     volumes:
       - scrapscache-dev-sync-data:/data
     read_only: true

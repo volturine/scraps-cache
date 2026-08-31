@@ -117,13 +117,13 @@ temporarily retained deletions, and estimated per-record database overhead
 
 ## Deployment shapes
 
-| Mode               | How                             | Notes                                                  |
-| ------------------ | ------------------------------- | ------------------------------------------------------ |
-| Dev                | `npm run dev`                   | Vite + HMR; sync data under `sync-data/` by default    |
-| Local prod build   | `npm run build && npm start`    | Node adapter; same env vars as Docker                  |
-| Compose            | `docker/compose.yaml`           | Pull GHCR image, require admin token + image pin       |
-| PR preview Compose | `docker/compose.dev.yaml`       | Pull GHCR `dev-*` image on port 3000, isolated volumes |
-| Tailscale overlay  | `docker/compose.tailscale.yaml` | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)       |
+| Mode               | How                             | Notes                                                       |
+| ------------------ | ------------------------------- | ----------------------------------------------------------- |
+| Dev                | `npm run dev`                   | Vite + HMR; sync data under `sync-data/` by default         |
+| Local prod build   | `npm run build && npm start`    | Node adapter; same env vars as Docker                       |
+| Compose            | `docker/compose.yaml`           | Pull pinned GHCR image; loopback port, optional admin token |
+| PR preview Compose | `docker/compose.dev.yaml`       | Pull GHCR `dev-*` image on port 3000, isolated volumes      |
+| Tailscale overlay  | `docker/compose.tailscale.yaml` | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)            |
 
 ## Related docs
 
