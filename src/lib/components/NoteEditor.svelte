@@ -483,7 +483,7 @@
 							bind:this={bodyEditor}
 							bind:body
 							oninput={scheduleCommit}
-							placeholder="Take a note… type [ ] for a checklist, Tab for sub-task"
+							placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
 							focusLine={taskFocusLine}
 							onFocusTask={focusTask}
 							onExitTaskFocus={exitTaskFocus}
