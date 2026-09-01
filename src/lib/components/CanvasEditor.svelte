@@ -231,10 +231,10 @@
 	}
 
 	:global(.scrapscache-canvas .App-bottom-bar .App-toolbar-content) {
-		padding: 6px 8px !important;
+		padding: 4px 8px !important;
 	}
 
 	:global(.scrapscache-canvas .App-bottom-bar .dropdown-menu--mobile) {
-		bottom: 51px !important;
+		bottom: 47px !important;
 	}
 </style>
