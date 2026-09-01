@@ -170,7 +170,10 @@ function reminderPreview(note) {
 	const title = String(note.title || '').trim();
 	if (title) return title;
 	for (const raw of String(note.body || '').split('\n')) {
-		const line = raw.replace(/^(?:\s*(?:[-*•]\s+)?)?\[[ xX]?\]\s*/, '').trim();
+		const line = raw
+			.replace(/^\s*[-*+•]\s+/, '')
+			.replace(/^(?:\s*(?:[-*•]\s+)?)?\[[ xX]?\]\s*/, '')
+			.trim();
 		if (line) return line.slice(0, 80);
 	}
 	return 'Untitled note';

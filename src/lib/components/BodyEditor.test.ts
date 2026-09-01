@@ -553,6 +553,128 @@ describe('BodyEditor native editing', () => {
 	});
 });
 
+describe('BodyEditor markdown bullets', () => {
+	it('renders markdown bullet rows with a marker', () => {
+		const { container } = render(BodyEditor, { props: { body: '- Milk\n* Bread' } });
+		expect(lineTexts(container)).toEqual(['Milk', 'Bread']);
+		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(2);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(0);
+	});
+
+	it('continues a bullet list with Enter and exits on an empty bullet', async () => {
+		const { container } = render(BodyEditor, { props: { body: '- Milk' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		select(line, 'Milk'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Milk', '']);
+		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(2);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+
+		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(1);
+		expect(lineTexts(container)).toEqual(['Milk', '']);
+		expect(document.activeElement).toBe(editor);
+	});
+
+	it('splits bullet text across two rows at the same level', async () => {
+		const { container } = render(BodyEditor, { props: { body: '- Milk Bread' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		select(line, 'Milk '.length);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Milk ', 'Bread']);
+		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(2);
+	});
+
+	it('converts a typed dash prefix into a bullet while editing', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Milk' } });
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		select(line, 0);
+
+		line.textContent = '- Milk';
+		await fireEvent.input(line);
+
+		expect(lineTexts(container)).toEqual(['Milk']);
+		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(1);
+	});
+
+	it('pastes bullet lines as bullet rows', async () => {
+		const { container } = render(BodyEditor, { props: { body: '' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+
+		const paste = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, 'clipboardData', {
+			value: { getData: () => '- Milk\n* Bread' }
+		});
+		editor.dispatchEvent(paste);
+		await tick();
+
+		expect(paste.defaultPrevented).toBe(true);
+		expect(lineTexts(container)).toEqual(['Milk', 'Bread']);
+		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(2);
+	});
+
+	it('copies a whole bullet line with its markdown marker', async () => {
+		const { container } = render(BodyEditor, { props: { body: '- Milk\nplain' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const rows = container.querySelectorAll('[data-line-text]');
+		select(rows[0], 0, rows[0], 'Milk'.length);
+
+		const setData = vi.fn();
+		const copy = new Event('copy', { bubbles: true, cancelable: true });
+		Object.defineProperty(copy, 'clipboardData', { value: { setData } });
+		editor.dispatchEvent(copy);
+
+		expect(setData).toHaveBeenCalledWith('text/plain', '- Milk');
+	});
+
+	it('indents bullet rows with Tab and outdents with Shift+Tab', async () => {
+		const { container } = render(BodyEditor, { props: { body: '- Milk' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Milk']);
+		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(1);
+		expect(container.querySelector('[data-editor-line="0"]')?.getAttribute('style')).toContain(
+			'padding-left'
+		);
+
+		await fireEvent.keyDown(editor, { key: 'Tab', shiftKey: true });
+		await tick();
+
+		expect(
+			container.querySelector('[data-editor-line="0"]')?.getAttribute('style') ?? ''
+		).not.toContain('padding-left');
+	});
+
+	it('outdents a nested bullet with Backspace while keeping its text', async () => {
+		const { container } = render(BodyEditor, { props: { body: '  - Milk' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+
+		await fireEvent.keyDown(editor, { key: 'Backspace' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Milk']);
+		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(1);
+		expect(
+			container.querySelector('[data-editor-line="0"]')?.getAttribute('style') ?? ''
+		).not.toContain('padding-left');
+	});
+});
+
 describe('BodyEditor task focus chrome', () => {
 	it('keeps every line in the same native editing host when a task receives focus', async () => {
 		const { container } = render(BodyEditor, {

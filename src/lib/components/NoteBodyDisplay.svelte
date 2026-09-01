@@ -129,6 +129,17 @@
 					{seg.text || '\u00a0'}
 				</span>
 			</div>
+		{:else if seg.type === 'bullet'}
+			<div
+				class="flex items-start gap-2 py-0.5"
+				data-bullet-line={seg.lineIndex}
+				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
+			>
+				<span class="shrink-0 select-none" aria-hidden="true">•</span>
+				<span class="flex-1 break-words {seg.indent > 0 ? 'text-[13px]' : ''}">
+					{seg.text || '\u00a0'}
+				</span>
+			</div>
 		{:else if seg.text}
 			<p class="whitespace-pre-wrap break-words py-0.5">{seg.text}</p>
 		{:else}
