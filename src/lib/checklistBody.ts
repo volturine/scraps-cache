@@ -3,12 +3,16 @@ import type { Note } from './types';
 /** Lines like `[ ] task`, `[] task`, `[x] done`, indented sub-tasks, `- [ ] item` */
 export const CHECK_RE = /^(\s*)(?:[-*•]\s+)?\[([xX ]?)\]\s*(.*)$/;
 
-export const MAX_CHECK_INDENT = 4;
+/** Standard markdown bullet lines like `- item`, `* item`, `+ item` */
+export const BULLET_RE = /^(\s*)([-*+•])\s+(.*)$/;
+
+export const MAX_LIST_INDENT = 4;
 export const MAX_TEXT_INDENT = 20;
 
 export type BodySegment =
 	| { type: 'text'; text: string; lineIndex: number }
-	| { type: 'check'; checked: boolean; text: string; lineIndex: number; indent: number };
+	| { type: 'check'; checked: boolean; text: string; lineIndex: number; indent: number }
+	| { type: 'bullet'; text: string; lineIndex: number; indent: number };
 
 /** Count nesting level from leading whitespace (tab = 1, every 2 spaces = 1). */
 export function indentLevelFromWhitespace(ws: string): number {
@@ -35,8 +39,8 @@ export function indentLevelFromWhitespace(ws: string): number {
 
 export const TEXT_INDENT_UNIT = '  ';
 
-export function checkIndentPrefix(indent: number): string {
-	const n = Math.max(0, Math.min(MAX_CHECK_INDENT, indent));
+export function listIndentPrefix(indent: number): string {
+	const n = Math.max(0, Math.min(MAX_LIST_INDENT, indent));
 	return TEXT_INDENT_UNIT.repeat(n);
 }
 
@@ -67,14 +71,27 @@ export function parseCheckLine(
 	const m = line.match(CHECK_RE);
 	if (!m) return null;
 	return {
-		indent: Math.min(MAX_CHECK_INDENT, indentLevelFromWhitespace(m[1] ?? '')),
+		indent: Math.min(MAX_LIST_INDENT, indentLevelFromWhitespace(m[1] ?? '')),
 		checked: m[2].trim().toLowerCase() === 'x',
 		text: m[3] ?? ''
 	};
 }
 
 export function formatCheckLine(indent: number, checked: boolean, text: string): string {
-	return `${checkIndentPrefix(indent)}${checked ? '[x]' : '[ ]'} ${text}`;
+	return `${listIndentPrefix(indent)}${checked ? '[x]' : '[ ]'} ${text}`;
+}
+
+export function parseBulletLine(line: string): { indent: number; text: string } | null {
+	const m = line.match(BULLET_RE);
+	if (!m) return null;
+	return {
+		indent: Math.min(MAX_LIST_INDENT, indentLevelFromWhitespace(m[1] ?? '')),
+		text: m[3] ?? ''
+	};
+}
+
+export function formatBulletLine(indent: number, text: string): string {
+	return `${listIndentPrefix(indent)}- ${text}`;
 }
 
 export function parseBody(body: string): BodySegment[] {
@@ -87,6 +104,15 @@ export function parseBody(body: string): BodySegment[] {
 				checked: check.checked,
 				text: check.text,
 				indent: check.indent,
+				lineIndex
+			};
+		}
+		const bullet = parseBulletLine(line);
+		if (bullet) {
+			return {
+				type: 'bullet' as const,
+				text: bullet.text,
+				indent: bullet.indent,
 				lineIndex
 			};
 		}

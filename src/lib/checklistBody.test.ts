@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
 	adjustTextIndent,
+	formatBulletLine,
 	formatCheckLine,
 	parseBody,
+	parseBulletLine,
 	parseCheckLine,
 	toggleLineAt
 } from './checklistBody';
@@ -27,6 +29,35 @@ describe('checklist indent / sub-tasks', () => {
 	it('preserves indent when toggling and completes the parent', () => {
 		const body = ['[ ] a', '  [ ] b'].join('\n');
 		expect(toggleLineAt(body, 1)).toBe(['[x] a', '  [x] b'].join('\n'));
+	});
+});
+
+describe('markdown bullet lines', () => {
+	it('parses standard markdown bullet markers as bullet segments', () => {
+		const body = ['- dash', '* star', '+ plus', '• dot', 'plain - not a bullet'].join('\n');
+		expect(parseBody(body)).toEqual([
+			{ type: 'bullet', text: 'dash', indent: 0, lineIndex: 0 },
+			{ type: 'bullet', text: 'star', indent: 0, lineIndex: 1 },
+			{ type: 'bullet', text: 'plus', indent: 0, lineIndex: 2 },
+			{ type: 'bullet', text: 'dot', indent: 0, lineIndex: 3 },
+			{ type: 'text', text: 'plain - not a bullet', lineIndex: 4 }
+		]);
+	});
+
+	it('parses indented bullets as nested and keeps checklist lines ahead of bullets', () => {
+		const body = ['- parent', '  - child', '- [ ] task', '[ ] plain task'].join('\n');
+		expect(parseBody(body)).toEqual([
+			{ type: 'bullet', text: 'parent', indent: 0, lineIndex: 0 },
+			{ type: 'bullet', text: 'child', indent: 1, lineIndex: 1 },
+			{ type: 'check', checked: false, text: 'task', indent: 0, lineIndex: 2 },
+			{ type: 'check', checked: false, text: 'plain task', indent: 0, lineIndex: 3 }
+		]);
+	});
+
+	it('round-trips bullets through format/parse', () => {
+		const line = formatBulletLine(2, 'nested');
+		expect(line).toBe('    - nested');
+		expect(parseBulletLine(line)).toEqual({ indent: 2, text: 'nested' });
 	});
 });
 

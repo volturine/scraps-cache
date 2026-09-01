@@ -61,7 +61,7 @@ export type NoteField = keyof NoteFieldTimes;
 export interface Note {
 	id: string;
 	title: string;
-	/** Plain text body. Supports `[ ]` / `[x]` checklist lines. */
+	/** Plain text body. Supports `[ ]` / `[x]` checklist lines and `- ` bullet lines. */
 	body: string;
 	/** Attachments (photos + files). `images` is the canonical note field. */
 	images?: NoteImage[];

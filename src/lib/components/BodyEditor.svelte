@@ -2,8 +2,12 @@
 	import { flushSync, tick } from 'svelte';
 	import {
 		adjustTextIndent,
+		BULLET_RE,
 		CHECK_RE,
+		formatBulletLine,
 		formatCheckLine,
+		MAX_LIST_INDENT,
+		parseBulletLine,
 		parseCheckLine,
 		toggleCheckEntries
 	} from '$lib/checklistBody';
@@ -27,7 +31,14 @@
 		onExitTaskFocus?: () => void;
 	} = $props();
 
-	type Line = { id: number; text: string; checked: boolean; isCheck: boolean; indent: number };
+	type Line = {
+		id: number;
+		text: string;
+		checked: boolean;
+		isCheck: boolean;
+		isBullet: boolean;
+		indent: number;
+	};
 	type EditorPoint = { line: number; offset: number; global: number };
 	type EditorRange = { start: EditorPoint; end: EditorPoint; collapsed: boolean };
 	type HistoryEntry = {
@@ -39,13 +50,21 @@
 	};
 
 	let lineIdCounter = 0;
-	function newLine(text = '', isCheck = false, checked = false, indent = 0): Line {
+	function newLine(
+		text = '',
+		isCheck = false,
+		checked = false,
+		indent = 0,
+		isBullet = false
+	): Line {
+		const maxIndent = isBullet ? MAX_LIST_INDENT : MAX_TASK_INDENT;
 		return {
 			id: lineIdCounter++,
 			text,
 			isCheck,
+			isBullet,
 			checked,
-			indent: Math.max(0, Math.min(MAX_TASK_INDENT, indent))
+			indent: Math.max(0, Math.min(maxIndent, indent))
 		};
 	}
 
@@ -53,14 +72,21 @@
 		if (!raw) return [newLine()];
 		return raw.split('\n').map((text) => {
 			const check = parseCheckLine(text);
-			return check ? newLine(check.text, true, check.checked, check.indent) : newLine(text, false);
+			if (check) return newLine(check.text, true, check.checked, check.indent);
+			const bullet = parseBulletLine(text);
+			if (bullet) return newLine(bullet.text, false, false, bullet.indent, true);
+			return newLine(text, false);
 		});
 	}
 
 	function serializeLines(rows: Line[]): string {
 		return rows
 			.map((line) =>
-				line.isCheck ? formatCheckLine(line.indent, line.checked, line.text) : line.text
+				line.isCheck
+					? formatCheckLine(line.indent, line.checked, line.text)
+					: line.isBullet
+						? formatBulletLine(line.indent, line.text)
+						: line.text
 			)
 			.join('\n');
 	}
@@ -401,11 +427,22 @@
 				const parsed = parseCheckLine(lines[index].text);
 				if (parsed) {
 					lines[index].isCheck = true;
+					lines[index].isBullet = false;
 					lines[index].checked = parsed.checked;
 					lines[index].indent = Math.min(MAX_TASK_INDENT, parsed.indent);
 					lines[index].text = parsed.text;
 					ignoredFocusLine = null;
 					onFocusTask?.(index);
+					flushSync();
+					focusAt(index, lines[index].text.length, lines[index].id);
+				}
+			}
+			if (!lines[index].isCheck && !lines[index].isBullet && BULLET_RE.test(lines[index].text)) {
+				const parsed = parseBulletLine(lines[index].text);
+				if (parsed) {
+					lines[index].isBullet = true;
+					lines[index].indent = Math.min(MAX_LIST_INDENT, parsed.indent);
+					lines[index].text = parsed.text;
 					flushSync();
 					focusAt(index, lines[index].text.length, lines[index].id);
 				}
@@ -494,10 +531,13 @@
 			const start = index === range.start.line ? range.start.offset : 0;
 			const end = index === range.end.line ? range.end.offset : line.text.length;
 			const text = line.text.slice(start, end);
+			const wholeLine = start === 0 && end === line.text.length;
 			selected.push(
-				line.isCheck && start === 0 && end === line.text.length
+				line.isCheck && wholeLine
 					? formatCheckLine(line.indent, line.checked, text)
-					: text
+					: line.isBullet && wholeLine
+						? formatBulletLine(line.indent, text)
+						: text
 			);
 		}
 		return selected.join('\n');
@@ -531,17 +571,26 @@
 			const last = lines[range.end.line];
 			const prefix = first.text.slice(0, range.start.offset);
 			const check = prefix.length === 0 ? parseCheckLine(parts[0]) : null;
-			if (!check) return replaceSelectedRange(range, parts[0]);
-			first.text = check.text + last.text.slice(range.end.offset);
-			first.isCheck = true;
-			first.checked = check.checked;
-			first.indent = Math.min(MAX_TASK_INDENT, check.indent);
+			const bullet = !check && prefix.length === 0 ? parseBulletLine(parts[0]) : null;
+			if (!check && !bullet) return replaceSelectedRange(range, parts[0]);
+			const parsedText = check ? check.text : bullet!.text;
+			first.text = parsedText + last.text.slice(range.end.offset);
+			if (check) {
+				first.isCheck = true;
+				first.isBullet = false;
+				first.checked = check.checked;
+				first.indent = Math.min(MAX_TASK_INDENT, check.indent);
+			} else {
+				first.isBullet = true;
+				first.isCheck = false;
+				first.indent = Math.min(MAX_LIST_INDENT, bullet!.indent);
+			}
 			lines.splice(range.start.line + 1, range.end.line - range.start.line);
 			syncBody();
 			return {
 				line: range.start.line,
-				offset: check.text.length,
-				global: globalOffset(range.start.line, check.text.length)
+				offset: parsedText.length,
+				global: globalOffset(range.start.line, parsedText.length)
 			};
 		}
 
@@ -553,19 +602,30 @@
 		const prefix = first.text.slice(0, range.start.offset);
 		const suffix = last.text.slice(range.end.offset);
 		const firstCheck = prefix.length === 0 ? parseCheckLine(parts[0]) : null;
+		const firstBullet = !firstCheck && prefix.length === 0 ? parseBulletLine(parts[0]) : null;
 		const inserted: Line[] = [
 			firstCheck
 				? {
 						...first,
 						text: firstCheck.text,
 						isCheck: true,
+						isBullet: false,
 						checked: firstCheck.checked,
 						indent: Math.min(MAX_TASK_INDENT, firstCheck.indent)
 					}
-				: { ...first, text: prefix + parts[0] }
+				: firstBullet
+					? {
+							...first,
+							text: firstBullet.text,
+							isCheck: false,
+							isBullet: true,
+							indent: Math.min(MAX_LIST_INDENT, firstBullet.indent)
+						}
+					: { ...first, text: prefix + parts[0] }
 		];
 		for (let index = 1; index < parts.length; index++) {
 			const check = parseCheckLine(parts[index]);
+			const bullet = !check ? parseBulletLine(parts[index]) : null;
 			const trailing = index === parts.length - 1 ? suffix : '';
 			inserted.push(
 				check
@@ -575,7 +635,15 @@
 							check.checked,
 							Math.min(MAX_TASK_INDENT, check.indent)
 						)
-					: newLine(parts[index] + trailing, first.isCheck, false, first.indent)
+					: bullet
+						? newLine(
+								bullet.text + trailing,
+								false,
+								false,
+								Math.min(MAX_LIST_INDENT, bullet.indent),
+								true
+							)
+						: newLine(parts[index] + trailing, first.isCheck, false, first.indent, first.isBullet)
 			);
 		}
 
@@ -650,6 +718,11 @@
 			} else {
 				line.indent = next;
 			}
+			return { changed: line.indent !== previousIndent, offsetDelta: 0 };
+		}
+		if (line.isBullet) {
+			const previousIndent = line.indent;
+			line.indent = Math.max(0, Math.min(MAX_LIST_INDENT, line.indent + delta));
 			return { changed: line.indent !== previousIndent, offsetDelta: 0 };
 		}
 		const indented = adjustTextIndent(line.text, delta);
@@ -730,6 +803,19 @@
 			focusAt(index, 0, line.id);
 			return;
 		}
+		if (line.isBullet && line.text.trim() === '') {
+			if (line.indent === 0) {
+				const replacement = newLine();
+				lines.splice(index, 1, replacement);
+				syncBody();
+				focusAt(index, 0, replacement.id);
+				return;
+			}
+			line.indent -= 1;
+			syncBody();
+			focusAt(index, 0, line.id);
+			return;
+		}
 
 		const before = line.text.slice(0, offset);
 		const after = line.text.slice(offset);
@@ -739,7 +825,8 @@
 			after,
 			line.isCheck,
 			false,
-			splitIntoSubtask ? 1 : line.isCheck ? line.indent : 0
+			splitIntoSubtask ? 1 : line.isCheck || line.isBullet ? line.indent : 0,
+			line.isBullet
 		);
 		lines.splice(index + 1, 0, next);
 		if (line.isCheck && !after.trim()) draftTaskId = next.id;
@@ -753,11 +840,18 @@
 		const index = range.start.line;
 		const line = lines[index];
 		if (index === 0) {
-			if (!line.isCheck || line.text.trim() !== '') return false;
+			if (!line.isCheck && !line.isBullet) return false;
+			if (line.isBullet && line.indent > 0 && line.text.trim() !== '') {
+				line.indent -= 1;
+				syncBody();
+				focusAt(0, 0, line.id);
+				return true;
+			}
+			if (line.text.trim() !== '') return false;
 			const replacement = newLine();
 			lines.splice(0, 1, replacement);
 			if (line.id === draftTaskId) draftTaskId = null;
-			dropTaskFocus();
+			if (line.isCheck) dropTaskFocus();
 			syncBody();
 			focusAt(0, 0, replacement.id);
 			return true;
@@ -770,6 +864,20 @@
 			syncBody();
 			focusTask(targetIndex);
 			focusAt(targetIndex, target.text.length, target.id);
+			return true;
+		}
+		if (line.isBullet && line.text.trim() === '') {
+			const replacement = newLine();
+			lines.splice(index, 1, replacement);
+			if (lines.length === 0) lines.push(newLine());
+			syncBody();
+			focusAt(Math.min(index, lines.length - 1), 0, lines[Math.min(index, lines.length - 1)].id);
+			return true;
+		}
+		if (line.isBullet && line.indent > 0) {
+			line.indent -= 1;
+			syncBody();
+			focusAt(index, 0, line.id);
 			return true;
 		}
 		if (line.isCheck && line.indent > 0) {
@@ -823,7 +931,7 @@
 			event.key === 'Backspace' &&
 			range.collapsed &&
 			range.start.offset === 0 &&
-			(range.start.line > 0 || lines[0]?.isCheck)
+			(range.start.line > 0 || lines[0]?.isCheck || lines[0]?.isBullet)
 		) {
 			rememberEdit(range);
 			if (handleBackspace(range)) event.preventDefault();
@@ -947,6 +1055,7 @@
 			data-editor-line={index}
 			data-line-id={line.id}
 			data-task-row={line.isCheck ? '' : undefined}
+			data-bullet-row={line.isBullet ? '' : undefined}
 			data-focus-group={line.id === focusedRootId ? '' : undefined}
 			class="flex min-w-0 flex-wrap items-start gap-x-2 py-0.5 {line.isCheck
 				? taskShellClass(line)
@@ -971,6 +1080,8 @@
 						</svg>
 					{/if}
 				</button>
+			{:else if line.isBullet}
+				<span contenteditable="false" class="shrink-0 select-none" aria-hidden="true">•</span>
 			{/if}
 			<span
 				data-line-text
