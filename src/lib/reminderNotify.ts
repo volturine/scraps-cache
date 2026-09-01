@@ -24,6 +24,7 @@ export type ReminderAlert = {
 };
 
 const CHECKLIST_PREFIX = /^(?:\s*(?:[-*•]\s+)?)?\[[ xX]?\]\s*/;
+const BULLET_PREFIX = /^\s*[-*+•]\s+/;
 const WAKE_DOMAIN = 'scraps-cache-reminder-wake:v1\0';
 export const RELAY_WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
 export const MAX_RELAY_WAKES = 1_000;
@@ -43,7 +44,7 @@ export function reminderPreview(note: Pick<ReminderNote, 'title' | 'body'>): str
 	const title = note.title.trim();
 	if (title) return title;
 	for (const raw of (note.body ?? '').split('\n')) {
-		const line = raw.replace(CHECKLIST_PREFIX, '').trim();
+		const line = raw.replace(BULLET_PREFIX, '').replace(CHECKLIST_PREFIX, '').trim();
 		if (line) return line.slice(0, 80);
 	}
 	return 'Untitled note';

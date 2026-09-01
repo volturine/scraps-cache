@@ -40,6 +40,13 @@ describe('reminderPreview', () => {
 		);
 		expect(reminderPreview({ title: '', body: '   \n[ ]   ' })).toBe('Untitled note');
 	});
+
+	it('strips markdown bullet markers from body previews', () => {
+		expect(reminderPreview({ title: '', body: '- Oat milk' })).toBe('Oat milk');
+		expect(reminderPreview({ title: '', body: '  * Oat milk' })).toBe('Oat milk');
+		expect(reminderPreview({ title: '', body: '+ [ ] Oat milk' })).toBe('Oat milk');
+		expect(reminderPreview({ title: '', body: 'plain - text' })).toBe('plain - text');
+	});
 });
 
 describe('reminder wake identity and scheduling', () => {
