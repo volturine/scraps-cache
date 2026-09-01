@@ -118,20 +118,20 @@
 	aria-modal="true"
 	aria-label={readOnly ? 'View canvas' : attachment ? 'Edit canvas' : 'New canvas'}
 >
-	<header class="relative z-10 flex h-14 shrink-0 items-center justify-between px-3">
+	<header class="relative z-10 flex h-12 shrink-0 items-center justify-between px-3">
 		<button
 			type="button"
-			class="canvas-header-action grid h-10 w-10 shrink-0 place-items-center rounded-full touch-manipulation"
+			class="canvas-header-action grid h-9 w-9 shrink-0 place-items-center rounded-full touch-manipulation"
 			onclick={close}
 			aria-label={readOnly ? 'Close canvas' : 'Cancel canvas editing'}
 		>
-			<X class="h-6 w-6" aria-hidden="true" />
+			<X class="h-5.5 w-5.5" aria-hidden="true" />
 		</button>
 
 		{#if !readOnly}
 			<button
 				type="button"
-				class="canvas-done h-10 shrink-0 rounded-full px-5 text-sm font-semibold touch-manipulation"
+				class="canvas-done h-9 shrink-0 rounded-full px-4 text-sm font-semibold touch-manipulation"
 				disabled={loading || saving}
 				onclick={() => void save()}
 			>
@@ -226,15 +226,15 @@
 	:global(.scrapscache-canvas .excalidraw) {
 		--sat: 0px;
 		--sar: 0px;
-		--sab: 0px;
+		--sab: var(--app-inset-bottom);
 		--sal: 0px;
 	}
 
 	:global(.scrapscache-canvas .App-bottom-bar .App-toolbar-content) {
-		padding: 4px 8px !important;
+		padding: 6px 8px !important;
 	}
 
 	:global(.scrapscache-canvas .App-bottom-bar .dropdown-menu--mobile) {
-		bottom: 47px !important;
+		bottom: 51px !important;
 	}
 </style>
