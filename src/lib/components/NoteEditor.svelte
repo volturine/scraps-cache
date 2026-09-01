@@ -343,8 +343,10 @@
 	async function copyText() {
 		if (!note) return;
 		const text = noteToPlainText({ ...note, title, body });
+		let copied = false;
 		try {
 			await navigator.clipboard.writeText(text);
+			copied = true;
 		} catch {
 			const ta = document.createElement('textarea');
 			ta.value = text;
@@ -353,10 +355,13 @@
 			document.body.appendChild(ta);
 			ta.select();
 			try {
-				document.execCommand('copy');
+				copied = document.execCommand('copy');
 			} catch {}
 			document.body.removeChild(ta);
 		}
+		// Only confirm when the write actually landed; the button must not claim a
+		// copy that failed (e.g. insecure origins where the async API is missing).
+		if (!copied) return;
 		copyFlash = true;
 		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 		copyFlashTimer = setTimeout(() => {

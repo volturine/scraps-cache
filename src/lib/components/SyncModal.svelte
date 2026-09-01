@@ -214,9 +214,11 @@
 	async function copyCode() {
 		const text = formatPairingCode(waiting?.syncCode ?? '');
 		if (!text) return;
+		let copied = false;
 		try {
 			if (navigator.clipboard?.writeText) {
 				await navigator.clipboard.writeText(text);
+				copied = true;
 			} else {
 				throw new Error('clipboard API unavailable');
 			}
@@ -229,12 +231,14 @@
 			document.body.appendChild(ta);
 			ta.select();
 			try {
-				document.execCommand('copy');
+				copied = document.execCommand('copy');
 			} catch {
 				/* best effort */
 			}
 			document.body.removeChild(ta);
 		}
+		// Only confirm when the write actually landed; never claim a copy that failed.
+		if (!copied) return;
 		copyFlash = true;
 		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 		copyFlashTimer = setTimeout(() => {

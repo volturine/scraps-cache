@@ -215,7 +215,9 @@
 		for (const row of container.querySelectorAll('[data-editor-line]')) {
 			if (!rangeOverlapsLine(nativeRange, row)) continue;
 			const index = Number((row as HTMLElement).dataset.editorLine);
-			if (Number.isInteger(index)) indices.push(index);
+			// Stay inside the model: pointFromDom rejects unknown rows too, and an
+			// out-of-range end line would make selectedText throw mid-copy.
+			if (Number.isInteger(index) && lines[index]) indices.push(index);
 		}
 		return indices;
 	}
