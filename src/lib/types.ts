@@ -24,18 +24,18 @@ export interface NoteImage {
 	 * Empty while only the resident thumbnail is held for grid/list display.
 	 */
 	dataUrl: string;
-	/** Small always-resident preview for photos (JPEG data URL). */
+	/** Small always-resident preview for photos and editable canvases. */
 	thumbUrl?: string;
 	name?: string;
 	createdAt: number;
-	/** Decoded dimensions after client-side optimization. */
+	/** Decoded image dimensions or drawing content bounds. */
 	width?: number;
 	height?: number;
 	/** Stored attachment bytes, excluding data-URL overhead. */
 	byteSize?: number;
 	/** SHA-256 of the stored data URL, retained when full bytes leave memory. */
 	contentHash?: string;
-	/** Image processing recipe used to produce the stored bytes. */
+	/** Attachment encoding recipe used to produce the stored bytes. */
 	encodingVersion?: number;
 }
 
@@ -63,7 +63,7 @@ export interface Note {
 	title: string;
 	/** Plain text body. Supports `[ ]` / `[x]` checklist lines. */
 	body: string;
-	/** Attachments (photos + files). `images` is the canonical note field. */
+	/** Attachments (photos, files, and canvases). `images` is the canonical note field. */
 	images?: NoteImage[];
 	/** Saved link metadata so previews remain rich after a note is saved or synced. */
 	linkPreviews?: LinkPreview[];

@@ -28,4 +28,23 @@ describe('noteIsBlank', () => {
 	it('is true for a note with no text, reminder, or attachments', () => {
 		expect(noteIsBlank(note())).toBe(true);
 	});
+
+	it('keeps a canvas-only note after full scene bytes leave memory', () => {
+		expect(
+			noteIsBlank(
+				note({
+					images: [
+						{
+							id: 'canvas-1',
+							mime: 'application/vnd.scrapscache.canvas+json',
+							dataUrl: '',
+							thumbUrl: 'data:image/webp;base64,AA==',
+							createdAt: 1,
+							contentHash: 'hash'
+						}
+					]
+				})
+			)
+		).toBe(false);
+	});
 });

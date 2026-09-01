@@ -1,4 +1,5 @@
 import type { Note } from './types';
+import { isCanvasAttachment } from './canvasAttachment';
 
 /** Lines like `[ ] task`, `[] task`, `[x] done`, indented sub-tasks, `- [ ] item` */
 export const CHECK_RE = /^(\s*)(?:[-*•]\s+)?\[([xX ]?)\]\s*(.*)$/;
@@ -173,8 +174,13 @@ export function noteAttachments(note: Note) {
 export function noteToPlainText(note: Note): string {
 	const attachments = noteAttachments(note);
 	const images = attachments.filter((attachment) => attachment.mime.startsWith('image/')).length;
-	const files = attachments.length - images;
-	const parts = [images && `${images} image(s)`, files && `${files} file(s)`].filter(Boolean);
+	const canvases = attachments.filter(isCanvasAttachment).length;
+	const files = attachments.length - images - canvases;
+	const parts = [
+		images && `${images} image(s)`,
+		canvases && `${canvases} canvas(es)`,
+		files && `${files} file(s)`
+	].filter(Boolean);
 	const suffix = parts.length ? `\n[${parts.join(', ')}]` : '';
 	return `${note.title}\n${note.body}${suffix}`.trim();
 }

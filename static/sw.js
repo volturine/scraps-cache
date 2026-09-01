@@ -2,7 +2,7 @@
 // JS/CSS must not be cache-first forever: hashed builds change filenames, but
 // a stale shell HTML or long-lived module cache leaves phones on old UI bugs.
 
-const CACHE_NAME = 'scrapscache-v2';
+const CACHE_NAME = 'scrapscache-v3';
 const APP_SHELL = [
 	'/',
 	'/manifest.json',
@@ -29,7 +29,10 @@ self.addEventListener('activate', (event) => {
 });
 
 function isImmutableAsset(url) {
-	return url.pathname.startsWith('/_app/immutable/');
+	return (
+		url.pathname.startsWith('/_app/immutable/') ||
+		url.pathname.startsWith('/excalidraw-assets/')
+	);
 }
 
 self.addEventListener('fetch', (event) => {

@@ -5,6 +5,7 @@ import { dataUrlToBlob } from './imageBlob';
 import { makeImageThumbDataUrl } from './imageThumb';
 import { optimizeImageBlob, optimizedImageName, type ImageQuality } from './imageOptimize';
 import { sha256 } from './syncHash';
+import { canvasThumbnailDataUrl, isCanvasAttachment } from './canvasAttachment';
 
 /** Browser-renderable image (preview / fullscreen). Excludes raw DNG before convert. */
 export function isImageMime(mime: string): boolean {
@@ -117,11 +118,29 @@ export async function fileToNoteImage(file: File, imageQuality: ImageQuality): P
 	};
 }
 
-/** Drop full bytes from memory while keeping the small resident thumb (and IDB full blob). */
-export function stripFullImageBytes(image: NoteImage): NoteImage {
-	if (!isImageMime(image.mime)) return image;
+/** Drop large previewable bytes from memory after IDB has the durable attachment blob. */
+export function stripFullPreviewBytes(image: NoteImage): NoteImage {
+	if (!isImageMime(image.mime) && !isCanvasAttachment(image)) return image;
 	if (!image.dataUrl) return image;
 	return { ...image, dataUrl: '' };
+}
+
+/** Ensure photos and canvases have a resident preview, then release their full bytes. */
+export async function ensureAttachmentPreview(image: NoteImage): Promise<NoteImage> {
+	let next = image;
+	if (image.dataUrl && !image.thumbUrl) {
+		const thumbUrl = isCanvasAttachment(image)
+			? await canvasThumbnailDataUrl(image)
+			: isImageMime(image.mime)
+				? await makeImageThumbDataUrl(image.dataUrl)
+				: undefined;
+		if (thumbUrl) next = { ...image, thumbUrl };
+	}
+	return next;
+}
+
+export async function prepareAttachmentForMemory(image: NoteImage): Promise<NoteImage> {
+	return stripFullPreviewBytes(await ensureAttachmentPreview(image));
 }
 
 export function isInlinePreviewable(att: Pick<NoteImage, 'mime'>): boolean {

@@ -17,7 +17,7 @@ function imageRef(image: NoteImage): MirroredImage {
 	};
 }
 
-/** Notes crash mirror: text and image ids only. Photo bytes stay in IndexedDB. */
+/** Notes crash mirror: text and attachment ids only. Attachment bytes stay in IndexedDB. */
 export function noteForLocalStorage(note: Note): MirroredNote {
 	const { images, linkPreviews, ...rest } = note;
 	return {
