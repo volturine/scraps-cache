@@ -2,20 +2,13 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import ExcalidrawPackage from '@excalidraw/excalidraw/dist/excalidraw.production.min.js';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/types';
-import type {
-	AppState,
-	BinaryFiles,
-	ExcalidrawImperativeAPI
-} from '@excalidraw/excalidraw/types/types';
+import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types/types';
 import type { CanvasElement, CanvasScene } from './canvasAttachment';
 
 const { Excalidraw, exportToCanvas, getCommonBounds } = ExcalidrawPackage;
 
-export type DrawingPreset = 'pencil' | 'pen' | 'marker' | 'highlighter';
-
 export interface ExcalidrawHost {
 	destroy(): void;
-	setDrawingPreset(preset: DrawingPreset): void;
 	snapshot(): CanvasScene;
 	thumbnail(): Promise<{ dataUrl: string; width: number; height: number }>;
 }
@@ -25,16 +18,6 @@ interface HostOptions {
 	dark: boolean;
 	readOnly?: boolean;
 }
-
-const PRESETS: Record<
-	DrawingPreset,
-	{ currentItemStrokeWidth: 1 | 2 | 4; currentItemOpacity: number; currentItemRoughness: number }
-> = {
-	pencil: { currentItemStrokeWidth: 1, currentItemOpacity: 70, currentItemRoughness: 2 },
-	pen: { currentItemStrokeWidth: 2, currentItemOpacity: 100, currentItemRoughness: 0 },
-	marker: { currentItemStrokeWidth: 4, currentItemOpacity: 100, currentItemRoughness: 1 },
-	highlighter: { currentItemStrokeWidth: 4, currentItemOpacity: 35, currentItemRoughness: 0 }
-};
 
 const SAVED_ELEMENT_TYPES = new Set([
 	'rectangle',
@@ -79,7 +62,6 @@ function sceneElements(elements: CanvasElement[]): ExcalidrawElement[] {
 export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promise<ExcalidrawHost> {
 	return new Promise((resolve) => {
 		let root: Root | null = createRoot(node);
-		let api: ExcalidrawImperativeAPI | null = null;
 		let elements: readonly ExcalidrawElement[] = sceneElements(
 			options.initialScene?.elements ?? []
 		);
@@ -90,11 +72,6 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 			destroy() {
 				root?.unmount();
 				root = null;
-			},
-			setDrawingPreset(preset) {
-				if (!api || options.readOnly) return;
-				api.updateScene({ appState: PRESETS[preset] });
-				api.setActiveTool({ type: 'freedraw' });
 			},
 			snapshot() {
 				return {
@@ -133,10 +110,7 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 							files: {}
 						}
 					: undefined,
-				excalidrawAPI: (nextApi) => {
-					api = nextApi;
-					resolve(buildHost());
-				},
+				excalidrawAPI: () => resolve(buildHost()),
 				onChange: (nextElements, nextAppState, nextFiles) => {
 					elements = nextElements.filter((element) => SAVED_ELEMENT_TYPES.has(element.type));
 					appState = nextAppState;

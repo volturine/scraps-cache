@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { Check, Highlighter, LoaderCircle, PenLine, Pencil, X } from '@lucide/svelte';
+	import { LoaderCircle, X } from '@lucide/svelte';
 	import {
 		createCanvasAttachment,
 		decodeCanvasAttachment,
 		type CanvasScene
 	} from '$lib/canvasAttachment';
-	import type { DrawingPreset, ExcalidrawHost } from '$lib/excalidrawHost';
+	import type { ExcalidrawHost } from '$lib/excalidrawHost';
 	import type { NoteImage } from '$lib/types';
 	import { uiStore } from '$lib/stores/ui.svelte';
 
@@ -70,11 +70,6 @@
 		onClose();
 	}
 
-	function setPreset(preset: DrawingPreset) {
-		host?.setDrawingPreset(preset);
-		if (host && !readOnly) dirty = true;
-	}
-
 	function markCanvasInteraction(event: Event) {
 		if (readOnly) return;
 		const target = event.target instanceof Element ? event.target : null;
@@ -117,80 +112,31 @@
 	onpointerdown={markCanvasInteraction}
 	onkeydown={markCanvasInteraction}
 	onwheel={markCanvasInteraction}
-	class="canvas-editor-shell fixed z-[90] flex flex-col bg-[#f7f6f2] text-slate-900 dark:bg-[#171918] dark:text-slate-100"
+	class="canvas-editor-shell fixed z-[90] flex flex-col bg-white text-slate-900 dark:bg-[#121212] dark:text-slate-100"
 	role="dialog"
 	tabindex="-1"
 	aria-modal="true"
 	aria-label={readOnly ? 'View canvas' : attachment ? 'Edit canvas' : 'New canvas'}
 >
-	<header
-		class="relative z-10 flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-black/10 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-white/10 dark:bg-[#202221]/95 sm:flex-nowrap sm:px-3"
-	>
+	<header class="relative z-10 flex h-14 shrink-0 items-center justify-between px-3">
 		<button
 			type="button"
-			class="icon-btn h-10 w-10 shrink-0 p-2 touch-manipulation"
+			class="canvas-header-action grid h-10 w-10 shrink-0 place-items-center rounded-full touch-manipulation"
 			onclick={close}
 			aria-label={readOnly ? 'Close canvas' : 'Cancel canvas editing'}
 		>
-			<X class="h-5 w-5" aria-hidden="true" />
+			<X class="h-6 w-6" aria-hidden="true" />
 		</button>
-		<div class="min-w-0 flex-1 pr-1 sm:flex-none sm:shrink-0">
-			<div class="truncate text-sm font-semibold">{attachment?.name ?? 'Canvas'}</div>
-			<div
-				class="hidden text-[10px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400 sm:block"
-			>
-				{readOnly ? 'View' : 'Infinite drawing'}
-			</div>
-		</div>
 
 		{#if !readOnly}
-			<div
-				class="scrollable order-3 flex w-full min-w-0 items-center gap-1 overflow-x-auto rounded-xl bg-black/5 p-1 dark:bg-white/10 sm:order-none sm:mx-auto sm:w-auto"
-				aria-label="Freehand tools"
-			>
-				<button
-					type="button"
-					class="canvas-preset"
-					onclick={() => setPreset('pencil')}
-					title="Pencil"
-					aria-label="Pencil"
-					><Pencil class="h-4 w-4" aria-hidden="true" /><span>Pencil</span></button
-				>
-				<button
-					type="button"
-					class="canvas-preset"
-					onclick={() => setPreset('pen')}
-					title="Pen"
-					aria-label="Pen"><PenLine class="h-4 w-4" aria-hidden="true" /><span>Pen</span></button
-				>
-				<button
-					type="button"
-					class="canvas-preset"
-					onclick={() => setPreset('marker')}
-					title="Marker"
-					aria-label="Marker"
-					><PenLine class="h-5 w-5" strokeWidth={3} aria-hidden="true" /><span>Marker</span></button
-				>
-				<button
-					type="button"
-					class="canvas-preset"
-					onclick={() => setPreset('highlighter')}
-					title="Highlighter"
-					aria-label="Highlighter"
-					><Highlighter class="h-4 w-4" aria-hidden="true" /><span>Highlight</span></button
-				>
-			</div>
-
 			<button
 				type="button"
-				class="scrapscache-button scrapscache-button-primary order-2 ml-auto min-w-[5.25rem] shrink-0 px-3 py-2 text-sm sm:order-none"
+				class="canvas-done h-10 shrink-0 rounded-full px-5 text-sm font-semibold touch-manipulation"
 				disabled={loading || saving}
 				onclick={() => void save()}
 			>
 				{#if saving}
 					<LoaderCircle class="h-4 w-4 animate-spin" aria-hidden="true" />
-				{:else}
-					<Check class="h-4 w-4" aria-hidden="true" />
 				{/if}
 				<span>{saving ? 'Saving' : 'Done'}</span>
 			</button>
@@ -208,7 +154,7 @@
 	<div class="relative min-h-0 flex-1">
 		<div bind:this={hostNode} class="scrapscache-canvas absolute inset-0"></div>
 		{#if loading}
-			<div class="absolute inset-0 z-20 grid place-items-center bg-[#f7f6f2] dark:bg-[#171918]">
+			<div class="absolute inset-0 z-20 grid place-items-center bg-white dark:bg-[#121212]">
 				<div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
 					<LoaderCircle class="h-5 w-5 animate-spin" aria-hidden="true" />
 					Loading canvas…
@@ -226,35 +172,56 @@
 		left: var(--app-inset-left);
 	}
 
-	.canvas-preset {
-		display: inline-flex;
-		min-height: 2.25rem;
-		align-items: center;
-		gap: 0.35rem;
-		border-radius: 0.55rem;
-		padding: 0.4rem 0.55rem;
-		font-size: 0.72rem;
-		font-weight: 600;
-		white-space: nowrap;
-		touch-action: manipulation;
+	.canvas-header-action {
+		color: color-mix(in srgb, currentColor 82%, transparent);
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
-	.canvas-preset:hover,
-	.canvas-preset:focus-visible {
+	.canvas-header-action:hover,
+	.canvas-header-action:focus-visible {
 		background: color-mix(in srgb, currentColor 10%, transparent);
-		outline: none;
+		color: currentColor;
+		outline: 2px solid var(--scrapscache-focus);
+		outline-offset: 2px;
+	}
+
+	.canvas-done {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		background: var(--scrapscache-accent);
+		color: var(--scrapscache-accent-foreground);
+		transition:
+			background-color 120ms ease,
+			transform 120ms ease;
+	}
+
+	.canvas-done:hover:not(:disabled) {
+		background: var(--scrapscache-accent-hover);
+	}
+
+	.canvas-done:active:not(:disabled) {
+		transform: scale(0.97);
+	}
+
+	.canvas-done:focus-visible {
+		outline: 2px solid var(--scrapscache-focus);
+		outline-offset: 2px;
+	}
+
+	.canvas-done:disabled {
+		opacity: 0.5;
 	}
 
 	:global(.scrapscache-canvas label[title='Library']) {
 		display: none !important;
 	}
 
-	@media (max-width: 520px) {
-		.canvas-preset span {
-			display: none;
-		}
-		.canvas-preset {
-			padding-inline: 0.55rem;
-		}
+	:global(.scrapscache-canvas .App-bottom-bar .Island) {
+		background: transparent !important;
+		box-shadow: none !important;
 	}
 </style>
