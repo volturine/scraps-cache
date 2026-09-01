@@ -49,6 +49,8 @@
 		"@testing-library/svelte": "^5.4.2",
 		"@types/better-sqlite3": "^9.6.0",
 		"@types/node": "^26.4.0",
+		"@types/react": "^18.3.31",
+		"@types/react-dom": "^18.3.7",
 		"@types/web-push": "^3.6.4",
 		"@typescript/native": "npm:typescript@7.0.2",
 		"fake-indexeddb": "^6.2.5",
@@ -67,10 +69,13 @@
 	},
 	"dependencies": {
 		"@cipherman/pake-js": "^0.1.1",
+		"@excalidraw/excalidraw": "0.17.6",
 		"@noble/ciphers": "^2.4.0",
 		"@noble/curves": "^2.4.0",
 		"@noble/hashes": "^2.3.0",
 		"better-sqlite3": "^13.0.3",
+		"react": "^18.3.1",
+		"react-dom": "^18.3.1",
 		"web-push": "^3.6.7"
 	},
 	"simple-git-hooks": {
