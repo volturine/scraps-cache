@@ -157,11 +157,11 @@
 {/if}
 
 {#if canvases.length > 0}
-	<div class="mt-2 flex flex-wrap gap-1.5" aria-label="Canvases">
+	<div class="mt-2 grid gap-1.5" aria-label="Canvases">
 		{#each canvases as canvas (canvas.id)}
 			<button
 				type="button"
-				class="group relative block max-w-full touch-manipulation overflow-hidden rounded-lg border border-black/10 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-white/10 dark:bg-slate-900"
+				class="group relative block aspect-[4/3] w-full touch-manipulation overflow-hidden rounded-lg border border-black/10 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-white/10 dark:bg-slate-900"
 				data-canvas
 				onclick={(event) => void focusCanvas(canvas.id, event)}
 				aria-label={`${note.trashed ? 'View' : 'Edit'} ${canvas.name ?? 'canvas'}`}
@@ -170,13 +170,13 @@
 					<img
 						src={displayImageSrc(canvas)}
 						alt={canvas.name ?? 'Canvas'}
-						class="h-28 w-40 max-w-full object-contain"
+						class="h-full w-full object-cover"
 						loading="lazy"
 						decoding="async"
 					/>
 				{:else}
 					<div
-						class="grid h-28 w-40 max-w-full place-items-center text-[11px] text-[var(--scrapscache-text-muted)]"
+						class="grid h-full w-full place-items-center text-[11px] text-[var(--scrapscache-text-muted)]"
 					>
 						Loading canvas…
 					</div>

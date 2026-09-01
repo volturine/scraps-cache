@@ -5,7 +5,10 @@ import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/typ
 import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types/types';
 import type { CanvasElement, CanvasScene } from './canvasAttachment';
 
-const { Excalidraw, exportToCanvas, getCommonBounds } = ExcalidrawPackage;
+const { Excalidraw, exportToCanvas } = ExcalidrawPackage;
+
+const THUMBNAIL_WIDTH = 480;
+const THUMBNAIL_HEIGHT = 360;
 
 export interface ExcalidrawHost {
 	destroy(): void;
@@ -59,6 +62,27 @@ function sceneElements(elements: CanvasElement[]): ExcalidrawElement[] {
 	return elements as unknown as ExcalidrawElement[];
 }
 
+function frameThumbnail(source: HTMLCanvasElement, background: string): HTMLCanvasElement {
+	const thumbnail = document.createElement('canvas');
+	thumbnail.width = THUMBNAIL_WIDTH;
+	thumbnail.height = THUMBNAIL_HEIGHT;
+	const context = thumbnail.getContext('2d');
+	if (!context) throw new Error('Could not create a canvas preview.');
+	context.fillStyle = /^#[0-9a-f]{6}$/i.test(background) ? background : '#ffffff';
+	context.fillRect(0, 0, thumbnail.width, thumbnail.height);
+	const scale = Math.min(thumbnail.width / source.width, thumbnail.height / source.height);
+	const width = source.width * scale;
+	const height = source.height * scale;
+	context.drawImage(
+		source,
+		(thumbnail.width - width) / 2,
+		(thumbnail.height - height) / 2,
+		width,
+		height
+	);
+	return thumbnail;
+}
+
 export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promise<ExcalidrawHost> {
 	return new Promise((resolve) => {
 		let root: Root | null = createRoot(node);
@@ -92,11 +116,16 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 					maxWidthOrHeight: 480,
 					exportPadding: 20
 				});
-				const [minX, minY, maxX, maxY] = getCommonBounds(elements);
+				const thumbnail = frameThumbnail(
+					canvas,
+					typeof appState.viewBackgroundColor === 'string'
+						? appState.viewBackgroundColor
+						: '#ffffff'
+				);
 				return {
-					dataUrl: await canvasToDataUrl(canvas),
-					width: Math.max(1, Math.round(maxX - minX)),
-					height: Math.max(1, Math.round(maxY - minY))
+					dataUrl: await canvasToDataUrl(thumbnail),
+					width: THUMBNAIL_WIDTH,
+					height: THUMBNAIL_HEIGHT
 				};
 			}
 		});
@@ -129,9 +158,9 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 					canvasActions: {
 						changeViewBackgroundColor: true,
 						clearCanvas: !options.readOnly,
-						export: false,
-						loadScene: false,
-						saveToActiveFile: false,
+						export: { saveFileToDisk: true },
+						loadScene: !options.readOnly,
+						saveToActiveFile: true,
 						toggleTheme: false,
 						saveAsImage: false
 					},

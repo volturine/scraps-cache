@@ -237,4 +237,31 @@
 	:global(.scrapscache-canvas .App-bottom-bar .dropdown-menu--mobile) {
 		bottom: 47px !important;
 	}
+
+	:global(.excalidraw-modal-container) {
+		top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
+		right: var(--app-inset-right) !important;
+		bottom: var(--app-inset-bottom) !important;
+		left: var(--app-inset-left) !important;
+		height: auto !important;
+	}
+
+	:global(.excalidraw-modal-container .Modal__background) {
+		top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
+		right: var(--app-inset-right) !important;
+		bottom: var(--app-inset-bottom) !important;
+		left: var(--app-inset-left) !important;
+	}
+
+	:global(.excalidraw-modal-container .confirm-dialog.Modal) {
+		align-items: center;
+		padding: 1rem;
+	}
+
+	:global(.excalidraw-modal-container .confirm-dialog.Dialog--fullscreen .Modal__content) {
+		position: relative;
+		inset: auto;
+		max-width: 34rem;
+		max-height: 100%;
+	}
 </style>
