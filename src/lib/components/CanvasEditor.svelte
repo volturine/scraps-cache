@@ -117,14 +117,14 @@
 	onpointerdown={markCanvasInteraction}
 	onkeydown={markCanvasInteraction}
 	onwheel={markCanvasInteraction}
-	class="fixed inset-0 z-[90] flex flex-col bg-[#f7f6f2] text-slate-900 dark:bg-[#171918] dark:text-slate-100"
+	class="canvas-editor-shell fixed z-[90] flex flex-col bg-[#f7f6f2] text-slate-900 dark:bg-[#171918] dark:text-slate-100"
 	role="dialog"
 	tabindex="-1"
 	aria-modal="true"
 	aria-label={readOnly ? 'View canvas' : attachment ? 'Edit canvas' : 'New canvas'}
 >
 	<header
-		class="relative z-10 flex min-h-14 shrink-0 items-center gap-2 border-b border-black/10 bg-white/95 px-2 shadow-sm backdrop-blur dark:border-white/10 dark:bg-[#202221]/95 sm:px-3"
+		class="relative z-10 flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-black/10 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-white/10 dark:bg-[#202221]/95 sm:flex-nowrap sm:px-3"
 	>
 		<button
 			type="button"
@@ -134,16 +134,18 @@
 		>
 			<X class="h-5 w-5" aria-hidden="true" />
 		</button>
-		<div class="hidden min-w-0 shrink-0 pr-1 sm:block">
+		<div class="min-w-0 flex-1 pr-1 sm:flex-none sm:shrink-0">
 			<div class="truncate text-sm font-semibold">{attachment?.name ?? 'Canvas'}</div>
-			<div class="text-[10px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+			<div
+				class="hidden text-[10px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400 sm:block"
+			>
 				{readOnly ? 'View' : 'Infinite drawing'}
 			</div>
 		</div>
 
 		{#if !readOnly}
 			<div
-				class="scrollable mx-auto flex min-w-0 items-center gap-1 overflow-x-auto rounded-xl bg-black/5 p-1 dark:bg-white/10"
+				class="scrollable order-3 flex w-full min-w-0 items-center gap-1 overflow-x-auto rounded-xl bg-black/5 p-1 dark:bg-white/10 sm:order-none sm:mx-auto sm:w-auto"
 				aria-label="Freehand tools"
 			>
 				<button
@@ -181,7 +183,7 @@
 
 			<button
 				type="button"
-				class="scrapscache-button scrapscache-button-primary ml-auto min-w-[5.25rem] shrink-0 px-3 py-2 text-sm"
+				class="scrapscache-button scrapscache-button-primary order-2 ml-auto min-w-[5.25rem] shrink-0 px-3 py-2 text-sm sm:order-none"
 				disabled={loading || saving}
 				onclick={() => void save()}
 			>
@@ -217,6 +219,13 @@
 </div>
 
 <style>
+	.canvas-editor-shell {
+		top: calc(var(--app-inset-top) + var(--app-visual-offset-top));
+		right: var(--app-inset-right);
+		bottom: var(--app-inset-bottom);
+		left: var(--app-inset-left);
+	}
+
 	.canvas-preset {
 		display: inline-flex;
 		min-height: 2.25rem;
