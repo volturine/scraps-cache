@@ -166,10 +166,13 @@
 
 <style>
 	.canvas-editor-shell {
-		top: calc(var(--app-inset-top) + var(--app-visual-offset-top));
-		right: var(--app-inset-right);
-		bottom: var(--app-inset-bottom);
-		left: var(--app-inset-left);
+		top: var(--app-visual-offset-top);
+		right: 0;
+		bottom: 0;
+		left: 0;
+		padding-top: var(--app-inset-top);
+		padding-right: var(--app-inset-right);
+		padding-left: var(--app-inset-left);
 	}
 
 	.canvas-header-action {
@@ -223,5 +226,17 @@
 	:global(.scrapscache-canvas .App-bottom-bar .Island) {
 		background: transparent !important;
 		box-shadow: none !important;
+	}
+
+	:global(.scrapscache-canvas .App-bottom-bar button),
+	:global(.scrapscache-canvas .App-bottom-bar button:hover),
+	:global(.scrapscache-canvas .App-bottom-bar button:active),
+	:global(.scrapscache-canvas .App-bottom-bar button:focus),
+	:global(.scrapscache-canvas .App-bottom-bar button:focus-visible),
+	:global(.scrapscache-canvas .App-bottom-bar button .ToolIcon__icon) {
+		border-color: transparent !important;
+		background: transparent !important;
+		box-shadow: none !important;
+		outline: none !important;
 	}
 </style>
