@@ -229,4 +229,12 @@
 		--sab: 0px;
 		--sal: 0px;
 	}
+
+	:global(.scrapscache-canvas .App-bottom-bar .App-toolbar-content) {
+		padding: 4px 8px !important;
+	}
+
+	:global(.scrapscache-canvas .App-bottom-bar .dropdown-menu--mobile) {
+		bottom: 47px !important;
+	}
 </style>
