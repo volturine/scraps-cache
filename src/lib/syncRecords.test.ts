@@ -8,6 +8,7 @@ import {
 	splitNoteForSync
 } from './syncRecords';
 import type { Note, NoteImage } from './types';
+import { createCanvasAttachment } from './canvasAttachment';
 
 function image(id: string, dataUrl: string): NoteImage {
 	return { id, name: `${id}.jpg`, mime: 'image/jpeg', dataUrl, createdAt: 1 };
@@ -64,6 +65,29 @@ describe('opaque per-record sync payloads', () => {
 		if (notePayload.kind === 'note') {
 			expect(JSON.stringify(notePayload).includes(photo.dataUrl)).toBe(false);
 			expect(notePayload.value.images?.[0]).toMatchObject({ id: 'pic', hash: expect.any(String) });
+		}
+	});
+
+	it('syncs an editable canvas only through the opaque attachment record', async () => {
+		const canvas = await createCanvasAttachment(
+			{
+				elements: [{ id: 'arrow-1', type: 'arrow', x: 1, y: 2, width: 30, height: 40 }],
+				appState: {}
+			},
+			'data:image/webp;base64,AA=='
+		);
+		const records = await buildSyncRecords([note('canvas-note', 1, '', [canvas])], [], []);
+		const noteRecord = records.find((record) => record.key === 'note:canvas-note');
+		const attachmentRecord = records.find((record) => record.key === `attachment:${canvas.id}`);
+
+		expect(noteRecord?.payload.kind).toBe('note');
+		expect(JSON.stringify(noteRecord)).not.toContain(canvas.dataUrl);
+		expect(attachmentRecord?.payload.kind).toBe('attachment');
+		if (attachmentRecord?.payload.kind === 'attachment') {
+			expect(attachmentRecord.payload.value).toMatchObject({
+				mime: 'application/vnd.scrapscache.canvas+json',
+				dataUrl: canvas.dataUrl
+			});
 		}
 	});
 

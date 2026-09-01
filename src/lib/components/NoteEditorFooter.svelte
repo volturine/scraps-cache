@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
+	import CanvasEditor from '$lib/components/CanvasEditor.svelte';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import type { NoteImage } from '$lib/types';
 	import {
@@ -17,6 +18,7 @@
 	import { sha256 } from '$lib/syncHash';
 	import { formatStorageError } from '$lib/imageBlob';
 	import { isKeyboardField } from '$lib/appViewport';
+	import { isCanvasAttachment, mergeCanvasEdit } from '$lib/canvasAttachment';
 	import {
 		Archive,
 		ArchiveRestore,
@@ -24,6 +26,7 @@
 		Copy,
 		Palette,
 		Paperclip,
+		PenLine,
 		RotateCcw,
 		Tag,
 		Trash2,
@@ -70,15 +73,18 @@
 
 	let focusedImageIndex = $state<number | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
+	let canvasEditorOpen = $state(false);
+	let focusedCanvas = $state<NoteImage | null>(null);
 	let attachError = $state('');
 	let filesAwaitingQuality = $state<File[] | null>(null);
 
 	const imageAttachments = $derived(images.filter(isImageAttachment));
+	const canvases = $derived(images.filter(isCanvasAttachment));
 	const photos = $derived(imageAttachments.filter((attachment) => !!displayImageSrc(attachment)));
 	const pendingPhotos = $derived(
 		imageAttachments.filter((attachment) => !displayImageSrc(attachment))
 	);
-	const files = $derived(images.filter((a) => !isImageAttachment(a)));
+	const files = $derived(images.filter((a) => !isImageAttachment(a) && !isCanvasAttachment(a)));
 	const photoIndexById = $derived(new Map(photos.map((p, i) => [p.id, i])));
 
 	/**
@@ -226,6 +232,40 @@
 		if (idx != null) focusedImageIndex = idx;
 	}
 
+	async function openCanvas(attachment?: NoteImage) {
+		attachError = '';
+		if (!attachment) {
+			focusedCanvas = null;
+			canvasEditorOpen = true;
+			return;
+		}
+		let source = attachment;
+		if (!source.dataUrl && noteId) {
+			await notesStore.ensureNoteAttachments(noteId);
+			const hydratedNote = notesStore.notes.find((note) => note.id === noteId);
+			source = hydratedNote?.images?.find((item) => item.id === attachment.id) ?? source;
+		}
+		if (!source.dataUrl) {
+			attachError = 'Canvas data is not available on this device.';
+			return;
+		}
+		focusedCanvas = { ...source };
+		canvasEditorOpen = true;
+	}
+
+	async function saveCanvas(saved: NoteImage, sourceHash?: string) {
+		const storeNote = noteId ? notesStore.notes.find((note) => note.id === noteId) : undefined;
+		const currentImages = storeNote?.images ?? images;
+		const merged = mergeCanvasEdit(currentImages, saved, sourceHash);
+		if (merged.conflict) {
+			attachError = 'The synced canvas changed while you were drawing, so both versions were kept.';
+		}
+		const next = merged.attachments;
+		images = next;
+		onImagesChange?.(next);
+		if (noteId) await notesStore.flushNote(noteId, { images: next });
+	}
+
 	function keepFooterStationary(event: PointerEvent) {
 		if (event.pointerType !== 'touch') return;
 		const target = event.target instanceof Element ? event.target : null;
@@ -247,6 +287,50 @@
 
 {#if attachError}
 	<p class="px-3 pb-1 text-xs text-red-600 dark:text-red-400">{attachError}</p>
+{/if}
+
+{#if canvases.length > 0}
+	<div class="scrollable flex max-h-44 gap-2 overflow-x-auto px-3 pb-2" aria-label="Canvases">
+		{#each canvases as canvas (canvas.id)}
+			<div class="relative w-36 shrink-0">
+				<button
+					type="button"
+					class="group block aspect-[4/3] w-full overflow-hidden rounded-lg border border-black/10 bg-white touch-manipulation dark:border-white/10 dark:bg-slate-900"
+					onclick={() => void openCanvas(canvas)}
+					aria-label={`Edit ${canvas.name ?? 'canvas'}`}
+				>
+					{#if displayImageSrc(canvas)}
+						<img
+							src={displayImageSrc(canvas)}
+							alt={canvas.name ?? 'Canvas'}
+							class="h-full w-full object-contain"
+							loading="lazy"
+							decoding="async"
+						/>
+					{:else}
+						<div
+							class="grid h-full place-items-center text-xs text-[var(--scrapscache-text-muted)]"
+						>
+							Loading canvas…
+						</div>
+					{/if}
+					<span
+						class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-5 text-left text-[11px] font-medium text-white"
+					>
+						{canvas.name ?? 'Canvas'}
+					</span>
+				</button>
+				<button
+					type="button"
+					class="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-xs text-white touch-manipulation"
+					onclick={() => removeAttachment(canvas.id)}
+					aria-label="Remove canvas"
+				>
+					<X class="h-3 w-3" aria-hidden="true" />
+				</button>
+			</div>
+		{/each}
+	</div>
 {/if}
 
 {#if photos.length > 0 || pendingPhotos.length > 0}
@@ -327,6 +411,16 @@
 {/if}
 
 <PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />
+{#if canvasEditorOpen}
+	<CanvasEditor
+		attachment={focusedCanvas}
+		onSave={saveCanvas}
+		onClose={() => {
+			canvasEditorOpen = false;
+			focusedCanvas = null;
+		}}
+	/>
+{/if}
 {#if focusedAttachment}
 	<AttachmentFullscreen
 		attachment={focusedAttachment}
@@ -407,6 +501,15 @@
 			aria-label="Attach"
 		>
 			<Paperclip class="h-5 w-5" aria-hidden="true" />
+		</button>
+		<button
+			type="button"
+			class="icon-btn h-10 w-10 p-2 touch-manipulation"
+			title="New canvas"
+			onclick={() => void openCanvas()}
+			aria-label="New canvas"
+		>
+			<PenLine class="h-5 w-5" aria-hidden="true" />
 		</button>
 		<button
 			type="button"

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isInlinePreviewable } from './noteImages';
+import { createCanvasAttachment, type CanvasScene } from './canvasAttachment';
+import { isInlinePreviewable, prepareAttachmentForMemory } from './noteImages';
 
 describe('attachment preview routing', () => {
 	it('keeps browser-viewable files in the app viewer', () => {
@@ -23,5 +24,23 @@ describe('attachment preview routing', () => {
 		]) {
 			expect(isInlinePreviewable({ mime })).toBe(false);
 		}
+	});
+});
+
+describe('resident attachment previews', () => {
+	it('extracts an encrypted canvas payload preview before releasing full bytes', async () => {
+		const scene: CanvasScene = {
+			elements: [{ id: 'text-1', type: 'text', x: 0, y: 0, width: 20, height: 10 }],
+			appState: {}
+		};
+		const preview = 'data:image/png;base64,AA==';
+		const attachment = await createCanvasAttachment(scene, preview);
+		delete attachment.thumbUrl;
+
+		const compacted = await prepareAttachmentForMemory(attachment);
+
+		expect(compacted.thumbUrl).toBe(preview);
+		expect(compacted.dataUrl).toBe('');
+		expect(compacted.contentHash).toBeTruthy();
 	});
 });

@@ -27,7 +27,8 @@
 			return;
 		}
 		const t = e.target as HTMLElement;
-		if (t.closest('[data-checklist-toggle], [data-photo], [data-file], [data-link]')) return;
+		if (t.closest('[data-checklist-toggle], [data-photo], [data-canvas], [data-file], [data-link]'))
+			return;
 		onOpen(note.id);
 	}
 

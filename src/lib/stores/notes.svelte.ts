@@ -45,11 +45,10 @@ import {
 	writeLabelTombstones,
 	writeTombstones
 } from '$lib/syncTombstones';
-import { stripFullImageBytes } from '$lib/noteImages';
-import { makeImageThumbDataUrl } from '$lib/imageThumb';
+import { ensureAttachmentPreview, prepareAttachmentForMemory } from '$lib/noteImages';
+import { isCanvasAttachment } from '$lib/canvasAttachment';
 import { replacementFitsStorage } from '$lib/storageCapacity';
 import { formatStorageError } from '$lib/imageBlob';
-import type { NoteImage } from '$lib/types';
 import {
 	BackupImportMode,
 	BackupImportPhase,
@@ -87,7 +86,10 @@ export function noteIsBlank(note: Note): boolean {
 		!note.title.trim() &&
 		!(note.body ?? '').trim() &&
 		note.reminder == null &&
-		!noteAttachments(note).some((attachment) => attachment.dataUrl.length > 0)
+		!noteAttachments(note).some(
+			(attachment) =>
+				attachment.dataUrl.length > 0 || !!attachment.thumbUrl || !!attachment.contentHash
+		)
 	);
 }
 
@@ -235,7 +237,7 @@ export class NotesStore {
 
 		const source = cloneNote(existing);
 		const load = hydrateNoteAttachments(source)
-			.then((hydrated) => {
+			.then(async (hydrated) => {
 				const missingBytes = (hydrated.images ?? []).some((image) => !image.dataUrl);
 				if (missingBytes) {
 					this.attachmentHydrationFailures.add(noteId);
@@ -249,7 +251,11 @@ export class NotesStore {
 				const index = this.notes.findIndex((note) => note.id === noteId);
 				if (index === -1) return;
 				const current = this.notes[index];
-				const images = mergeHydratedImages(current.images ?? [], hydrated.images ?? []);
+				const images = await Promise.all(
+					mergeHydratedImages(current.images ?? [], hydrated.images ?? []).map(
+						ensureAttachmentPreview
+					)
+				);
 				if (images.some((image, imageIndex) => image !== current.images?.[imageIndex])) {
 					this.notes[index] = { ...current, images };
 				}
@@ -322,7 +328,10 @@ export class NotesStore {
 		// or a non-image file still lacks bytes.
 		const needs = (note.images ?? []).some((image) => {
 			const mime = (image.mime || '').toLowerCase();
-			if (mime.startsWith('image/') && !mime.includes('dng') && mime !== 'image/tiff') {
+			if (
+				(mime.startsWith('image/') && !mime.includes('dng') && mime !== 'image/tiff') ||
+				isCanvasAttachment(image)
+			) {
 				return !image.thumbUrl && !image.dataUrl;
 			}
 			return !image.dataUrl;
@@ -647,16 +656,7 @@ export class NotesStore {
 	}
 
 	private async compactPersistedNoteImages(note: Note): Promise<void> {
-		const images: NoteImage[] = [];
-		for (const image of note.images ?? []) {
-			let next = image;
-			if (image.dataUrl && !image.thumbUrl && (image.mime || '').startsWith('image/')) {
-				const thumbUrl = await makeImageThumbDataUrl(image.dataUrl);
-				if (thumbUrl) next = { ...image, thumbUrl };
-			}
-			images.push(stripFullImageBytes(next));
-		}
-		note.images = images;
+		note.images = await Promise.all((note.images ?? []).map(prepareAttachmentForMemory));
 	}
 
 	async importBackup(
@@ -907,16 +907,7 @@ export class NotesStore {
 				const idx = this.notes.findIndex((item) => item.id === id);
 				if (idx < 0) return;
 				const current = this.notes[idx];
-				const images = await Promise.all(
-					(current.images ?? []).map(async (image) => {
-						let next = image;
-						if (image.dataUrl && !image.thumbUrl && (image.mime || '').startsWith('image/')) {
-							const thumbUrl = await makeImageThumbDataUrl(image.dataUrl);
-							if (thumbUrl) next = { ...image, thumbUrl };
-						}
-						return stripFullImageBytes(next);
-					})
-				);
+				const images = await Promise.all((current.images ?? []).map(prepareAttachmentForMemory));
 				if (images.some((image, i) => image !== current.images?.[i])) {
 					this.notes[idx] = { ...current, images };
 					this.mirrorToLS();
@@ -996,16 +987,7 @@ export class NotesStore {
 		return Promise.all(
 			notes.map(async (note) => ({
 				...note,
-				images: await Promise.all(
-					(note.images ?? []).map(async (image) => {
-						let next = image;
-						if (image.dataUrl && !image.thumbUrl && (image.mime || '').startsWith('image/')) {
-							const thumbUrl = await makeImageThumbDataUrl(image.dataUrl);
-							if (thumbUrl) next = { ...image, thumbUrl };
-						}
-						return stripFullImageBytes(next);
-					})
-				)
+				images: await Promise.all((note.images ?? []).map(prepareAttachmentForMemory))
 			}))
 		);
 	}
