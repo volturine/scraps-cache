@@ -223,20 +223,10 @@
 		display: none !important;
 	}
 
-	:global(.scrapscache-canvas .App-bottom-bar .Island) {
-		background: transparent !important;
-		box-shadow: none !important;
-	}
-
-	:global(.scrapscache-canvas .App-bottom-bar button),
-	:global(.scrapscache-canvas .App-bottom-bar button:hover),
-	:global(.scrapscache-canvas .App-bottom-bar button:active),
-	:global(.scrapscache-canvas .App-bottom-bar button:focus),
-	:global(.scrapscache-canvas .App-bottom-bar button:focus-visible),
-	:global(.scrapscache-canvas .App-bottom-bar button .ToolIcon__icon) {
-		border-color: transparent !important;
-		background: transparent !important;
-		box-shadow: none !important;
-		outline: none !important;
+	:global(.scrapscache-canvas .excalidraw) {
+		--sat: 0px;
+		--sar: 0px;
+		--sab: 0px;
+		--sal: 0px;
 	}
 </style>
