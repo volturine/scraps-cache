@@ -48,6 +48,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Test SQLite to Cloudflare migration
+        run: python3 -m unittest scripts/migrate_sqlite_to_cloudflare_test.py
+
       - name: Production build
         run: npm run build
 

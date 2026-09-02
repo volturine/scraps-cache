@@ -92,6 +92,35 @@ more than one open pull request has the label. Pushes to `master` deploy the
 production Workers to `scrapscache.com`. Both use Worker routes on the existing
 proxied DNS records, so the records must remain in place during the cutover.
 
+### Migrating an existing SQLite relay to Cloudflare
+
+The migration copies only the live `sync.sqlite` state. It does not copy the
+backup directory, historical JSON exports, or `raw-originals`. Encrypted sync
+envelopes—including attachment records—are streamed to R2; account and routing
+metadata are written to D1. The importer also converts the legacy VAPID key
+pair so existing reminder push subscriptions remain usable.
+
+Run a staged import while the existing deployment is still serving traffic:
+
+```sh
+python3 scripts/migrate_sqlite_to_cloudflare.py stage /absolute/path/to/sync.sqlite
+```
+
+Immediately before the production cutover, stop the old application so the
+database cannot receive another write. Then rerun the import against the final
+snapshot:
+
+```sh
+python3 scripts/migrate_sqlite_to_cloudflare.py finalize \
+  /absolute/path/to/sync.sqlite --source-stopped
+```
+
+`finalize` snapshots SQLite with its WAL, uploads deterministic R2 objects,
+replaces the migrated D1 state, verifies every R2 object's length and SHA-256
+digest, and removes objects made obsolete by an earlier staged import. Do not
+restart the old application after finalization. If it must be restarted during
+a rollback, stop it and finalize again before retrying the Workers cutover.
+
 ## Testing layout
 
 - Co-located unit tests: `src/lib/**/*.test.ts`, some component tests
