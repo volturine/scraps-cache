@@ -85,8 +85,10 @@ GitHub Actions reads this value from the `SCRAPSCACHE_TICK_SECRET` environment
 secret in the matching `development` or `production` GitHub environment and
 installs it on both Workers during every deployment.
 
-Pull requests from this repository deploy the development Workers to
-`dev.scrapscache.com` after validation succeeds. Pushes to `master` deploy the
+The sole open pull request labeled `deploy-dev` deploys the development Workers
+to `dev.scrapscache.com` after validation succeeds. Move the label to switch the
+shared development environment to another pull request. Deployment fails if
+more than one open pull request has the label. Pushes to `master` deploy the
 production Workers to `scrapscache.com`. Both use Worker routes on the existing
 proxied DNS records, so the records must remain in place during the cutover.
 

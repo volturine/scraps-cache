@@ -2,6 +2,11 @@ name: CI/CD
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
   push:
     branches:
       - master
@@ -60,7 +65,9 @@ jobs:
     name: Deploy Cloudflare development
     if: >-
       github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'deploy-dev') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'deploy-dev')
     needs: validate
     runs-on: ubuntu-latest
     concurrency:
@@ -71,9 +78,21 @@ jobs:
       url: https://dev.scrapscache.com
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify development deployment ownership
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          owners="$(gh pr list --state open --label deploy-dev --limit 100 --json number --jq 'map(.number) | join(" ")')"
+          if [ "$owners" != "$PR_NUMBER" ]; then
+            echo "Exactly this PR must be the sole open PR labeled deploy-dev; found: ${owners:-none}" >&2
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
