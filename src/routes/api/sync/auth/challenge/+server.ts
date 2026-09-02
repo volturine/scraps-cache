@@ -1,12 +1,12 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { createSyncChallenge, isLegacySyncCredential } from '$lib/server/syncAuth';
+import { getSyncAuth, isLegacySyncCredential } from '$lib/server/syncAuth';
 import { getSyncStore } from '$lib/server/syncStore';
 import { readJsonBody } from '$lib/server/request';
-import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const limited = publicApiLimiter.check(`auth-ip:${clientAddress(getClientAddress)}`, {
+	const limited = await getPublicApiLimiter().check(`auth-ip:${clientAddress(getClientAddress)}`, {
 		capacity: 30,
 		refillWindowMs: 60_000
 	});
@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (typeof body.accountId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(body.accountId)) {
 		return json({ error: 'Sync account not found' }, { status: 404 });
 	}
-	const credential = getSyncStore().getAuthCredential(body.accountId);
+	const credential = await getSyncStore().getAuthCredential(body.accountId);
 	if (!credential) return json({ error: 'Sync account not found' }, { status: 404 });
 	if (isLegacySyncCredential(credential)) {
 		return json(
@@ -28,5 +28,5 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			{ status: 409 }
 		);
 	}
-	return json(createSyncChallenge(body.accountId));
+	return json(await getSyncAuth().createSyncChallenge(body.accountId));
 };

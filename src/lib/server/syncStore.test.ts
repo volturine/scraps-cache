@@ -1,8 +1,4 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import Database from 'better-sqlite3';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
 	SyncQuotaExceededError,
 	SyncStore,
@@ -10,72 +6,66 @@ import {
 	ENVELOPE_STORAGE_OVERHEAD_BYTES,
 	WAKE_CLAIM_LEASE_MS
 } from './syncStore';
+import { testDb, cleanupTestDbs } from './testDb';
+import type { Db } from './db';
+import type { Client, Transaction, TransactionMode } from '@libsql/client/node';
 
-const stores: SyncStore[] = [];
-const directories: string[] = [];
 const slot = (character: string) => character.repeat(64);
 const wake = (character: string, fireAt: number) => ({ id: character.repeat(43), fireAt });
 
+afterEach(() => cleanupTestDbs());
+
 function createStore(options?: ConstructorParameters<typeof SyncStore>[1]): {
 	store: SyncStore;
-	directory: string;
+	db: Db;
 } {
-	const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
-	const store = new SyncStore(directory, options);
-	directories.push(directory);
-	stores.push(store);
-	return { store, directory };
+	const db = testDb();
+	const store = new SyncStore(db, options);
+	return { store, db };
 }
 
-afterEach(() => {
-	for (const store of stores.splice(0)) store.close();
-	for (const directory of directories.splice(0)) {
-		rmSync(directory, { recursive: true, force: true });
-	}
-});
-
 describe('SQLite sync store', () => {
-	it('creates accounts without overwriting existing credentials', () => {
+	it('creates accounts without overwriting existing credentials', async () => {
 		const { store } = createStore();
-		expect(store.createAccount('account', 'first')).toBe(true);
-		expect(store.createAccount('account', 'second')).toBe(false);
-		expect(store.getAuthCredential('account')).toBe('first');
+		expect(await store.createAccount('account', 'first')).toBe(true);
+		expect(await store.createAccount('account', 'second')).toBe(false);
+		expect(await store.getAuthCredential('account')).toBe('first');
 	});
 
-	it('replaces an authentication credential only when the legacy value still matches', () => {
+	it('replaces an authentication credential only when the legacy value still matches', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'legacy');
-		expect(store.replaceAuthCredential('account', 'wrong', 'public-key')).toBe(false);
-		expect(store.replaceAuthCredential('account', 'legacy', 'public-key')).toBe(true);
-		expect(store.replaceAuthCredential('account', 'legacy', 'attacker-key')).toBe(false);
-		expect(store.getAuthCredential('account')).toBe('public-key');
+		await store.createAccount('account', 'legacy');
+		expect(await store.replaceAuthCredential('account', 'wrong', 'public-key')).toBe(false);
+		expect(await store.replaceAuthCredential('account', 'legacy', 'public-key')).toBe(true);
+		expect(await store.replaceAuthCredential('account', 'legacy', 'attacker-key')).toBe(false);
+		expect(await store.getAuthCredential('account')).toBe('public-key');
 	});
 
-	it('defaults each account to 1000 MB of estimated relay storage', () => {
+	it('defaults each account to 1000 MB of estimated relay storage', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		expect(store.sync('account', 0, [], [], 1).usage.maxBytes).toBe(1_000_000_000);
+		await store.createAccount('account', 'credential');
+		expect((await store.sync('account', 0, [], [], 1)).usage.maxBytes).toBe(1_000_000_000);
 	});
 
-	it('enforces a durable per-account byte quota and can restore the default', () => {
+	it('enforces a durable per-account byte quota and can restore the default', async () => {
 		const defaultQuota = ENVELOPE_STORAGE_OVERHEAD_BYTES + 100;
 		const limitedQuota = ENVELOPE_STORAGE_OVERHEAD_BYTES + 5;
-		const { store, directory } = createStore({ maxAccountBytes: defaultQuota });
-		store.createAccount('limited-account', 'credential');
-		store.createAccount('default-account', 'credential');
+		const db = testDb();
+		const store = new SyncStore(db, { maxAccountBytes: defaultQuota });
+		await store.createAccount('limited-account', 'credential');
+		await store.createAccount('default-account', 'credential');
 
-		expect(store.setAccountByteQuota('limited-account', limitedQuota)).toBe(true);
-		store.close();
-		stores.splice(stores.indexOf(store), 1);
-		const reopened = new SyncStore(directory, { maxAccountBytes: defaultQuota });
-		stores.push(reopened);
+		expect(await store.setAccountByteQuota('limited-account', limitedQuota)).toBe(true);
+		const reopened = new SyncStore(db, { maxAccountBytes: defaultQuota });
 
-		expect(reopened.getAccountByteQuota('limited-account')).toEqual({
+		expect(await reopened.getAccountByteQuota('limited-account')).toEqual({
 			maxBytes: limitedQuota,
 			overridden: true
 		});
-		expect(reopened.sync('limited-account', 0, [], [], 1).usage.maxBytes).toBe(limitedQuota);
-		expect(() =>
+		expect((await reopened.sync('limited-account', 0, [], [], 1)).usage.maxBytes).toBe(
+			limitedQuota
+		);
+		await expect(
 			reopened.sync(
 				'limited-account',
 				0,
@@ -83,31 +73,33 @@ describe('SQLite sync store', () => {
 				[],
 				1
 			)
-		).toThrow(SyncQuotaExceededError);
-		expect(reopened.sync('default-account', 0, [], [], 1).usage.maxBytes).toBe(defaultQuota);
+		).rejects.toThrow(SyncQuotaExceededError);
+		expect((await reopened.sync('default-account', 0, [], [], 1)).usage.maxBytes).toBe(
+			defaultQuota
+		);
 
-		expect(reopened.clearAccountByteQuota('limited-account')).toBe(true);
-		expect(reopened.getAccountByteQuota('limited-account')).toEqual({
+		expect(await reopened.clearAccountByteQuota('limited-account')).toBe(true);
+		expect(await reopened.getAccountByteQuota('limited-account')).toEqual({
 			maxBytes: defaultQuota,
 			overridden: false
 		});
 	});
 
-	it('rejects invalid or nonexistent account quota overrides', () => {
+	it('rejects invalid or nonexistent account quota overrides', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		expect(() => store.setAccountByteQuota('account', 0)).toThrow(RangeError);
-		expect(() => store.setAccountByteQuota('account', Number.MAX_SAFE_INTEGER + 1)).toThrow(
+		await store.createAccount('account', 'credential');
+		await expect(store.setAccountByteQuota('account', 0)).rejects.toThrow(RangeError);
+		await expect(store.setAccountByteQuota('account', Number.MAX_SAFE_INTEGER + 1)).rejects.toThrow(
 			RangeError
 		);
-		expect(store.setAccountByteQuota('missing', 10)).toBe(false);
-		expect(store.clearAccountByteQuota('missing')).toBe(false);
-		expect(store.getAccountByteQuota('missing')).toBeNull();
+		expect(await store.setAccountByteQuota('missing', 10)).toBe(false);
+		expect(await store.clearAccountByteQuota('missing')).toBe(false);
+		expect(await store.getAccountByteQuota('missing')).toBeNull();
 	});
 
-	it('pages more than 480 envelopes without dropping the tail', () => {
+	it('pages more than 480 envelopes without dropping the tail', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
+		await store.createAccount('account', 'credential');
 		const uploads = Array.from({ length: 600 }, (_, index) => ({
 			id: `id-${index}`,
 			slot: slot(index.toString(16).padStart(1, 'a').repeat(1)).slice(0, 64).padEnd(64, 'a'),
@@ -117,11 +109,11 @@ describe('SQLite sync store', () => {
 		for (const [index, upload] of uploads.entries()) {
 			upload.slot = index.toString(16).padStart(64, '0');
 		}
-		store.sync('account', 0, uploads, [], 600);
+		await store.sync('account', 0, uploads, [], 600);
 		let cursor = 0;
 		let seen = 0;
 		for (let page = 0; page < 60; page++) {
-			const result = store.sync('account', cursor, [], [], 12);
+			const result = await store.sync('account', cursor, [], [], 12);
 			seen += result.envelopes.length;
 			cursor = result.cursor;
 			if (!result.hasMore) break;
@@ -129,10 +121,57 @@ describe('SQLite sync store', () => {
 		expect(seen).toBe(600);
 	});
 
-	it('finishes paginated downloads before accepting simultaneous uploads', () => {
+	it('processes a maximum normal upload batch with bounded database round trips', async () => {
+		const db = testDb();
+		let executeCalls = 0;
+		let batchCalls = 0;
+		const relay = new Proxy(db.relay, {
+			get(target, property) {
+				if (property === 'transaction') {
+					return async (mode?: TransactionMode): Promise<Transaction> => {
+						const transaction = await target.transaction(mode);
+						return new Proxy(transaction, {
+							get(txTarget, txProperty) {
+								if (txProperty === 'execute') {
+									return (...args: Parameters<Transaction['execute']>) => {
+										executeCalls += 1;
+										return txTarget.execute(...args);
+									};
+								}
+								if (txProperty === 'batch') {
+									return (...args: Parameters<Transaction['batch']>) => {
+										batchCalls += 1;
+										return txTarget.batch(...args);
+									};
+								}
+								const value = Reflect.get(txTarget, txProperty, txTarget) as unknown;
+								return typeof value === 'function' ? value.bind(txTarget) : value;
+							}
+						}) as Transaction;
+					};
+				}
+				const value = Reflect.get(target, property, target) as unknown;
+				return typeof value === 'function' ? value.bind(target) : value;
+			}
+		}) as Client;
+		const store = new SyncStore({ relay, ops: db.ops, ready: db.ready });
+		await store.createAccount('account', 'credential');
+		const uploads = Array.from({ length: 500 }, (_, index) => ({
+			id: `id-${index}`,
+			slot: index.toString(16).padStart(64, '0'),
+			ciphertext: `ciphertext-${index}`
+		}));
+
+		await store.sync('account', 0, uploads, [], 10);
+
+		expect(executeCalls).toBeLessThan(20);
+		expect(batchCalls).toBeLessThanOrEqual(2);
+	});
+
+	it('finishes paginated downloads before accepting simultaneous uploads', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.sync(
+		await store.createAccount('account', 'credential');
+		await store.sync(
 			'account',
 			0,
 			[
@@ -144,7 +183,7 @@ describe('SQLite sync store', () => {
 			10
 		);
 
-		const first = store.sync(
+		const first = await store.sync(
 			'account',
 			0,
 			[{ id: 'mine', slot: slot('d'), ciphertext: 'local' }],
@@ -156,12 +195,12 @@ describe('SQLite sync store', () => {
 		expect(first.cursor).toBe(2);
 		expect(first.writesAccepted).toBe(false);
 
-		const second = store.sync('account', first.cursor, [], [], 2);
+		const second = await store.sync('account', first.cursor, [], [], 2);
 		expect(second.envelopes.map((envelope) => envelope.id)).toEqual(['c']);
 		expect(second.hasMore).toBe(false);
 		expect(second.cursor).toBe(3);
 
-		const uploaded = store.sync(
+		const uploaded = await store.sync(
 			'account',
 			second.cursor,
 			[{ id: 'mine', slot: slot('d'), ciphertext: 'local', expectedId: null }],
@@ -169,16 +208,16 @@ describe('SQLite sync store', () => {
 			2
 		);
 		expect(uploaded.writesAccepted).toBe(true);
-		expect(store.sync('account', second.cursor, [], [], 2).envelopes.map(({ id }) => id)).toEqual([
-			'mine'
-		]);
+		expect(
+			(await store.sync('account', second.cursor, [], [], 2)).envelopes.map(({ id }) => id)
+		).toEqual(['mine']);
 	});
 
-	it('keeps only the newest ciphertext in an opaque slot', () => {
+	it('keeps only the newest ciphertext in an opaque slot', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'old', slot: slot('a'), ciphertext: 'first' }], [], 10);
-		store.sync(
+		await store.createAccount('account', 'credential');
+		await store.sync('account', 0, [{ id: 'old', slot: slot('a'), ciphertext: 'first' }], [], 10);
+		await store.sync(
 			'account',
 			1,
 			[{ id: 'new', slot: slot('a'), ciphertext: 'replacement', expectedId: 'old' }],
@@ -186,18 +225,18 @@ describe('SQLite sync store', () => {
 			10
 		);
 
-		const result = store.sync('account', 1, [], [], 10);
+		const result = await store.sync('account', 1, [], [], 10);
 		expect(result.envelopes).toEqual([
 			{ seq: 2, id: 'new', slot: slot('a'), ciphertext: 'replacement' }
 		]);
 	});
 
-	it('rolls back the entire upload batch when an account quota is exceeded', () => {
+	it('rolls back the entire upload batch when an account quota is exceeded', async () => {
 		const { store } = createStore({
 			maxAccountBytes: ENVELOPE_STORAGE_OVERHEAD_BYTES + 5
 		});
-		store.createAccount('account', 'credential');
-		expect(() =>
+		await store.createAccount('account', 'credential');
+		await expect(
 			store.sync(
 				'account',
 				0,
@@ -208,22 +247,23 @@ describe('SQLite sync store', () => {
 				[],
 				10
 			)
-		).toThrow(SyncQuotaExceededError);
+		).rejects.toThrow(SyncQuotaExceededError);
 
-		expect(store.sync('account', 0, [], [], 10)).toMatchObject({
+		expect(await store.sync('account', 0, [], [], 10)).toMatchObject({
 			cursor: 0,
 			envelopes: [],
 			hasMore: false
 		});
 	});
 
-	it('does not impose a per-account record count quota', () => {
+	it('does not impose a per-account record count quota', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		let result = store.sync('account', 0, [], [], 12);
+		await store.createAccount('account', 'credential');
+		let result = await store.sync('account', 0, [], [], 12);
 		let cursor = result.cursor;
-		for (let offset = 0; offset < 50_001; offset += 500) {
-			const uploads = Array.from({ length: Math.min(500, 50_001 - offset) }, (_, index) => {
+		const total = 2_001;
+		for (let offset = 0; offset < total; offset += 500) {
+			const uploads = Array.from({ length: Math.min(500, total - offset) }, (_, index) => {
 				const record = offset + index;
 				return {
 					id: `id-${record}`,
@@ -231,21 +271,21 @@ describe('SQLite sync store', () => {
 					ciphertext: 'a'
 				};
 			});
-			result = store.sync('account', cursor, uploads, [], 12);
+			result = await store.sync('account', cursor, uploads, [], 12);
 			cursor = result.cursor;
 		}
 
-		expect(result.usage).toMatchObject({ envelopeCount: 50_001, ciphertextBytes: 50_001 });
+		expect(result.usage).toMatchObject({ envelopeCount: total, ciphertextBytes: total });
 	});
 
-	it('rolls back deletions together with an over-quota replacement batch', () => {
+	it('rolls back deletions together with an over-quota replacement batch', async () => {
 		const { store } = createStore({
 			maxAccountBytes: ENVELOPE_STORAGE_OVERHEAD_BYTES + 5
 		});
-		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'kept', slot: slot('a'), ciphertext: '123' }], [], 10);
+		await store.createAccount('account', 'credential');
+		await store.sync('account', 0, [{ id: 'kept', slot: slot('a'), ciphertext: '123' }], [], 10);
 
-		expect(() =>
+		await expect(
 			store.sync(
 				'account',
 				1,
@@ -253,17 +293,17 @@ describe('SQLite sync store', () => {
 				[{ id: 'kept', slot: slot('a') }],
 				10
 			)
-		).toThrow(SyncQuotaExceededError);
-		expect(store.sync('account', 0, [], [], 10)).toMatchObject({
+		).rejects.toThrow(SyncQuotaExceededError);
+		expect(await store.sync('account', 0, [], [], 10)).toMatchObject({
 			envelopes: [expect.objectContaining({ id: 'kept' })],
 			usage: expect.objectContaining({ envelopeCount: 1, ciphertextBytes: 3 })
 		});
 	});
 
-	it('deletes only the expected opaque slot version and releases quota', () => {
+	it('deletes only the expected opaque slot version and releases quota', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		const first = store.sync(
+		await store.createAccount('account', 'credential');
+		const first = await store.sync(
 			'account',
 			0,
 			[{ id: 'old', slot: slot('a'), ciphertext: 'first' }],
@@ -272,14 +312,14 @@ describe('SQLite sync store', () => {
 		);
 		expect(first.usage).toMatchObject({ envelopeCount: 1, ciphertextBytes: 5 });
 
-		const replaced = store.sync(
+		const replaced = await store.sync(
 			'account',
 			first.cursor,
 			[{ id: 'new', slot: slot('a'), ciphertext: 'replacement', expectedId: 'old' }],
 			[],
 			10
 		);
-		const staleDelete = store.sync(
+		const staleDelete = await store.sync(
 			'account',
 			replaced.cursor,
 			[],
@@ -288,7 +328,7 @@ describe('SQLite sync store', () => {
 		);
 		expect(staleDelete.usage.envelopeCount).toBe(1);
 
-		const removed = store.sync(
+		const removed = await store.sync(
 			'account',
 			staleDelete.cursor,
 			[],
@@ -299,10 +339,10 @@ describe('SQLite sync store', () => {
 		expect(removed.usage.storageBytes).toBe(ENVELOPE_STORAGE_OVERHEAD_BYTES + 'replacement'.length);
 	});
 
-	it('hides deleted slots from downloads immediately but keeps their ciphertext during grace', () => {
-		const { store, directory } = createStore();
-		store.createAccount('account', 'credential');
-		const uploaded = store.sync(
+	it('hides deleted slots from downloads immediately but keeps their ciphertext during grace', async () => {
+		const { store, db } = createStore();
+		await store.createAccount('account', 'credential');
+		const uploaded = await store.sync(
 			'account',
 			0,
 			[
@@ -313,7 +353,7 @@ describe('SQLite sync store', () => {
 			10
 		);
 
-		const removed = store.sync(
+		const removed = await store.sync(
 			'account',
 			uploaded.cursor,
 			[],
@@ -328,39 +368,45 @@ describe('SQLite sync store', () => {
 		});
 
 		// A slower device rewinding behind the deletion never sees the slot again.
-		expect(store.sync('account', 0, [], [], 10).envelopes.map(({ id }) => id)).toEqual(['note']);
+		expect((await store.sync('account', 0, [], [], 10)).envelopes.map(({ id }) => id)).toEqual([
+			'note'
+		]);
 
-		const raw = new Database(join(directory, 'sync.sqlite'));
-		try {
-			expect(
-				raw
-					.prepare('SELECT id, ciphertext FROM deleted_envelopes WHERE account_id = ? AND slot = ?')
-					.get('account', slot('b'))
-			).toEqual({ id: 'photo', ciphertext: 'cipher-photo' });
-		} finally {
-			raw.close();
-		}
+		const raw = await db.relay.execute({
+			sql: 'SELECT id, ciphertext FROM deleted_envelopes WHERE account_id = ? AND slot = ?',
+			args: ['account', slot('b')]
+		});
+		expect(raw.rows[0] as unknown as { id: string; ciphertext: string }).toEqual({
+			id: 'photo',
+			ciphertext: 'cipher-photo'
+		});
 	});
 
-	it('charges record overhead and purges retained ciphertext only when space is needed', () => {
+	it('charges record overhead and purges retained ciphertext only when space is needed', async () => {
 		const maxAccountBytes = ENVELOPE_STORAGE_OVERHEAD_BYTES + 5;
-		const { store, directory } = createStore({ maxAccountBytes });
-		store.createAccount('account', 'credential');
-		expect(() =>
+		const { store, db } = createStore({ maxAccountBytes });
+		await store.createAccount('account', 'credential');
+		await expect(
 			store.sync('account', 0, [{ id: 'too-large', slot: slot('z'), ciphertext: '123456' }], [], 10)
-		).toThrow(SyncQuotaExceededError);
+		).rejects.toThrow(SyncQuotaExceededError);
 
-		const first = store.sync(
+		const first = await store.sync(
 			'account',
 			0,
 			[{ id: 'old', slot: slot('a'), ciphertext: '12345' }],
 			[],
 			10
 		);
-		const deleted = store.sync('account', first.cursor, [], [{ id: 'old', slot: slot('a') }], 10);
+		const deleted = await store.sync(
+			'account',
+			first.cursor,
+			[],
+			[{ id: 'old', slot: slot('a') }],
+			10
+		);
 		expect(deleted.usage.storageBytes).toBe(maxAccountBytes);
 
-		const replacement = store.sync(
+		const replacement = await store.sync(
 			'account',
 			deleted.cursor,
 			[{ id: 'new', slot: slot('b'), ciphertext: 'abcde' }],
@@ -368,45 +414,41 @@ describe('SQLite sync store', () => {
 			10
 		);
 		expect(replacement.usage.storageBytes).toBe(maxAccountBytes);
-		const raw = new Database(join(directory, 'sync.sqlite'));
-		try {
-			expect(
-				(raw.prepare('SELECT COUNT(*) AS count FROM deleted_envelopes').get() as { count: number })
-					.count
-			).toBe(0);
-		} finally {
-			raw.close();
-		}
+		const raw = await db.relay.execute('SELECT COUNT(*) AS count FROM deleted_envelopes');
+		expect((raw.rows[0] as unknown as { count: number }).count).toBe(0);
 	});
 
-	it('purges staged slot deletions only after the grace window', () => {
-		const { store, directory } = createStore();
-		store.createAccount('account', 'credential');
-		const uploaded = store.sync(
+	it('purges staged slot deletions only after the grace window', async () => {
+		const { store, db } = createStore();
+		await store.createAccount('account', 'credential');
+		const uploaded = await store.sync(
 			'account',
 			0,
 			[{ id: 'photo', slot: slot('a'), ciphertext: 'opaque' }],
 			[],
 			10
 		);
-		store.sync('account', uploaded.cursor, [], [{ id: 'photo', slot: slot('a') }], 10);
+		await store.sync('account', uploaded.cursor, [], [{ id: 'photo', slot: slot('a') }], 10);
 
-		const raw = new Database(join(directory, 'sync.sqlite'));
-		const { deletedAt } = raw
-			.prepare('SELECT deleted_at AS deletedAt FROM deleted_envelopes')
-			.get() as { deletedAt: number };
-		raw.close();
+		const raw = await db.relay.execute('SELECT deleted_at AS deletedAt FROM deleted_envelopes');
+		const { deletedAt } = raw.rows[0] as unknown as { deletedAt: number };
 
-		expect(store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS - 1)).toBe(0);
-		expect(store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS)).toBe(1);
+		expect(await store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS - 1)).toBe(0);
+		expect(await store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS)).toBe(1);
 	});
 
-	it('returns the current slot and rejects a stale conditional replacement', () => {
+	it('returns the current slot and rejects a stale conditional replacement', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'current', slot: slot('a'), ciphertext: 'remote' }], [], 10);
+		await store.createAccount('account', 'credential');
+		await store.sync(
+			'account',
+			0,
+			[{ id: 'current', slot: slot('a'), ciphertext: 'remote' }],
+			[],
+			10
+		);
 
-		const stale = store.sync(
+		const stale = await store.sync(
 			'account',
 			1,
 			[{ id: 'stale', slot: slot('a'), ciphertext: 'local', expectedId: 'older' }],
@@ -417,13 +459,15 @@ describe('SQLite sync store', () => {
 			writesAccepted: false,
 			conflicts: [{ id: 'current', slot: slot('a'), ciphertext: 'remote', seq: 1 }]
 		});
-		expect(store.sync('account', 0, [], [], 10).envelopes.map(({ id }) => id)).toEqual(['current']);
+		expect((await store.sync('account', 0, [], [], 10)).envelopes.map(({ id }) => id)).toEqual([
+			'current'
+		]);
 	});
 
-	it('rejects an entire mixed batch when any conditional replacement conflicts', () => {
+	it('rejects an entire mixed batch when any conditional replacement conflicts', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.sync(
+		await store.createAccount('account', 'credential');
+		await store.sync(
 			'account',
 			0,
 			[
@@ -434,7 +478,7 @@ describe('SQLite sync store', () => {
 			10
 		);
 
-		const rejected = store.sync(
+		const rejected = await store.sync(
 			'account',
 			2,
 			[
@@ -446,54 +490,54 @@ describe('SQLite sync store', () => {
 		);
 
 		expect(rejected).toMatchObject({ writesAccepted: false, usage: { envelopeCount: 2 } });
-		expect(store.sync('account', 0, [], [], 10).envelopes.map(({ id }) => id)).toEqual([
+		expect((await store.sync('account', 0, [], [], 10)).envelopes.map(({ id }) => id)).toEqual([
 			'current-a',
 			'current-b'
 		]);
 	});
 
-	it('treats an identical envelope id retry as an idempotent acknowledgement', () => {
+	it('treats an identical envelope id retry as an idempotent acknowledgement', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
+		await store.createAccount('account', 'credential');
 		const upload = { id: 'same-id', slot: slot('a'), ciphertext: 'opaque', expectedId: null };
-		const first = store.sync('account', 0, [upload], [], 10);
-		const retry = store.sync('account', first.cursor, [upload], [], 10);
+		const first = await store.sync('account', 0, [upload], [], 10);
+		const retry = await store.sync('account', first.cursor, [upload], [], 10);
 
 		expect(retry).toMatchObject({ cursor: 1, writesAccepted: true });
 		expect(retry.usage).toMatchObject({ envelopeCount: 1, ciphertextBytes: 6 });
 	});
 
-	it('advances across sequence gaps left by current-state deletion', () => {
+	it('advances across sequence gaps left by current-state deletion', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'old', slot: slot('a'), ciphertext: 'old' }], [], 10);
-		store.sync(
+		await store.createAccount('account', 'credential');
+		await store.sync('account', 0, [{ id: 'old', slot: slot('a'), ciphertext: 'old' }], [], 10);
+		await store.sync(
 			'account',
 			1,
 			[{ id: 'new', slot: slot('a'), ciphertext: 'new', expectedId: 'old' }],
 			[],
 			10
 		);
-		store.sync('account', 2, [], [{ id: 'new', slot: slot('a') }], 10);
+		await store.sync('account', 2, [], [{ id: 'new', slot: slot('a') }], 10);
 
-		expect(store.sync('account', 1, [], [], 10)).toMatchObject({
+		expect(await store.sync('account', 1, [], [], 10)).toMatchObject({
 			cursor: 2,
 			envelopes: [],
 			hasMore: false
 		});
 	});
 
-	it('does not overwrite the thirteenth remote slot before the client reads it', () => {
+	it('does not overwrite the thirteenth remote slot before the client reads it', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
+		await store.createAccount('account', 'credential');
 		const remote = Array.from({ length: 13 }, (_, index) => ({
 			id: `remote-${index + 1}`,
 			slot: index.toString(16).padStart(64, '0'),
 			ciphertext: `cipher-${index + 1}`
 		}));
-		store.sync('account', 0, remote, [], 20);
+		await store.sync('account', 0, remote, [], 20);
 
-		const first = store.sync(
+		const first = await store.sync(
 			'account',
 			0,
 			[
@@ -509,23 +553,26 @@ describe('SQLite sync store', () => {
 		);
 		expect(first.envelopes).toHaveLength(12);
 		expect(first.writesAccepted).toBe(false);
-		const second = store.sync('account', first.cursor, [], [], 12);
+		const second = await store.sync('account', first.cursor, [], [], 12);
 		expect(second.envelopes.map(({ id }) => id)).toEqual(['remote-13']);
 	});
 
-	it('stores and claims opaque reminder wakes independently by id', () => {
+	it('stores and claims opaque reminder wakes independently by id', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.savePushDevice({
+		await store.createAccount('account', 'credential');
+		await store.savePushDevice({
 			deviceId: 'device-aaaaaaaaaaaa',
 			endpoint: 'https://push.example/sub-a',
 			p256dh: 'p'.repeat(20),
 			auth: 'a'.repeat(16),
 			accountId: 'account'
 		});
-		store.replaceReminderWakes('account', [wake('b', 5_000), wake('a', 1_000), wake('c', 9_000)]);
-		expect(store.listWakeTimes('account')).toEqual([1_000, 5_000, 9_000]);
-		const claimed = store.claimDueWakes(1_000);
+		await store.replaceReminderWakes('account', [
+			wake('b', 5_000),
+			wake('a', 1_000),
+			wake('c', 9_000)
+		]);
+		const claimed = await store.claimDueWakes(1_000);
 		expect(claimed).toEqual([
 			expect.objectContaining({
 				accountId: 'account',
@@ -534,125 +581,125 @@ describe('SQLite sync store', () => {
 				fireAt: 1_000
 			})
 		]);
-		expect(store.claimDueWakes(1_000)).toEqual([]);
-		store.markWakeDelivered(claimed[0], 1_000);
-		expect(store.claimDueWakes(1_000)).toEqual([]);
-		expect(store.nextWakeAt(1_000)).toBe(5_000);
+		expect(await store.claimDueWakes(1_000)).toEqual([]);
+		await store.markWakeDelivered(claimed[0], 1_000);
+		expect(await store.claimDueWakes(1_000)).toEqual([]);
 	});
 
-	it('re-claims an undelivered wake after the claim lease expires', () => {
+	it('re-claims an undelivered wake after the claim lease expires', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.savePushDevice({
+		await store.createAccount('account', 'credential');
+		await store.savePushDevice({
 			deviceId: 'device-aaaaaaaaaaaa',
 			endpoint: 'https://push.example/sub-a',
 			p256dh: 'p'.repeat(20),
 			auth: 'a'.repeat(16),
 			accountId: 'account'
 		});
-		store.replaceReminderWakes('account', [wake('a', 1_000)]);
-		const [claimed] = store.claimDueWakes(1_000);
-		expect(store.claimDueWakes(1_000 + WAKE_CLAIM_LEASE_MS - 1)).toEqual([]);
-		const reclaimed = store.claimDueWakes(1_000 + WAKE_CLAIM_LEASE_MS);
+		await store.replaceReminderWakes('account', [wake('a', 1_000)]);
+		const [claimed] = await store.claimDueWakes(1_000);
+		expect(await store.claimDueWakes(1_000 + WAKE_CLAIM_LEASE_MS - 1)).toEqual([]);
+		const reclaimed = await store.claimDueWakes(1_000 + WAKE_CLAIM_LEASE_MS);
 		expect(reclaimed).toHaveLength(1);
 		expect(reclaimed[0]).toMatchObject({ accountId: 'account', wakeId: wake('a', 1_000).id });
-		store.markWakeDelivered(reclaimed[0], 1_000 + WAKE_CLAIM_LEASE_MS);
-		expect(store.claimDueWakes(1_000 + WAKE_CLAIM_LEASE_MS)).toEqual([]);
+		await store.markWakeDelivered(reclaimed[0], 1_000 + WAKE_CLAIM_LEASE_MS);
+		expect(await store.claimDueWakes(1_000 + WAKE_CLAIM_LEASE_MS)).toEqual([]);
 	});
 
-	it('moves an endpoint or device registration when another account claims it', () => {
+	it('moves an endpoint or device registration when another account claims it', async () => {
 		const { store } = createStore();
-		store.createAccount('old-owner', 'credential-old');
-		store.createAccount('new-owner', 'credential-new');
+		await store.createAccount('old-owner', 'credential-old');
+		await store.createAccount('new-owner', 'credential-new');
 		const keys = { p256dh: 'p'.repeat(20), auth: 'a'.repeat(16) };
-		store.savePushDevice({
+		await store.savePushDevice({
 			accountId: 'old-owner',
 			deviceId: 'device-old00000000',
 			endpoint: 'https://push.example/endpoint-a',
 			...keys
 		});
-		store.savePushDevice({
+		await store.savePushDevice({
 			accountId: 'new-owner',
 			deviceId: 'device-new00000000',
 			endpoint: 'https://push.example/endpoint-b',
 			...keys
 		});
 		// A re-registered endpoint under a different account steals it from the old row.
-		store.savePushDevice({
+		await store.savePushDevice({
 			accountId: 'new-owner',
 			deviceId: 'device-replaced000',
 			endpoint: 'https://push.example/endpoint-a',
 			...keys
 		});
 		// A re-registered device id under a different account moves the whole row.
-		store.savePushDevice({
+		await store.savePushDevice({
 			accountId: 'old-owner',
 			deviceId: 'device-new00000000',
 			endpoint: 'https://push.example/endpoint-c',
 			...keys
 		});
-		expect(store.countPushDevices('old-owner')).toBe(1);
-		expect(store.countPushDevices('new-owner')).toBe(1);
+		expect(await store.countPushDevices('old-owner')).toBe(1);
+		expect(await store.countPushDevices('new-owner')).toBe(1);
 	});
 
-	it('fans each account wake out once to every registered device', () => {
+	it('fans each account wake out once to every registered device', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.savePushDevice({
+		await store.createAccount('account', 'credential');
+		await store.savePushDevice({
 			deviceId: 'device-phone000000',
 			endpoint: 'https://push.example/phone',
 			p256dh: 'p'.repeat(20),
 			auth: 'a'.repeat(16),
 			accountId: 'account'
 		});
-		store.savePushDevice({
+		await store.savePushDevice({
 			deviceId: 'device-tablet00000',
 			endpoint: 'https://push.example/tablet',
 			p256dh: 'p'.repeat(20),
 			auth: 'a'.repeat(16),
 			accountId: 'account'
 		});
-		store.replaceReminderWakes('account', [wake('a', 1_000)]);
-		const claimed = store.claimDueWakes(1_000);
+		await store.replaceReminderWakes('account', [wake('a', 1_000)]);
+		const claimed = await store.claimDueWakes(1_000);
 		expect(claimed.map((device) => device.deviceId).sort()).toEqual([
 			'device-phone000000',
 			'device-tablet00000'
 		]);
-		for (const delivery of claimed) store.markWakeDelivered(delivery, 1_000);
-		expect(store.claimDueWakes(1_000)).toEqual([]);
+		for (const delivery of claimed) await store.markWakeDelivered(delivery, 1_000);
+		expect(await store.claimDueWakes(1_000)).toEqual([]);
 	});
 
-	it('keeps account wakes separate from registration and replaces them authoritatively', () => {
+	it('keeps account wakes separate from registration and replaces them authoritatively', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.replaceReminderWakes('account', [wake('a', 1_000)]);
-		store.savePushDevice({
+		await store.createAccount('account', 'credential');
+		await store.replaceReminderWakes('account', [wake('a', 1_000)]);
+		await store.savePushDevice({
 			deviceId: 'device-empty000000',
 			endpoint: 'https://push.example/empty',
 			p256dh: 'p'.repeat(20),
 			auth: 'a'.repeat(16),
 			accountId: 'account'
 		});
-		expect(store.listWakeTimes('account')).toEqual([1_000]);
-		store.replaceReminderWakes('account', [wake('b', 2_000)]);
-		expect(store.listWakeTimes('account')).toEqual([2_000]);
+		await store.replaceReminderWakes('account', [wake('b', 2_000)]);
+		const wakes = await store.claimDueWakes(2_001);
+		expect(wakes.length).toBeGreaterThan(0);
+		expect(wakes[0].wakeId).toBe('b'.repeat(43));
 	});
 
-	it('treats an identical mixed-case wake snapshot as a no-op at the same revision', () => {
+	it('treats an identical mixed-case wake snapshot as a no-op at the same revision', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
+		await store.createAccount('account', 'credential');
 		const wakes = [
 			{ id: `B${'x'.repeat(42)}`, fireAt: 1_000 },
 			{ id: `a${'x'.repeat(42)}`, fireAt: 2_000 }
 		];
-		expect(store.replaceReminderWakes('account', wakes, 5)).toBe(true);
-		expect(store.replaceReminderWakes('account', [...wakes].reverse(), 5)).toBe(true);
+		expect(await store.replaceReminderWakes('account', wakes, 5)).toBe(true);
+		expect(await store.replaceReminderWakes('account', [...wakes].reverse(), 5)).toBe(true);
 	});
 
-	it('rejects stale reminder snapshots and retains delivery receipts across omission', () => {
+	it('rejects stale reminder snapshots and retains delivery receipts across omission', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.savePushDevice({
+		await store.createAccount('account', 'credential');
+		await store.savePushDevice({
 			deviceId: 'device-aaaaaaaaaaaa',
 			endpoint: 'https://push.example/sub-a',
 			p256dh: 'p'.repeat(20),
@@ -660,48 +707,43 @@ describe('SQLite sync store', () => {
 			accountId: 'account'
 		});
 		const reminder = wake('a', 1_000);
-		expect(store.replaceReminderWakes('account', [reminder], 5)).toBe(true);
-		expect(store.replaceReminderWakes('account', [], 5)).toBe(false);
-		const [claimed] = store.claimDueWakes(1_000);
-		store.markWakeDelivered(claimed, 1_000);
+		expect(await store.replaceReminderWakes('account', [reminder], 5)).toBe(true);
+		expect(await store.replaceReminderWakes('account', [], 5)).toBe(false);
+		const [claimed] = await store.claimDueWakes(1_000);
+		await store.markWakeDelivered(claimed, 1_000);
 
-		expect(store.replaceReminderWakes('account', [], 4)).toBe(false);
-		expect(store.listWakeTimes('account')).toEqual([1_000]);
-		expect(store.replaceReminderWakes('account', [], 6)).toBe(true);
-		expect(store.replaceReminderWakes('account', [reminder], 7)).toBe(true);
-		expect(store.claimDueWakes(1_000)).toEqual([]);
+		expect(await store.replaceReminderWakes('account', [], 4)).toBe(false);
+		expect(await store.replaceReminderWakes('account', [], 6)).toBe(true);
+		expect(await store.replaceReminderWakes('account', [reminder], 7)).toBe(true);
+		expect(await store.claimDueWakes(1_000)).toEqual([]);
 	});
 
-	it('does not schedule a wake time for wakes with no deliverable device', () => {
-		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.replaceReminderWakes('account', [wake('a', 5_000)]);
-		expect(store.nextWakeAt(1_000)).toBeNull();
-	});
+	it('stores the wake snapshot and revision as one monotonic ops state', async () => {
+		const { store, db } = createStore();
+		await store.createAccount('account', 'credential');
+		const older = wake('a', 1_000);
+		const newer = wake('b', 2_000);
 
-	it('ignores delivered wakes when projecting the next fire time', () => {
-		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.savePushDevice({
-			deviceId: 'device-aaaaaaaaaaaa',
-			endpoint: 'https://push.example/sub-a',
-			p256dh: 'p'.repeat(20),
-			auth: 'a'.repeat(16),
-			accountId: 'account'
+		expect(await store.replaceReminderWakes('account', [older], 5)).toBe(true);
+		expect(await store.replaceReminderWakes('account', [newer], 6)).toBe(true);
+		expect(await store.replaceReminderWakes('account', [older], 5)).toBe(false);
+
+		const revision = await db.ops.execute({
+			sql: 'SELECT revision FROM reminder_wake_revisions WHERE account_id = ?',
+			args: ['account']
 		});
-		store.replaceReminderWakes('account', [wake('a', 1_000), wake('b', 2_000)]);
-		const [claimed] = store.claimDueWakes(1_000);
-		store.markWakeDelivered(claimed, 1_000);
-		expect(store.nextWakeAt(1_000)).toBe(2_000);
-
-		store.releaseWakeClaim(claimed);
-		expect(store.nextWakeAt(1_000)).toBe(2_000);
+		const wakes = await db.ops.execute({
+			sql: 'SELECT wake_id AS wakeId FROM reminder_wakes WHERE account_id = ?',
+			args: ['account']
+		});
+		expect(revision.rows[0]?.revision).toBe(6);
+		expect(wakes.rows[0]?.wakeId).toBe(newer.id);
 	});
 
-	it('rejects uploads whose ciphertext is not base64url', () => {
+	it('rejects uploads whose ciphertext is not base64url', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		expect(() =>
+		await store.createAccount('account', 'credential');
+		await expect(
 			store.sync(
 				'account',
 				0,
@@ -709,16 +751,16 @@ describe('SQLite sync store', () => {
 				[],
 				10
 			)
-		).toThrow(/base64url/);
-		expect(store.sync('account', 0, [], [], 10).usage.envelopeCount).toBe(0);
+		).rejects.toThrow(/base64url/);
+		expect((await store.sync('account', 0, [], [], 10)).usage.envelopeCount).toBe(0);
 	});
 
-	it('keeps at most 32 push devices per account', () => {
+	it('keeps at most 32 push devices per account', async () => {
 		const { store } = createStore();
-		store.createAccount('account-a', 'credential-a');
-		store.createAccount('account-b', 'credential-b');
+		await store.createAccount('account-a', 'credential-a');
+		await store.createAccount('account-b', 'credential-b');
 		for (let index = 0; index < 33; index++) {
-			store.savePushDevice({
+			await store.savePushDevice({
 				accountId: 'account-a',
 				deviceId: `device-${String(index).padStart(12, '0')}`,
 				endpoint: `https://push.example/sub-${index}`,
@@ -726,31 +768,31 @@ describe('SQLite sync store', () => {
 				auth: 'a'.repeat(16)
 			});
 		}
-		store.savePushDevice({
+		await store.savePushDevice({
 			accountId: 'account-b',
 			deviceId: 'device-other000000',
 			endpoint: 'https://push.example/other',
 			p256dh: 'p'.repeat(20),
 			auth: 'a'.repeat(16)
 		});
-		expect(store.countPushDevices('account-a')).toBe(32);
-		expect(store.countPushDevices('account-b')).toBe(1);
-		expect(store.countPushDevices()).toBe(33);
+		expect(await store.countPushDevices('account-a')).toBe(32);
+		expect(await store.countPushDevices('account-b')).toBe(1);
+		expect(await store.countPushDevices()).toBe(33);
 	});
 
-	it('counts anonymous activity windows and deletes only stale accounts', () => {
+	it('counts anonymous activity windows and deletes only stale accounts', async () => {
 		const { store } = createStore();
 		const now = 60 * 24 * 60 * 60 * 1000;
-		store.createAccount('fresh', 'credential', now);
-		store.createAccount('week-old', 'credential', now - 8 * 24 * 60 * 60 * 1000);
-		store.createAccount('stale', 'credential', 1);
-		store.sync('fresh', 0, [{ id: 'note', slot: slot('a'), ciphertext: 'opaque' }], [], 10);
-		store.touchAccount('fresh', now);
-		store.touchAccount('week-old', now - 8 * 24 * 60 * 60 * 1000);
-		store.touchAccount('stale', 1);
+		await store.createAccount('fresh', 'credential', now);
+		await store.createAccount('week-old', 'credential', now - 8 * 24 * 60 * 60 * 1000);
+		await store.createAccount('stale', 'credential', 1);
+		await store.sync('fresh', 0, [{ id: 'note', slot: slot('a'), ciphertext: 'opaque' }], [], 10);
+		await store.touchAccount('fresh', now);
+		await store.touchAccount('week-old', now - 8 * 24 * 60 * 60 * 1000);
+		await store.touchAccount('stale', 1);
 
 		expect(
-			store.operatorUsage({
+			await store.operatorUsage({
 				now,
 				staleBefore: now - 20 * 24 * 60 * 60 * 1000
 			})
@@ -763,58 +805,128 @@ describe('SQLite sync store', () => {
 			staleAccounts: 1
 		});
 
-		expect(store.deleteInactiveAccounts(now - 20 * 24 * 60 * 60 * 1000)).toBe(1);
-		expect(store.getAuthCredential('stale')).toBeNull();
-		expect(store.getAuthCredential('fresh')).toBe('credential');
-		expect(store.getAuthCredential('week-old')).toBe('credential');
+		expect(await store.deleteInactiveAccounts(now - 20 * 24 * 60 * 60 * 1000)).toBe(1);
+		expect(await store.getAuthCredential('stale')).toBeNull();
+		expect(await store.getAuthCredential('fresh')).toBe('credential');
+		expect(await store.getAuthCredential('week-old')).toBe('credential');
 	});
 
-	it('treats pull-only sync as activity without changing stored ciphertext', () => {
+	it('treats pull-only sync as activity without changing stored ciphertext', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential', 1);
-		store.touchAccount('account', 1);
-		store.sync('account', 0, [], [], 10);
-		expect(store.deleteInactiveAccounts(Date.now() - 1_000)).toBe(0);
-		expect(store.getAuthCredential('account')).toBe('credential');
-		expect(store.aggregateUsage()).toEqual({
-			accounts: 1,
-			envelopeCount: 0,
-			ciphertextBytes: 0
-		});
+		await store.createAccount('account', 'credential', 1);
+		await store.touchAccount('account', 1);
+		await store.sync('account', 0, [], [], 10);
+		expect(await store.deleteInactiveAccounts(Date.now() - 1_000)).toBe(0);
+		expect(await store.getAuthCredential('account')).toBe('credential');
 	});
 
-	it('resets a cursor that is ahead of a restored relay sequence', () => {
-		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }], [], 10);
+	it('never deletes an account when a concurrent activity update wins first', async () => {
+		const { store, db } = createStore();
+		const cutoff = 1_000;
+		for (let index = 0; index < 20; index++) {
+			const accountId = `account-${index}`;
+			await store.createAccount(accountId, 'credential', 1);
+			const [activity] = await Promise.all([
+				db.relay.execute({
+					sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ? RETURNING account_id',
+					args: [cutoff + 1, accountId]
+				}),
+				store.deleteInactiveAccounts(cutoff)
+			]);
+			if (activity.rows.length > 0) {
+				expect(await store.getAuthCredential(accountId)).toBe('credential');
+			}
+		}
+	});
 
-		expect(store.sync('account', 50, [], [], 10)).toMatchObject({
+	it('resets a cursor and wake snapshot that are ahead of a restored relay sequence', async () => {
+		const { store, db } = createStore();
+		await store.createAccount('account', 'credential');
+		await store.sync(
+			'account',
+			0,
+			[{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }],
+			[],
+			10
+		);
+		await store.replaceReminderWakes('account', [wake('a', 1_000)], 50);
+
+		expect(await store.sync('account', 50, [], [], 10)).toMatchObject({
 			cursor: 0,
 			reset: true,
 			writesAccepted: false
 		});
+		const revisions = await db.ops.execute({
+			sql: 'SELECT revision FROM reminder_wake_revisions WHERE account_id = ?',
+			args: ['account']
+		});
+		const wakes = await db.ops.execute({
+			sql: 'SELECT wake_id FROM reminder_wakes WHERE account_id = ?',
+			args: ['account']
+		});
+		expect(revisions.rows).toHaveLength(0);
+		expect(wakes.rows).toHaveLength(0);
 	});
 
-	it('deletes an account and all of its opaque envelopes', () => {
+	it('deletes an account and all of its opaque envelopes', async () => {
 		const { store } = createStore();
-		store.createAccount('account', 'credential');
-		store.sync('account', 0, [{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }], [], 10);
-		store.savePushDevice({
+		await store.createAccount('account', 'credential');
+		await store.sync(
+			'account',
+			0,
+			[{ id: 'record', slot: slot('a'), ciphertext: 'opaque' }],
+			[],
+			10
+		);
+		await store.savePushDevice({
 			accountId: 'account',
 			deviceId: 'device-aaaaaaaaaaaa',
 			endpoint: 'https://push.example/account',
 			p256dh: 'p'.repeat(20),
 			auth: 'a'.repeat(16)
 		});
-		store.replaceReminderWakes('account', [wake('a', 1_000)]);
-		expect(store.deleteAccount('account')).toBe(true);
-		expect(store.getAuthCredential('account')).toBeNull();
-		expect(store.countPushDevices()).toBe(0);
-		expect(store.listWakeTimes('account')).toEqual([]);
-		expect(store.aggregateUsage()).toEqual({
-			accounts: 0,
-			envelopeCount: 0,
-			ciphertextBytes: 0
+		await store.replaceReminderWakes('account', [wake('a', 1_000)]);
+		expect(await store.deleteAccount('account')).toBe(true);
+		expect(await store.getAuthCredential('account')).toBeNull();
+		expect(await store.countPushDevices()).toBe(0);
+	});
+
+	it('retries durable ops cleanup after relay deletion has committed', async () => {
+		const db = testDb();
+		let failOpsCleanup = true;
+		const ops = new Proxy(db.ops, {
+			get(target, property) {
+				if (property === 'batch') {
+					return (...args: Parameters<Client['batch']>) => {
+						if (failOpsCleanup) throw new Error('ops unavailable');
+						return target.batch(...args);
+					};
+				}
+				const value = Reflect.get(target, property, target) as unknown;
+				return typeof value === 'function' ? value.bind(target) : value;
+			}
+		}) as Client;
+		const store = new SyncStore({ relay: db.relay, ops, ready: db.ready });
+		await store.createAccount('account', 'credential');
+		await store.savePushDevice({
+			accountId: 'account',
+			deviceId: 'device-aaaaaaaaaaaa',
+			endpoint: 'https://push.example/account',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16)
 		});
+
+		await expect(store.deleteAccount('account')).rejects.toThrow('ops unavailable');
+		expect(await store.getAuthCredential('account')).toBeNull();
+		expect(
+			(await db.relay.execute('SELECT account_id FROM pending_ops_deletions')).rows
+		).toHaveLength(1);
+
+		failOpsCleanup = false;
+		expect(await store.deleteAccount('account')).toBe(false);
+		expect(await store.countPushDevices()).toBe(0);
+		expect(
+			(await db.relay.execute('SELECT account_id FROM pending_ops_deletions')).rows
+		).toHaveLength(0);
 	});
 });

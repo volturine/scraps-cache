@@ -4,7 +4,7 @@ import {
 	parseRetentionInactiveDays,
 	staleBeforeMs
 } from '$lib/server/operatorConfig';
-import { retentionManager, type RetentionStatus } from '$lib/server/retentionManager';
+import { getRetentionStatus, type RetentionStatus } from '$lib/server/retentionSweep';
 import { getSyncStore, type OperatorUsage, type SyncQuotas } from '$lib/server/syncStore';
 
 export type OperatorSnapshot = {
@@ -52,10 +52,10 @@ export function buildOperatorSnapshot(
 	};
 }
 
-export function getOperatorSnapshot(now = Date.now()) {
+export async function getOperatorSnapshot(now = Date.now()): Promise<OperatorSnapshot> {
 	const store = getSyncStore();
 	const retentionInactiveDays = parseRetentionInactiveDays();
-	const usage = store.operatorUsage({
+	const usage = await store.operatorUsage({
 		now,
 		staleBefore: staleBeforeMs(retentionInactiveDays, now)
 	});
@@ -63,7 +63,7 @@ export function getOperatorSnapshot(now = Date.now()) {
 		usage,
 		store.getQuotas(),
 		processActivity(),
-		retentionManager.getStatus(),
+		await getRetentionStatus(),
 		now,
 		retentionInactiveDays
 	);

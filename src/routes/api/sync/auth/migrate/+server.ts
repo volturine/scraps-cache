@@ -1,20 +1,23 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import {
-	createSyncSession,
+	getSyncAuth,
 	isLegacySyncCredential,
 	sameLegacySyncSecret,
 	verifySyncMigration
 } from '$lib/server/syncAuth';
 import { getSyncStore } from '$lib/server/syncStore';
 import { readJsonBody } from '$lib/server/request';
-import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const limited = publicApiLimiter.check(`auth-migrate-ip:${clientAddress(getClientAddress)}`, {
-		capacity: 120,
-		refillWindowMs: 60 * 60 * 1000
-	});
+	const limited = await getPublicApiLimiter().check(
+		`auth-migrate-ip:${clientAddress(getClientAddress)}`,
+		{
+			capacity: 120,
+			refillWindowMs: 60 * 60 * 1000
+		}
+	);
 	if (!limited.allowed) return rateLimitResponse(limited);
 	let body: {
 		accountId?: unknown;
@@ -39,20 +42,23 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	) {
 		return json({ error: 'Authentication upgrade failed' }, { status: 401 });
 	}
-	const accountLimited = publicApiLimiter.check(`auth-migrate-account:${body.accountId}`, {
-		capacity: 5,
-		refillWindowMs: 60 * 60 * 1000
-	});
+	const accountLimited = await getPublicApiLimiter().check(
+		`auth-migrate-account:${body.accountId}`,
+		{
+			capacity: 5,
+			refillWindowMs: 60 * 60 * 1000
+		}
+	);
 	if (!accountLimited.allowed) return rateLimitResponse(accountLimited);
 	const store = getSyncStore();
-	const credential = store.getAuthCredential(body.accountId);
+	const credential = await store.getAuthCredential(body.accountId);
 	if (
 		!credential ||
 		!isLegacySyncCredential(credential) ||
 		!(await sameLegacySyncSecret(credential, body.authSecret)) ||
-		!store.replaceAuthCredential(body.accountId, credential, body.authPublicKey)
+		!(await store.replaceAuthCredential(body.accountId, credential, body.authPublicKey))
 	) {
 		return json({ error: 'Authentication upgrade failed' }, { status: 401 });
 	}
-	return json(createSyncSession(body.accountId));
+	return json(await getSyncAuth().createSyncSession(body.accountId));
 };

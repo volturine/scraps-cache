@@ -8,6 +8,7 @@ import {
 	type ScryptOptions
 } from 'node:crypto';
 import { promisify } from 'node:util';
+import { getDb, type Db } from '$lib/server/db';
 
 const encoder = new TextEncoder();
 const CHALLENGE_TTL_MS = 60_000;
@@ -24,21 +25,6 @@ const LEGACY_SCRYPT_PARAMS: ScryptOptions = {
 	p: 1,
 	maxmem: 128 * 1024 * 1024
 };
-
-type PendingChallenge = { accountId: string; challenge: string; expiresAt: number };
-type Session = { accountId: string; expiresAt: number };
-
-const challenges = new Map<string, PendingChallenge>();
-const sessions = new Map<string, Session>();
-
-function pruneExpiredAuthState(now: number): void {
-	for (const [id, challenge] of challenges) {
-		if (challenge.expiresAt <= now) challenges.delete(id);
-	}
-	for (const [hash, session] of sessions) {
-		if (session.expiresAt <= now) sessions.delete(hash);
-	}
-}
 
 function base64Url(bytes: Uint8Array): string {
 	return Buffer.from(bytes).toString('base64url');
@@ -133,70 +119,118 @@ export async function sameLegacySyncSecret(hash: string, secret: string): Promis
 	}
 }
 
-export function createSyncChallenge(accountId: string): {
-	challengeId: string;
-	challenge: string;
-	expiresAt: number;
-} {
-	pruneExpiredAuthState(Date.now());
-	const challengeId = base64Url(randomBytes(16));
-	const challenge = base64Url(randomBytes(32));
-	const expiresAt = Date.now() + CHALLENGE_TTL_MS;
-	challenges.set(challengeId, { accountId, challenge, expiresAt });
-	return { challengeId, challenge, expiresAt };
-}
+/** Shared auth state: challenge/response login and bearer sessions, durable across
+ * server isolates so any instance can issue or accept a challenge. */
+export class SyncAuth {
+	constructor(private readonly db: Db) {}
 
-export function exchangeSyncChallenge(
-	accountId: string,
-	publicKey: string,
-	challengeId: string,
-	signature: string
-): { accessToken: string; expiresAt: number } | null {
-	pruneExpiredAuthState(Date.now());
-	const pending = challenges.get(challengeId);
-	challenges.delete(challengeId);
-	if (!pending || pending.accountId !== accountId || pending.expiresAt <= Date.now()) return null;
-	if (
-		!verifySignature(
-			publicKey,
-			signature,
-			`scraps-cache-auth-challenge:v1:${accountId}:${pending.challenge}`
+	async createSyncChallenge(accountId: string): Promise<{
+		challengeId: string;
+		challenge: string;
+		expiresAt: number;
+	}> {
+		await this.db.ready;
+		const now = Date.now();
+		await this.db.ops.execute({
+			sql: 'DELETE FROM auth_challenges WHERE expires_at <= ?',
+			args: [now]
+		});
+		const challengeId = base64Url(randomBytes(16));
+		const challenge = base64Url(randomBytes(32));
+		const expiresAt = now + CHALLENGE_TTL_MS;
+		await this.db.ops.execute({
+			sql: 'INSERT INTO auth_challenges(challenge_id, account_id, challenge, expires_at) VALUES (?, ?, ?, ?)',
+			args: [challengeId, accountId, challenge, expiresAt]
+		});
+		return { challengeId, challenge, expiresAt };
+	}
+
+	async exchangeSyncChallenge(
+		accountId: string,
+		publicKey: string,
+		challengeId: string,
+		signature: string
+	): Promise<{ accessToken: string; expiresAt: number } | null> {
+		await this.db.ready;
+		const now = Date.now();
+		const consumed = await this.db.ops.execute({
+			sql: `DELETE FROM auth_challenges
+			 WHERE challenge_id = ? AND account_id = ? AND expires_at > ?
+			 RETURNING challenge AS challenge`,
+			args: [challengeId, accountId, now]
+		});
+		const pending = consumed.rows[0] as unknown as { challenge: string } | undefined;
+		if (!pending) return null;
+		if (
+			!verifySignature(
+				publicKey,
+				signature,
+				`scraps-cache-auth-challenge:v1:${accountId}:${pending.challenge}`
+			)
 		)
-	)
-		return null;
-	return createSyncSession(accountId);
-}
-
-export function createSyncSession(accountId: string): { accessToken: string; expiresAt: number } {
-	const accessToken = base64Url(randomBytes(32));
-	const expiresAt = Date.now() + SESSION_TTL_MS;
-	sessions.set(tokenHash(accessToken), { accountId, expiresAt });
-	return { accessToken, expiresAt };
-}
-
-export function authenticateSyncRequest(request: Request): string | null {
-	pruneExpiredAuthState(Date.now());
-	const authorization = request.headers.get('authorization');
-	if (!authorization?.startsWith('Bearer ')) return null;
-	const token = authorization.slice('Bearer '.length);
-	if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
-	const hash = tokenHash(token);
-	const session = sessions.get(hash);
-	if (!session) return null;
-	if (session.expiresAt <= Date.now()) {
-		sessions.delete(hash);
-		return null;
+			return null;
+		return this.createSyncSession(accountId);
 	}
-	return session.accountId;
-}
 
-export function revokeSyncSessions(accountId: string): void {
-	for (const [hash, session] of sessions) {
-		if (session.accountId === accountId) sessions.delete(hash);
+	async createSyncSession(accountId: string): Promise<{ accessToken: string; expiresAt: number }> {
+		await this.db.ready;
+		const accessToken = base64Url(randomBytes(32));
+		const expiresAt = Date.now() + SESSION_TTL_MS;
+		await this.db.ops.execute({
+			sql: 'INSERT INTO auth_sessions(token_hash, account_id, expires_at) VALUES (?, ?, ?)',
+			args: [tokenHash(accessToken), accountId, expiresAt]
+		});
+		return { accessToken, expiresAt };
+	}
+
+	async authenticateSyncRequest(request: Request): Promise<string | null> {
+		await this.db.ready;
+		const authorization = request.headers.get('authorization');
+		if (!authorization?.startsWith('Bearer ')) return null;
+		const token = authorization.slice('Bearer '.length);
+		if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+		const hash = tokenHash(token);
+		const result = await this.db.ops.execute({
+			sql: 'SELECT account_id AS accountId, expires_at AS expiresAt FROM auth_sessions WHERE token_hash = ?',
+			args: [hash]
+		});
+		const session = result.rows[0] as unknown as
+			{ accountId: string; expiresAt: number } | undefined;
+		if (!session) return null;
+		if (session.expiresAt <= Date.now()) {
+			await this.db.ops.execute({
+				sql: 'DELETE FROM auth_sessions WHERE token_hash = ?',
+				args: [hash]
+			});
+			return null;
+		}
+		return session.accountId;
+	}
+
+	async revokeSyncSessions(accountId: string): Promise<void> {
+		await this.db.ready;
+		await this.db.ops.execute({
+			sql: 'DELETE FROM auth_sessions WHERE account_id = ?',
+			args: [accountId]
+		});
+	}
+
+	async pruneExpired(now = Date.now()): Promise<void> {
+		await this.db.ready;
+		await this.db.ops.execute({
+			sql: 'DELETE FROM auth_challenges WHERE expires_at <= ?',
+			args: [now]
+		});
+		await this.db.ops.execute({
+			sql: 'DELETE FROM auth_sessions WHERE expires_at <= ?',
+			args: [now]
+		});
 	}
 }
 
-export function resetSyncAuthForTests(): void {
-	challenges.clear();
-	sessions.clear();
+let singleton: SyncAuth | undefined;
+
+export function getSyncAuth(): SyncAuth {
+	singleton ??= new SyncAuth(getDb());
+	return singleton;
 }

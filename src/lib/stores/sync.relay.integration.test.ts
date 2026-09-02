@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { testDb, cleanupTestDbs } from '$lib/server/testDb';
 import { SyncQuotaExceededError, SyncStore as RelayStore } from '$lib/server/syncStore';
 import { createSyncIdentity, decryptSyncPayload, type SyncIdentity } from '$lib/syncPairing';
 import {
@@ -14,8 +12,7 @@ import {
 import { SyncStore, type SyncSnapshot } from './sync.svelte';
 import type { Note, NoteImage } from '$lib/types';
 
-const relays: RelayStore[] = [];
-const directories: string[] = [];
+afterEach(() => cleanupTestDbs());
 
 function photo(id: string, dataUrl: string): NoteImage {
 	return {
@@ -91,7 +88,7 @@ function wire(
 		try {
 			return {
 				success: true,
-				data: relay.sync(
+				data: await relay.sync(
 					client.account!.accountId,
 					body.cursor,
 					body.envelopes as never,
@@ -119,20 +116,10 @@ describe('client sync against the sqlite relay', () => {
 		vi.restoreAllMocks();
 	});
 
-	afterEach(() => {
-		for (const relay of relays.splice(0)) relay.close();
-		for (const directory of directories.splice(0)) {
-			rmSync(directory, { recursive: true, force: true });
-		}
-	});
-
 	it('lets a second device download photos after the first device is wiped', async () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
-		directories.push(directory);
-		const relay = new RelayStore(directory);
-		relays.push(relay);
+		const relay = new RelayStore(testDb());
 		const identity = createSyncIdentity();
-		relay.createAccount(identity.accountId, 'credential');
+		await relay.createAccount(identity.accountId, 'credential');
 		const image = photo('old', 'data:image/png;base64,QQ==');
 		const local = noteWithPhoto(image);
 
@@ -165,12 +152,9 @@ describe('client sync against the sqlite relay', () => {
 	});
 
 	it('keeps the previous photo on the relay until the replacement bytes are stored', async () => {
-		const directory = mkdtempSync(join(tmpdir(), 'scrapscache-sync-'));
-		directories.push(directory);
-		const relay = new RelayStore(directory);
-		relays.push(relay);
+		const relay = new RelayStore(testDb());
 		const identity: SyncIdentity = createSyncIdentity();
-		relay.createAccount(identity.accountId, 'credential');
+		await relay.createAccount(identity.accountId, 'credential');
 		const oldImage = photo('old', 'data:image/png;base64,QQ==');
 		const newImage = photo('new', 'data:image/png;base64,Qg==');
 		const original = noteWithPhoto(oldImage);
@@ -219,7 +203,7 @@ describe('client sync against the sqlite relay', () => {
 				limit?: number;
 			};
 			if (body.deleteSlots.some((slot) => slot.slot === oldSlot)) {
-				const page = relay.sync(identity.accountId, 0, [], [], 50);
+				const page = await relay.sync(identity.accountId, 0, [], [], 50);
 				const hasNew = page.envelopes.some((envelope) => {
 					try {
 						const payload = decryptSyncPayload(identity.syncKey, envelope.ciphertext) as {
@@ -233,7 +217,7 @@ describe('client sync against the sqlite relay', () => {
 				});
 				expect(hasNew).toBe(true);
 			}
-			const data = relay.sync(
+			const data = await relay.sync(
 				identity.accountId,
 				body.cursor,
 				body.envelopes as never,

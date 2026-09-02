@@ -1,11 +1,10 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { getSyncStore } from '$lib/server/syncStore';
-import { authenticateSyncRequest } from '$lib/server/syncAuth';
+import { getSyncAuth } from '$lib/server/syncAuth';
 import { readJsonBody } from '$lib/server/request';
-import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 import { recordSqliteError } from '$lib/server/metrics';
-import { wakeScheduler } from '$lib/server/wakeScheduler';
 import {
 	DEVICE_ID_RE,
 	isPublicEndpoint,
@@ -16,7 +15,7 @@ import {
 const MAX_REQUEST_BYTES = 128_000;
 
 function checkAddressLimit(getClientAddress: () => string) {
-	return publicApiLimiter.check(`push-ip:${clientAddress(getClientAddress)}`, {
+	return getPublicApiLimiter().check(`push-ip:${clientAddress(getClientAddress)}`, {
 		capacity: 40,
 		refillWindowMs: 60_000
 	});
@@ -24,7 +23,7 @@ function checkAddressLimit(getClientAddress: () => string) {
 
 /** Register or refresh this device without changing the account wake snapshot. */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const addressLimit = checkAddressLimit(getClientAddress);
+	const addressLimit = await checkAddressLimit(getClientAddress);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
 	let body: { deviceId?: unknown; subscription?: unknown };
 	try {
@@ -38,25 +37,24 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (!isPushSubscription(body.subscription)) {
 		return json({ error: 'A push subscription is required' }, { status: 400 });
 	}
-	const accountId = authenticateSyncRequest(request);
+	const accountId = await getSyncAuth().authenticateSyncRequest(request);
 	if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
 	if (!(await isPublicEndpoint(body.subscription.endpoint))) {
 		return json({ error: 'The push endpoint must be a public https origin' }, { status: 400 });
 	}
-	const deviceLimit = publicApiLimiter.check(`push-device:${body.deviceId}`, {
+	const deviceLimit = await getPublicApiLimiter().check(`push-device:${body.deviceId}`, {
 		capacity: 20,
 		refillWindowMs: 60_000
 	});
 	if (!deviceLimit.allowed) return rateLimitResponse(deviceLimit);
 	try {
-		getSyncStore().savePushDevice({
+		await getSyncStore().savePushDevice({
 			accountId,
 			deviceId: body.deviceId,
 			endpoint: body.subscription.endpoint,
 			p256dh: body.subscription.keys.p256dh,
 			auth: body.subscription.keys.auth
 		});
-		wakeScheduler.nudge();
 		return json({ ok: true });
 	} catch (error) {
 		recordSqliteError(error);
@@ -66,7 +64,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 
 /** Replace the account-wide opaque wake snapshot after client sync reconciliation. */
 export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
-	const addressLimit = checkAddressLimit(getClientAddress);
+	const addressLimit = await checkAddressLimit(getClientAddress);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
 	let body: { wakes?: unknown; revision?: unknown };
 	try {
@@ -74,7 +72,7 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 	} catch {
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
-	const accountId = authenticateSyncRequest(request);
+	const accountId = await getSyncAuth().authenticateSyncRequest(request);
 	if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
 	const wakes = parseReminderWakes(body.wakes, Date.now());
 	if (!wakes) return json({ error: 'Invalid reminder wakes' }, { status: 400 });
@@ -82,9 +80,12 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 		return json({ error: 'A sync revision is required' }, { status: 400 });
 	}
 	try {
-		const accepted = getSyncStore().replaceReminderWakes(accountId, wakes, Number(body.revision));
+		const accepted = await getSyncStore().replaceReminderWakes(
+			accountId,
+			wakes,
+			Number(body.revision)
+		);
 		if (!accepted) return json({ error: 'Stale reminder snapshot' }, { status: 409 });
-		wakeScheduler.nudge();
 		return json({ ok: true, wakes: wakes.length });
 	} catch (error) {
 		recordSqliteError(error);
@@ -94,7 +95,7 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 
 /** Stop deliveries for this browser while retaining other devices and account wakes. */
 export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
-	const addressLimit = checkAddressLimit(getClientAddress);
+	const addressLimit = await checkAddressLimit(getClientAddress);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
 	let body: { deviceId?: unknown };
 	try {
@@ -105,10 +106,10 @@ export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 	if (typeof body.deviceId !== 'string' || !DEVICE_ID_RE.test(body.deviceId)) {
 		return json({ error: 'A device id is required' }, { status: 400 });
 	}
-	const accountId = authenticateSyncRequest(request);
+	const accountId = await getSyncAuth().authenticateSyncRequest(request);
 	if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
 	try {
-		getSyncStore().deletePushDevice(accountId, body.deviceId);
+		await getSyncStore().deletePushDevice(accountId, body.deviceId);
 		return new Response(null, { status: 204 });
 	} catch (error) {
 		recordSqliteError(error);

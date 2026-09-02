@@ -18,8 +18,7 @@ COPY --from=node:24-alpine /usr/local/bin/node /usr/local/bin/node
 ENV NODE_ENV=production \
 	HOST=0.0.0.0 \
 	PORT=3000 \
-	BODY_SIZE_LIMIT=110M \
-	SCRAPSCACHE_SYNC_DATA_DIR=/data
+	BODY_SIZE_LIMIT=110M
 
 WORKDIR /app
 
@@ -28,11 +27,8 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/package.json ./package.json
 RUN apk add --no-cache libstdc++ libgcc \
 	&& addgroup -g 1000 -S node \
-	&& adduser -S -D -H -u 1000 -G node node \
-	&& mkdir -p /data \
-	&& chown node:node /data
+	&& adduser -S -D -H -u 1000 -G node node
 
-VOLUME ["/data"]
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

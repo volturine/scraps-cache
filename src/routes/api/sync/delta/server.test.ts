@@ -12,15 +12,18 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('$lib/server/syncStore', () => ({
 	SyncQuotaExceededError: mocks.QuotaError,
+	MAX_SYNC_MUTATIONS_PER_REQUEST: 2_000,
 	getSyncStore: () => ({
 		sync: mocks.sync
 	})
 }));
-vi.mock('$lib/server/syncAuth', () => ({ authenticateSyncRequest: mocks.authenticate }));
+vi.mock('$lib/server/syncAuth', () => ({
+	getSyncAuth: () => ({ authenticateSyncRequest: mocks.authenticate })
+}));
 vi.mock('$lib/server/rateLimit', () => ({
 	clientAddress: () => '127.0.0.1',
 	enterSyncRequest: () => vi.fn(),
-	publicApiLimiter: { check: (key: string) => mocks.limitChecks(key) },
+	getPublicApiLimiter: () => ({ check: (key: string) => mocks.limitChecks(key) }),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
 vi.mock('$lib/server/metrics', () => ({

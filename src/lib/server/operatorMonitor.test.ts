@@ -27,7 +27,6 @@ describe('operator snapshot', () => {
 			emptyActivity,
 			{
 				enabled: true,
-				running: false,
 				inactiveDays: 365,
 				lastRunAt: 10,
 				lastSuccessAt: 10,
@@ -70,7 +69,6 @@ describe('operator snapshot', () => {
 			emptyActivity,
 			{
 				enabled: false,
-				running: false,
 				inactiveDays: 0,
 				lastRunAt: 0,
 				lastSuccessAt: 0,

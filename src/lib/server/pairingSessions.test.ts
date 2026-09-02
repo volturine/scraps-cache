@@ -1,54 +1,85 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, afterEach } from 'vitest';
+import { createClient, type Client } from '@libsql/client/node';
 import { PairingSessions } from './pairingSessions';
+import { createDb, type Db } from './db';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 const key = 'k'.repeat(43);
-const grant = { existingPublicKey: 'e'.repeat(43), ciphertext: 'cipher' };
+const grant = { ciphertext: 'cipher' };
+
+let cleanup: (() => void)[] = [];
+
+afterEach(() => {
+	for (const fn of cleanup) fn();
+	cleanup = [];
+});
+
+function testDb(): Db {
+	const dir = mkdtempSync(join(tmpdir(), 'scraps-test-'));
+	cleanup.push(() => rmSync(dir, { recursive: true }));
+	const relay = createClient({ url: 'file:' + join(dir, 'relay.db') });
+	const ops = createClient({ url: 'file:' + join(dir, 'ops.db') });
+	return createDb({ relay, ops });
+}
+
 describe('anonymous pairing rendezvous', () => {
-	it('matches two independently-started devices and relays only an opaque grant', () => {
+	it('matches two independently-started devices and relays only an opaque grant', async () => {
 		const ids = ['old', 'new'];
-		const s = new PairingSessions(() => ids.shift()!);
-		const old = s.start('tag', 'existing', key, 1);
-		const fresh = s.start('tag', 'new', key, 2);
-		expect(s.poll(old.id, 3)).toMatchObject({ state: 'matched' });
-		expect(s.submitGrant(old.id, grant, 4)).toEqual({ success: true });
-		expect(s.poll(fresh.id, 5)).toMatchObject({ state: 'connected', grant });
+		const s = new PairingSessions(testDb(), () => ids.shift()!);
+		const old = await s.start('tag', 'existing', key, 1);
+		const fresh = await s.start('tag', 'new', key, 2);
+		expect(await s.poll(old.id, 3)).toMatchObject({ state: 'matched' });
+		expect(await s.submitGrant(old.id, grant, 4)).toEqual({ success: true });
+		expect(await s.poll(fresh.id, 5)).toMatchObject({ state: 'connected', grant });
 	});
-	it('expires both sides after sixty seconds', () => {
-		const s = new PairingSessions(() => 'old');
-		const old = s.start('tag', 'existing', key, 1);
-		expect(s.poll(old.id, 60_001)).toEqual({ state: 'expired' });
+	it('expires both sides after sixty seconds', async () => {
+		const s = new PairingSessions(testDb(), () => 'old');
+		const old = await s.start('tag', 'existing', key, 1);
+		expect(await s.poll(old.id, 60_001)).toEqual({ state: 'expired' });
 	});
-	it('reports expired, not not-found, to the surviving peer', () => {
+	it('reports expired, not not-found, to the surviving peer', async () => {
 		const ids = ['old', 'new'];
-		const s = new PairingSessions(() => ids.shift()!);
-		const old = s.start('tag', 'existing', key, 1);
-		const fresh = s.start('tag', 'new', key, 2);
-		expect(s.poll(old.id, 60_001)).toEqual({ state: 'expired' });
-		expect(s.poll(fresh.id, 60_002)).toEqual({ state: 'expired' });
+		const s = new PairingSessions(testDb(), () => ids.shift()!);
+		const old = await s.start('tag', 'existing', key, 1);
+		const fresh = await s.start('tag', 'new', key, 2);
+		expect(await s.poll(old.id, 60_001)).toEqual({ state: 'expired' });
+		expect(await s.poll(fresh.id, 60_002)).toEqual({ state: 'expired' });
 	});
-	it('accepts only the first grant per session', () => {
+	it('accepts only the first grant per session', async () => {
 		const ids = ['old', 'new'];
-		const s = new PairingSessions(() => ids.shift()!);
-		const old = s.start('tag', 'existing', key, 1);
-		s.start('tag', 'new', key, 2);
-		expect(s.submitGrant(old.id, grant, 4)).toEqual({ success: true });
-		expect(s.submitGrant(old.id, { ciphertext: 'second' }, 5)).toEqual({
+		const s = new PairingSessions(testDb(), () => ids.shift()!);
+		const old = await s.start('tag', 'existing', key, 1);
+		await s.start('tag', 'new', key, 2);
+		expect(await s.submitGrant(old.id, grant, 4)).toEqual({ success: true });
+		expect(await s.submitGrant(old.id, { ciphertext: 'second' }, 5)).toEqual({
 			success: false,
 			reason: 'already-granted'
 		});
-		expect(s.poll('new', 6)).toMatchObject({ state: 'connected', grant });
+		expect(await s.poll('new', 6)).toMatchObject({ state: 'connected', grant });
 	});
-	it('rejects grants that have no matched peer yet', () => {
-		const s = new PairingSessions(() => 'fresh');
-		const existing = s.start('tag', 'existing', key, 1);
-		const fresh = s.start('other', 'new', key, 2);
-		expect(s.submitGrant(existing.id, grant, 3)).toEqual({ success: false, reason: 'unmatched' });
-		expect(s.submitGrant(fresh.id, grant, 4)).toEqual({ success: false, reason: 'unmatched' });
+	it('rejects grants that have no matched peer yet', async () => {
+		let id = 0;
+		const s = new PairingSessions(testDb(), () => `id-${id++}`);
+		const existing = await s.start('tag', 'existing', key, 1);
+		const fresh = await s.start('other', 'new', key, 2);
+		expect(await s.submitGrant(existing.id, grant, 3)).toEqual({
+			success: false,
+			reason: 'unmatched'
+		});
+		expect(await s.submitGrant(fresh.id, grant, 4)).toEqual({
+			success: false,
+			reason: 'unmatched'
+		});
 	});
-	it('refuses to start sessions once the rendezvous table is full', () => {
+	it('refuses to start sessions once the rendezvous table is full', async () => {
 		const ids = ['first', 'second'];
-		const s = new PairingSessions(() => ids.shift()!, 2);
-		s.start('tag-a', 'existing', key, 1);
-		s.start('tag-b', 'new', key, 2);
-		expect(() => s.start('tag-c', 'existing', key, 3)).toThrow('Pairing rendezvous is busy');
+		const s = new PairingSessions(testDb(), () => ids.shift()!, 2);
+		await s.start('tag-a', 'existing', key, 1);
+		await s.start('tag-b', 'new', key, 2);
+		await expect(s.start('tag-c', 'existing', key, 3)).rejects.toThrow(
+			'Pairing rendezvous is busy'
+		);
 	});
 });

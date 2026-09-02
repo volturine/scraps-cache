@@ -10,11 +10,12 @@ const MAX_REQUEST_BYTES = 1_024;
 type QuotaBody = { accountId?: unknown; maxBytes?: unknown };
 type AccountQuotaBody = { accountId: string; maxBytes?: unknown };
 
-function authorize(request: Request, getClientAddress: () => string): Response | null {
-	const limit = checkAdminApiLimit(getClientAddress);
-	if (!limit.allowed) return rateLimitResponse(limit);
-	if (!isAdminAuthorized(request)) return unauthorizedAdminResponse();
-	return null;
+function authorize(request: Request, getClientAddress: () => string): Promise<Response | null> {
+	return checkAdminApiLimit(getClientAddress).then((limit) => {
+		if (!limit.allowed) return rateLimitResponse(limit);
+		if (!isAdminAuthorized(request)) return unauthorizedAdminResponse();
+		return null;
+	});
 }
 
 async function readAccount(request: Request): Promise<AccountQuotaBody | null> {
@@ -29,18 +30,18 @@ async function readAccount(request: Request): Promise<AccountQuotaBody | null> {
 }
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const rejected = authorize(request, getClientAddress);
+	const rejected = await authorize(request, getClientAddress);
 	if (rejected) return rejected;
 	const body = await readAccount(request);
 	if (!body) return json({ error: 'Invalid request body' }, { status: 400 });
-	const quota = getSyncStore().getAccountByteQuota(body.accountId);
+	const quota = await getSyncStore().getAccountByteQuota(body.accountId);
 	return quota
 		? json(quota, { headers: { 'cache-control': 'no-store' } })
 		: json({ error: 'Sync account not found' }, { status: 404 });
 };
 
 export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
-	const rejected = authorize(request, getClientAddress);
+	const rejected = await authorize(request, getClientAddress);
 	if (rejected) return rejected;
 	const body = await readAccount(request);
 	if (!body || !Number.isSafeInteger(body.maxBytes) || Number(body.maxBytes) <= 0) {
@@ -52,24 +53,24 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 		);
 	}
 	const store = getSyncStore();
-	if (!store.setAccountByteQuota(body.accountId, Number(body.maxBytes))) {
+	if (!(await store.setAccountByteQuota(body.accountId, Number(body.maxBytes)))) {
 		return json({ error: 'Sync account not found' }, { status: 404 });
 	}
-	return json(store.getAccountByteQuota(body.accountId), {
+	return json(await store.getAccountByteQuota(body.accountId), {
 		headers: { 'cache-control': 'no-store' }
 	});
 };
 
 export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
-	const rejected = authorize(request, getClientAddress);
+	const rejected = await authorize(request, getClientAddress);
 	if (rejected) return rejected;
 	const body = await readAccount(request);
 	if (!body) return json({ error: 'Invalid request body' }, { status: 400 });
 	const store = getSyncStore();
-	if (!store.clearAccountByteQuota(body.accountId)) {
+	if (!(await store.clearAccountByteQuota(body.accountId))) {
 		return json({ error: 'Sync account not found' }, { status: 404 });
 	}
-	return json(store.getAccountByteQuota(body.accountId), {
+	return json(await store.getAccountByteQuota(body.accountId), {
 		headers: { 'cache-control': 'no-store' }
 	});
 };

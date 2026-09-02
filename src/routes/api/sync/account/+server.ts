@@ -1,21 +1,24 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { getSyncStore } from '$lib/server/syncStore';
-import { authenticateSyncRequest, revokeSyncSessions } from '$lib/server/syncAuth';
-import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { getSyncAuth } from '$lib/server/syncAuth';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
 export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
-	const limited = publicApiLimiter.check(`delete-account:${clientAddress(getClientAddress)}`, {
-		capacity: 5,
-		refillWindowMs: 60 * 60 * 1000
-	});
+	const limited = await getPublicApiLimiter().check(
+		`delete-account:${clientAddress(getClientAddress)}`,
+		{
+			capacity: 5,
+			refillWindowMs: 60 * 60 * 1000
+		}
+	);
 	if (!limited.allowed) return rateLimitResponse(limited);
-	const accountId = authenticateSyncRequest(request);
+	const accountId = await getSyncAuth().authenticateSyncRequest(request);
 	if (!accountId) return json({ error: 'Account could not be deleted' }, { status: 401 });
 	try {
 		const store = getSyncStore();
-		store.deleteAccount(accountId);
-		revokeSyncSessions(accountId);
+		await store.deleteAccount(accountId);
+		await getSyncAuth().revokeSyncSessions(accountId);
 		return new Response(null, { status: 204 });
 	} catch (error) {
 		console.error('[sync] account deletion failed');
