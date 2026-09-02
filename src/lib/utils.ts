@@ -89,6 +89,15 @@ export function dayKey(ts: number): string {
 	return `${d.getFullYear()}-${month}-${day}`;
 }
 
+/** Use the reminder picker's next-hour default time on a specific local calendar day. */
+export function reminderTimeForDay(key: string, nowMs = Date.now()): number {
+	const [year, month, day] = key.split('-').map(Number);
+	const reminder = new Date(nowMs);
+	reminder.setHours(reminder.getHours() + 1, 0, 0, 0);
+	reminder.setFullYear(year, month - 1, day);
+	return reminder.getTime();
+}
+
 /** True when a reminder timestamp is in the past. */
 export function isReminderOverdue(ts: number | null, now = Date.now()): boolean {
 	return ts != null && ts < now;
