@@ -18,6 +18,7 @@
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 	import { attachAppViewport } from '$lib/appViewport';
 	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
+	import { dayKey, reminderTimeForDay } from '$lib/utils';
 
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
@@ -98,7 +99,11 @@
 		const n = notesStore.createNote({
 			title: '',
 			body: '',
-			labels
+			labels,
+			reminder:
+				uiStore.view === 'reminders'
+					? reminderTimeForDay(uiStore.reminderFilter?.from ?? dayKey(Date.now()))
+					: null
 		});
 		editingId = n.id;
 		applyEditorOpen(true);

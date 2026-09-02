@@ -59,6 +59,8 @@ export class UIStore {
 	/** Committed search value; lags the input by a short debounce. */
 	search = $state('');
 	settingsOpen = $state(false);
+	/** Ephemeral calendar selection used when creating notes from the reminders view. */
+	reminderFilter = $state<{ from: string; to: string | null } | null>(null);
 	/** Views that have been shown this session and should stay mounted. */
 	opened = $state<Record<View, boolean>>({ ...CLOSED_VIEWS });
 
