@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayKey, formatReminderCountdown, isReminderOverdue } from './utils';
+import { dayKey, formatReminderCountdown, isReminderOverdue, reminderTimeForDay } from './utils';
 
 describe('dayKey', () => {
 	it('formats an epoch timestamp as a zero-padded local date', () => {
@@ -8,6 +8,23 @@ describe('dayKey', () => {
 
 	it('pads single-digit months and days', () => {
 		expect(dayKey(new Date(2026, 0, 5).getTime())).toBe('2026-01-05');
+	});
+});
+
+describe('reminderTimeForDay', () => {
+	it('uses the selected local calendar day and the next-hour picker default', () => {
+		const now = new Date(2026, 7, 13, 6, 48, 25, 500).getTime();
+		const reminder = new Date(reminderTimeForDay('2026-09-21', now));
+
+		expect([
+			reminder.getFullYear(),
+			reminder.getMonth(),
+			reminder.getDate(),
+			reminder.getHours(),
+			reminder.getMinutes(),
+			reminder.getSeconds(),
+			reminder.getMilliseconds()
+		]).toEqual([2026, 8, 21, 7, 0, 0, 0]);
 	});
 });
 
