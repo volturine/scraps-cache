@@ -1,4 +1,4 @@
-import { env } from '$env/dynamic/private';
+import { getSecret } from '$lib/server/env';
 import webPushPkg from 'web-push';
 import { getMeta, getDb, setMetaIfAbsent, type Db } from '$lib/server/db';
 import { getSyncStore, type DueWake } from '$lib/server/syncStore';
@@ -13,9 +13,9 @@ let warnedDefaultSubject = false;
 let warnedKeyRegeneration = false;
 
 function vapidSubject(): string {
-	const subject = env.SCRAPSCACHE_VAPID_SUBJECT?.trim();
+	const subject = getSecret('SCRAPSCACHE_VAPID_SUBJECT')?.trim();
 	if (subject && (/^mailto:/i.test(subject) || /^https:/i.test(subject))) return subject;
-	const origin = env.SCRAPSCACHE_ORIGIN?.trim() || env.ORIGIN?.trim();
+	const origin = getSecret('SCRAPSCACHE_ORIGIN')?.trim() || getSecret('ORIGIN')?.trim();
 	if (origin && /^https:/i.test(origin)) return origin.replace(/\/$/, '');
 	if (!warnedDefaultSubject) {
 		warnedDefaultSubject = true;
@@ -68,8 +68,8 @@ export async function getVapidKeys(
 	db: Db = getDb()
 ): Promise<{ publicKey: string; privateKey: string }> {
 	await db.ready;
-	const fromEnvPublic = env.SCRAPSCACHE_VAPID_PUBLIC_KEY?.trim();
-	const fromEnvPrivate = env.SCRAPSCACHE_VAPID_PRIVATE_KEY?.trim();
+	const fromEnvPublic = getSecret('SCRAPSCACHE_VAPID_PUBLIC_KEY')?.trim();
+	const fromEnvPrivate = getSecret('SCRAPSCACHE_VAPID_PRIVATE_KEY')?.trim();
 	if (Boolean(fromEnvPublic) !== Boolean(fromEnvPrivate)) {
 		throw new Error(
 			'Both SCRAPSCACHE_VAPID_PUBLIC_KEY and SCRAPSCACHE_VAPID_PRIVATE_KEY are required'

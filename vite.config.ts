@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 const cloudflareModules = new Map([
 	['$lib/server/syncStore', './src/lib/server/cloudflare/syncStore.ts'],
 	['$lib/server/pairingSessions', './src/lib/server/cloudflare/pairingSessions.ts'],
-	['$lib/server/db', './src/lib/server/cloudflare/db.ts']
+	['$lib/server/db', './src/lib/server/cloudflare/db.ts'],
+	['$lib/server/env', './src/lib/server/cloudflare/env-accessor.ts']
 ]);
 const cloudflareResolvedModules = new Map(
 	[...cloudflareModules].map(([source, target]) => [

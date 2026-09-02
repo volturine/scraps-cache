@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { env } from '$env/dynamic/private';
+import { getSecret } from '$lib/server/env';
 
 export function timingSafeStringEqual(left: string, right: string): boolean {
 	const leftBuf = Buffer.from(left);
@@ -14,7 +14,7 @@ export function timingSafeStringEqual(left: string, right: string): boolean {
 
 export function isAdminAuthorized(
 	request: Request,
-	expected = env.SCRAPSCACHE_ADMIN_TOKEN
+	expected = getSecret('SCRAPSCACHE_ADMIN_TOKEN')
 ): boolean {
 	if (!expected) return false;
 	return timingSafeStringEqual(request.headers.get('authorization') ?? '', `Bearer ${expected}`);

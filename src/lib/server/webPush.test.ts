@@ -8,7 +8,9 @@ const storeMock = vi.hoisted(() => ({
 	countPushDevices: vi.fn<() => number>(() => 0)
 }));
 
-vi.mock('$env/dynamic/private', () => ({ env: envMock }));
+vi.mock('$lib/server/env', () => ({
+	getSecret: (key: string) => envMock[key]
+}));
 
 vi.mock('$lib/server/syncStore', () => ({
 	getSyncStore: () => ({ countPushDevices: storeMock.countPushDevices })
@@ -37,7 +39,9 @@ async function importFreshWebPush() {
 	vi.doMock('$lib/server/syncStore', () => ({
 		getSyncStore: () => ({ countPushDevices: storeMock.countPushDevices })
 	}));
-	vi.doMock('$env/dynamic/private', () => ({ env: envMock }));
+	vi.doMock('$lib/server/env', () => ({
+		getSecret: (key: string) => envMock[key]
+	}));
 	return await import('./webPush');
 }
 
