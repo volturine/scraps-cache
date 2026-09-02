@@ -11,16 +11,28 @@ name: scrapscache-dev
 # Change the tag in docker/.env.dev, then pull && up -d again.
 
 services:
-  sqld:
-    image: ghcr.io/tursodatabase/libsql-server:latest
-    platform: linux/amd64
+  sqld-relay:
+    image: ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
     restart: unless-stopped
     ports:
-      - "${SCRAPSCACHE_SQLD_BIND:-127.0.0.1}:${SCRAPSCACHE_SQLD_PORT:-8080}:8080"
+      - "${SCRAPSCACHE_SQLD_BIND:-127.0.0.1}:${SCRAPSCACHE_RELAY_SQLD_PORT:-8080}:8080"
     environment:
       SQLD_NODE: primary
     volumes:
-      - scrapscache-dev-sqld-data:/var/lib/sqld
+      - scrapscache-dev-relay-data:/var/lib/sqld
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+  sqld-ops:
+    image: ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
+    restart: unless-stopped
+    ports:
+      - "${SCRAPSCACHE_SQLD_BIND:-127.0.0.1}:${SCRAPSCACHE_OPS_SQLD_PORT:-8081}:8080"
+    environment:
+      SQLD_NODE: primary
+    volumes:
+      - scrapscache-dev-ops-data:/var/lib/sqld
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -33,14 +45,15 @@ services:
     restart: unless-stopped
     init: true
     depends_on:
-      - sqld
+      - sqld-relay
+      - sqld-ops
     ports:
       - "${SCRAPSCACHE_BIND:-127.0.0.1}:${SCRAPSCACHE_PORT:-3000}:3000"
     environment:
       ORIGIN: "${SCRAPSCACHE_ORIGIN:-http://localhost:3000}"
       SCRAPSCACHE_ORIGIN: "${SCRAPSCACHE_ORIGIN:-http://localhost:3000}"
-      SCRAPSCACHE_RELAY_DB_URL: "http://sqld:8080/relay"
-      SCRAPSCACHE_OPS_DB_URL: "http://sqld:8080/ops"
+      SCRAPSCACHE_RELAY_DB_URL: "http://sqld-relay:8080"
+      SCRAPSCACHE_OPS_DB_URL: "http://sqld-ops:8080"
       SCRAPSCACHE_TICK_SECRET: "${SCRAPSCACHE_TICK_SECRET:-dev-tick-secret}"
       SCRAPSCACHE_VAPID_PUBLIC_KEY: "${SCRAPSCACHE_VAPID_PUBLIC_KEY:-}"
       SCRAPSCACHE_VAPID_PRIVATE_KEY: "${SCRAPSCACHE_VAPID_PRIVATE_KEY:-}"
@@ -59,4 +72,5 @@ services:
       - no-new-privileges:true
 
 volumes:
-  scrapscache-dev-sqld-data:
+  scrapscache-dev-relay-data:
+  scrapscache-dev-ops-data:

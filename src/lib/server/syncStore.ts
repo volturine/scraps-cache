@@ -1,6 +1,6 @@
 // Server-side opaque sync storage. The server authenticates accounts but never receives
 // notes, labels, images, tombstones, or any decryptable user payload.
-import type { Client, Transaction } from '@libsql/client/web';
+import type { Client, InStatement, Transaction } from '@libsql/client/web';
 import { env } from '$env/dynamic/private';
 import { ACTIVITY_WINDOWS_DAYS } from '$lib/server/operatorConfig';
 import { getDb, withTxn, type Db } from '$lib/server/db';
@@ -25,11 +25,9 @@ export type SyncStoreOptions = {
 };
 
 type AccountRow = {
-	credential_hash: string;
-	next_seq: number;
-	envelope_count: number;
-	ciphertext_bytes: number;
-	wake_revision: number;
+	nextSeq: number;
+	envelopeCount: number;
+	ciphertextBytes: number;
 };
 
 export type AccountByteQuota = {
@@ -62,6 +60,7 @@ export const WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
 export const WAKE_CLAIM_LEASE_MS = 60_000;
 /** Grace window keeping staged slot deletions recoverable while slower devices catch up. */
 export const DELETED_SLOT_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
+export const MAX_SYNC_MUTATIONS_PER_REQUEST = 2_000;
 /** Bound for IN (...) lists so sweeps stay under the SQLite host-parameter limit. */
 const ACCOUNT_CHUNK = 400;
 
@@ -106,6 +105,10 @@ function chunk<T>(values: T[]): T[][] {
 		chunks.push(values.slice(offset, offset + ACCOUNT_CHUNK));
 	}
 	return chunks;
+}
+
+async function executeInBatches(tx: Transaction, statements: InStatement[]): Promise<void> {
+	for (const batch of chunk(statements)) await tx.batch(batch);
 }
 
 export class SyncStore {
@@ -222,25 +225,19 @@ export class SyncStore {
 		downloadLimit = 12
 	): Promise<SyncResult & { usage: UsageRow & { maxBytes: number } }> {
 		await this.db.ready;
-		return withTxn(this.relay, async (tx) => {
+		let resetRevisionCeiling: number | null = null;
+		const result = await withTxn(this.relay, async (tx) => {
 			const account = (
 				await tx.execute({
 					sql: `
 				SELECT credential_hash AS credentialHash, next_seq AS nextSeq, envelope_count AS envelopeCount,
-					ciphertext_bytes AS ciphertextBytes, wake_revision AS wakeRevision
+					ciphertext_bytes AS ciphertextBytes
 				FROM accounts
 				WHERE account_id = ?
 			`,
 					args: [accountId]
 				})
-			).rows[0] as unknown as
-				| (AccountRow & {
-						nextSeq: number;
-						envelopeCount: number;
-						ciphertextBytes: number;
-						wakeRevision: number;
-				  })
-				| undefined;
+			).rows[0] as unknown as AccountRow | undefined;
 			if (!account) throw new Error('Sync account does not exist');
 			const quotaRow = await this.accountByteQuota(tx, accountId);
 			const maxAccountBytes = quotaRow?.maxBytes ?? this.maxAccountBytes;
@@ -268,12 +265,7 @@ export class SyncStore {
 				maxBytes: maxAccountBytes
 			});
 			if (cursor > account.nextSeq) {
-				// Wake revisions live in cursor space; a sequence reset rewinds that
-				// space, so the guard must rewind with it or wake publishing stalls.
-				await tx.execute({
-					sql: 'UPDATE accounts SET wake_revision = 0 WHERE account_id = ?',
-					args: [accountId]
-				});
+				resetRevisionCeiling = account.nextSeq;
 				await this.touchVia(tx, accountId);
 				return {
 					cursor: 0,
@@ -313,15 +305,25 @@ export class SyncStore {
 				};
 			}
 
-			const conflicts: EncryptedEnvelope[] = [];
-			for (const upload of uploads) {
-				const current = (
+			const slots = [
+				...new Set([...uploads.map(({ slot }) => slot), ...deletions.map(({ slot }) => slot)])
+			];
+			const currentBySlot = new Map<string, EncryptedEnvelope>();
+			for (const slotBatch of chunk(slots)) {
+				const placeholders = slotBatch.map(() => '?').join(', ');
+				const rows = (
 					await tx.execute({
 						sql: `SELECT seq, id, ciphertext, slot FROM envelopes
-						 WHERE account_id = ? AND slot = ?`,
-						args: [accountId, upload.slot]
+						 WHERE account_id = ? AND slot IN (${placeholders})`,
+						args: [accountId, ...slotBatch]
 					})
-				).rows[0] as unknown as EncryptedEnvelope | undefined;
+				).rows as unknown as EncryptedEnvelope[];
+				for (const row of rows) currentBySlot.set(row.slot, row);
+			}
+
+			const conflicts: EncryptedEnvelope[] = [];
+			for (const upload of uploads) {
+				const current = currentBySlot.get(upload.slot);
 				if (current && current.id !== upload.id && current.id !== (upload.expectedId ?? null)) {
 					conflicts.push(current);
 				}
@@ -339,73 +341,86 @@ export class SyncStore {
 				};
 			}
 
+			const retainedBySlot = new Map<string, number>();
+			for (const slotBatch of chunk([...new Set(deletions.map(({ slot }) => slot))])) {
+				const placeholders = slotBatch.map(() => '?').join(', ');
+				const rows = (
+					await tx.execute({
+						sql: `SELECT slot, length(ciphertext) AS ciphertextBytes
+						 FROM deleted_envelopes WHERE account_id = ? AND slot IN (${placeholders})`,
+						args: [accountId, ...slotBatch]
+					})
+				).rows as unknown as Array<{ slot: string; ciphertextBytes: number }>;
+				for (const row of rows) retainedBySlot.set(row.slot, row.ciphertextBytes);
+			}
+
+			const knownIds = new Set<string>();
+			for (const idBatch of chunk([...new Set(uploads.map(({ id }) => id))])) {
+				const placeholders = idBatch.map(() => '?').join(', ');
+				const rows = (
+					await tx.execute({
+						sql: `SELECT id FROM envelopes WHERE account_id = ? AND id IN (${placeholders})`,
+						args: [accountId, ...idBatch]
+					})
+				).rows as unknown as Array<{ id: string }>;
+				for (const row of rows) knownIds.add(row.id);
+			}
+
+			const deletionStatements: InStatement[] = [];
 			const deletedAt = Date.now();
 			for (const deletion of deletions) {
-				const previouslyRetained = (
-					await tx.execute({
-						sql: `SELECT length(ciphertext) AS ciphertextBytes FROM deleted_envelopes
-						 WHERE account_id = ? AND slot = ?`,
-						args: [accountId, deletion.slot]
-					})
-				).rows[0] as unknown as { ciphertextBytes: number } | undefined;
-				await tx.execute({
-					sql: `INSERT OR REPLACE INTO deleted_envelopes(account_id, slot, id, ciphertext, deleted_at)
-						SELECT account_id, slot, id, ciphertext, ?
-						FROM envelopes
-						WHERE account_id = ? AND slot = ? AND id = ?`,
-					args: [deletedAt, accountId, deletion.slot, deletion.id]
-				});
-				const removed = (
-					await tx.execute({
-						sql: `DELETE FROM envelopes
-						WHERE account_id = ? AND slot = ? AND id = ?
-						RETURNING length(ciphertext) AS ciphertextBytes`,
+				const removed = currentBySlot.get(deletion.slot);
+				if (!removed || removed.id !== deletion.id) continue;
+				const previousBytes = retainedBySlot.get(deletion.slot);
+				deletionStatements.push(
+					{
+						sql: `INSERT OR REPLACE INTO deleted_envelopes(account_id, slot, id, ciphertext, deleted_at)
+							VALUES (?, ?, ?, ?, ?)`,
+						args: [accountId, removed.slot, removed.id, removed.ciphertext, deletedAt]
+					},
+					{
+						sql: 'DELETE FROM envelopes WHERE account_id = ? AND slot = ? AND id = ?',
 						args: [accountId, deletion.slot, deletion.id]
-					})
-				).rows[0] as unknown as { ciphertextBytes: number } | undefined;
-				if (!removed) continue;
+					}
+				);
 				envelopeCount -= 1;
-				ciphertextBytes -= removed.ciphertextBytes;
-				if (!previouslyRetained) retainedEnvelopeCount += 1;
-				retainedCiphertextBytes +=
-					removed.ciphertextBytes - (previouslyRetained?.ciphertextBytes ?? 0);
+				ciphertextBytes -= removed.ciphertext.length;
+				if (previousBytes === undefined) retainedEnvelopeCount += 1;
+				retainedCiphertextBytes += removed.ciphertext.length - (previousBytes ?? 0);
+				retainedBySlot.set(deletion.slot, removed.ciphertext.length);
+				currentBySlot.delete(deletion.slot);
+				knownIds.delete(removed.id);
 			}
+			await executeInBatches(tx, deletionStatements);
 
 			let sequence = account.nextSeq;
 			let added = false;
+			let retainedRows: Array<{ slot: string; ciphertextBytes: number }> | undefined;
+			let retainedOffset = 0;
+			const retainedDeleteStatements: InStatement[] = [];
+			const uploadStatements: InStatement[] = [];
 
 			for (const upload of uploads) {
-				const hasId = (
-					await tx.execute({
-						sql: 'SELECT 1 AS present FROM envelopes WHERE account_id = ? AND id = ?',
-						args: [accountId, upload.id]
-					})
-				).rows[0];
-				if (hasId) continue;
+				if (knownIds.has(upload.id)) continue;
 				if (!BASE64URL.test(upload.ciphertext)) {
 					throw new Error('Envelope ciphertext is not base64url');
 				}
-				const prior = (
-					await tx.execute({
-						sql: `SELECT seq, id, ciphertext, slot FROM envelopes
-						 WHERE account_id = ? AND slot = ?`,
-						args: [accountId, upload.slot]
-					})
-				).rows[0] as unknown as EncryptedEnvelope | undefined;
+				const prior = currentBySlot.get(upload.slot);
 				const projectedCount = envelopeCount + (prior ? 0 : 1);
 				const projectedBytes =
 					ciphertextBytes + upload.ciphertext.length - (prior?.ciphertext.length ?? 0);
 				let projectedStorageBytes = storageBytes(projectedCount, projectedBytes);
 				if (projectedStorageBytes > maxAccountBytes && retainedEnvelopeCount > 0) {
-					const retainedRows = (
+					retainedRows ??= (
 						await tx.execute({
 							sql: `SELECT slot, length(ciphertext) AS ciphertextBytes
 							 FROM deleted_envelopes WHERE account_id = ? ORDER BY deleted_at ASC, slot ASC`,
 							args: [accountId]
 						})
 					).rows as unknown as Array<{ slot: string; ciphertextBytes: number }>;
-					for (const row of retainedRows) {
-						await tx.execute({
+					while (retainedOffset < retainedRows.length) {
+						const row = retainedRows[retainedOffset++]!;
+						retainedDeleteStatements.push({
 							sql: 'DELETE FROM deleted_envelopes WHERE account_id = ? AND slot = ?',
 							args: [accountId, row.slot]
 						});
@@ -419,7 +434,7 @@ export class SyncStore {
 					throw new SyncQuotaExceededError();
 				}
 				sequence += 1;
-				await tx.execute({
+				uploadStatements.push({
 					sql: `INSERT INTO envelopes(account_id, slot, seq, id, ciphertext)
 					VALUES (?, ?, ?, ?, ?)
 					ON CONFLICT(account_id, slot) DO UPDATE SET
@@ -428,10 +443,15 @@ export class SyncStore {
 						ciphertext = excluded.ciphertext`,
 					args: [accountId, upload.slot, sequence, upload.id, upload.ciphertext]
 				});
+				if (prior) knownIds.delete(prior.id);
+				knownIds.add(upload.id);
+				currentBySlot.set(upload.slot, { ...upload, seq: sequence });
 				envelopeCount = projectedCount;
 				ciphertextBytes = projectedBytes;
 				added = true;
 			}
+			await executeInBatches(tx, retainedDeleteStatements);
+			await executeInBatches(tx, uploadStatements);
 
 			const seenAt = Date.now();
 			if (added || deletions.length > 0) {
@@ -457,16 +477,28 @@ export class SyncStore {
 				usage: usage()
 			};
 		});
+		if (resetRevisionCeiling !== null) {
+			await this.discardWakeSnapshotAfter(accountId, resetRevisionCeiling);
+		}
+		return result;
 	}
 
 	async deleteAccount(accountId: string): Promise<boolean> {
 		await this.db.ready;
-		await this.purgeAccountOpsState([accountId]);
-		const result = await this.relay.execute({
-			sql: 'DELETE FROM accounts WHERE account_id = ?',
-			args: [accountId]
+		const deleted = await withTxn(this.relay, async (tx) => {
+			const result = await tx.execute({
+				sql: 'DELETE FROM accounts WHERE account_id = ? RETURNING account_id',
+				args: [accountId]
+			});
+			if (result.rows.length === 0) return false;
+			await tx.execute({
+				sql: 'INSERT OR IGNORE INTO pending_ops_deletions(account_id, queued_at) VALUES (?, ?)',
+				args: [accountId, Date.now()]
+			});
+			return true;
 		});
-		return result.rowsAffected === 1;
+		await this.drainPendingOpsDeletions();
+		return deleted;
 	}
 
 	private async purgeAccountOpsState(accountIds: string[]): Promise<void> {
@@ -483,6 +515,10 @@ export class SyncStore {
 						args: ids
 					},
 					{
+						sql: `DELETE FROM reminder_wake_revisions WHERE account_id IN (${placeholders})`,
+						args: ids
+					},
+					{
 						sql: `DELETE FROM reminder_wake_deliveries WHERE account_id IN (${placeholders})`,
 						args: ids
 					}
@@ -490,6 +526,40 @@ export class SyncStore {
 				'write'
 			);
 		}
+	}
+
+	private async drainPendingOpsDeletions(): Promise<void> {
+		const pending = (
+			await this.relay.execute('SELECT account_id AS accountId FROM pending_ops_deletions')
+		).rows as unknown as Array<{ accountId: string }>;
+		for (const rows of chunk(pending)) {
+			const accountIds = rows.map(({ accountId }) => accountId);
+			await this.purgeAccountOpsState(accountIds);
+			const placeholders = accountIds.map(() => '?').join(', ');
+			await this.relay.execute({
+				sql: `DELETE FROM pending_ops_deletions WHERE account_id IN (${placeholders})`,
+				args: accountIds
+			});
+		}
+	}
+
+	private async discardWakeSnapshotAfter(accountId: string, revision: number): Promise<void> {
+		await withTxn(this.ops, async (tx) => {
+			const stale = (
+				await tx.execute({
+					sql: 'SELECT 1 AS present FROM reminder_wake_revisions WHERE account_id = ? AND revision > ?',
+					args: [accountId, revision]
+				})
+			).rows[0];
+			if (!stale) return;
+			await tx.batch([
+				{ sql: 'DELETE FROM reminder_wakes WHERE account_id = ?', args: [accountId] },
+				{
+					sql: 'DELETE FROM reminder_wake_revisions WHERE account_id = ? AND revision > ?',
+					args: [accountId, revision]
+				}
+			]);
+		});
 	}
 
 	async touchAccount(accountId: string, now = Date.now()): Promise<void> {
@@ -567,24 +637,24 @@ export class SyncStore {
 
 	async deleteInactiveAccounts(staleBefore: number): Promise<number> {
 		await this.db.ready;
-		const stale = (
-			await this.relay.execute({
-				sql: 'SELECT account_id AS accountId FROM accounts WHERE last_seen_at < ?',
-				args: [staleBefore]
-			})
-		).rows as unknown as Array<{ accountId: string }>;
-		if (stale.length === 0) return 0;
-		await this.purgeAccountOpsState(stale.map((row) => row.accountId));
-		let deleted = 0;
-		for (const ids of chunk(stale.map((row) => row.accountId))) {
-			const placeholders = ids.map(() => '?').join(', ');
-			const result = await this.relay.execute({
-				sql: `DELETE FROM accounts WHERE account_id IN (${placeholders})`,
-				args: ids
-			});
-			deleted += result.rowsAffected;
-		}
-		return deleted;
+		const deleted = await withTxn(this.relay, async (tx) => {
+			const rows = (
+				await tx.execute({
+					sql: 'DELETE FROM accounts WHERE last_seen_at < ? RETURNING account_id AS accountId',
+					args: [staleBefore]
+				})
+			).rows as unknown as Array<{ accountId: string }>;
+			await executeInBatches(
+				tx,
+				rows.map(({ accountId }) => ({
+					sql: 'INSERT OR IGNORE INTO pending_ops_deletions(account_id, queued_at) VALUES (?, ?)',
+					args: [accountId, Date.now()]
+				}))
+			);
+			return rows;
+		});
+		await this.drainPendingOpsDeletions();
+		return deleted.length;
 	}
 
 	async purgeExpiredDeletedEnvelopes(
@@ -670,48 +740,55 @@ export class SyncStore {
 		await this.db.ready;
 		const account = (
 			await this.relay.execute({
-				sql: 'SELECT wake_revision AS wakeRevision FROM accounts WHERE account_id = ?',
+				sql: 'SELECT 1 AS present FROM accounts WHERE account_id = ?',
 				args: [accountId]
 			})
-		).rows[0] as unknown as { wakeRevision: number } | undefined;
-		if (!account || (revision !== undefined && revision < account.wakeRevision)) return false;
+		).rows[0];
+		if (!account) return false;
 		const limitedWakes = wakes.slice(0, MAX_WAKES_PER_ACCOUNT);
-		if (revision !== undefined && revision === account.wakeRevision) {
-			const current = (
-				await this.ops.execute({
-					sql: `SELECT wake_id AS id, fire_at AS fireAt FROM reminder_wakes
-					 WHERE account_id = ? ORDER BY wake_id ASC, fire_at ASC`,
-					args: [accountId]
-				})
-			).rows as unknown as ReminderWakeInput[];
-			const expected = [...limitedWakes].sort((left, right) =>
-				left.id < right.id ? -1 : left.id > right.id ? 1 : left.fireAt - right.fireAt
-			);
-			return JSON.stringify(current) === JSON.stringify(expected);
-		}
-		await withTxn(this.ops, async (tx) => {
+		const accepted = await withTxn(this.ops, async (tx) => {
+			if (revision !== undefined) {
+				const currentRevision = (
+					await tx.execute({
+						sql: 'SELECT revision FROM reminder_wake_revisions WHERE account_id = ?',
+						args: [accountId]
+					})
+				).rows[0] as unknown as { revision: number } | undefined;
+				if (currentRevision && revision < currentRevision.revision) return false;
+				if (currentRevision?.revision === revision) {
+					const current = (
+						await tx.execute({
+							sql: `SELECT wake_id AS id, fire_at AS fireAt FROM reminder_wakes
+							 WHERE account_id = ? ORDER BY wake_id ASC, fire_at ASC`,
+							args: [accountId]
+						})
+					).rows as unknown as ReminderWakeInput[];
+					const expected = [...limitedWakes].sort((left, right) =>
+						left.id < right.id ? -1 : left.id > right.id ? 1 : left.fireAt - right.fireAt
+					);
+					return JSON.stringify(current) === JSON.stringify(expected);
+				}
+			}
 			await tx.execute({
 				sql: 'DELETE FROM reminder_wakes WHERE account_id = ?',
 				args: [accountId]
 			});
-			for (const wake of limitedWakes) {
-				await tx.execute({
-					sql: 'INSERT INTO reminder_wakes(account_id, wake_id, fire_at) VALUES (?, ?, ?)',
-					args: [accountId, wake.id, wake.fireAt]
+			const statements: InStatement[] = limitedWakes.map((wake) => ({
+				sql: 'INSERT INTO reminder_wakes(account_id, wake_id, fire_at) VALUES (?, ?, ?)',
+				args: [accountId, wake.id, wake.fireAt]
+			}));
+			if (revision !== undefined) {
+				statements.push({
+					sql: `INSERT INTO reminder_wake_revisions(account_id, revision) VALUES (?, ?)
+						ON CONFLICT(account_id) DO UPDATE SET revision = excluded.revision`,
+					args: [accountId, revision]
 				});
 			}
+			await executeInBatches(tx, statements);
+			return true;
 		});
-		const now = Date.now();
-		if (revision !== undefined) {
-			const result = await this.relay.execute({
-				sql: 'UPDATE accounts SET wake_revision = ?, updated_at = ?, last_seen_at = ? WHERE account_id = ? AND wake_revision <= ?',
-				args: [revision, now, now, accountId, revision]
-			});
-			if (result.rowsAffected !== 1) return false;
-		} else {
-			await this.touchAccount(accountId, now);
-		}
-		return true;
+		if (accepted) await this.touchAccount(accountId);
+		return accepted;
 	}
 
 	async claimDueWakes(now: number, limit = 100): Promise<DueWake[]> {

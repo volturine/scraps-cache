@@ -40,7 +40,7 @@ Scraps Cache listens on container port **3000**, published on `127.0.0.1` by
 default (`SCRAPSCACHE_BIND` to override). The production template:
 
 - Runs with a read-only application filesystem
-- Runs an sqld sidecar with relay and ops databases on a named volume
+- Runs physically separate sqld services and named volumes for relay and ops state
 
 ### Build locally instead of pulling
 
@@ -145,8 +145,8 @@ client-address settings above so rate limits see real client IPs.
 
 | Variable                                   |                        Default | Purpose                                                                         |
 | ------------------------------------------ | -----------------------------: | ------------------------------------------------------------------------------- |
-| `SCRAPSCACHE_RELAY_DB_URL`                 |  `http://127.0.0.1:8080/relay` | libSQL URL for relay (accounts, envelopes, deleted_envelopes, quotas)           |
-| `SCRAPSCACHE_OPS_DB_URL`                   |    `http://127.0.0.1:8080/ops` | libSQL URL for operational state (rate limits, auth, pairing, push, VAPID)      |
+| `SCRAPSCACHE_RELAY_DB_URL`                 |        `http://127.0.0.1:8080` | libSQL URL for relay (accounts, envelopes, deleted_envelopes, quotas)           |
+| `SCRAPSCACHE_OPS_DB_URL`                   |        `http://127.0.0.1:8081` | libSQL URL for operational state (rate limits, auth, pairing, push, VAPID)      |
 | `SCRAPSCACHE_TICK_SECRET`                  |                       required | Shared secret protecting the `/api/cron/tick` endpoint                          |
 | `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                   `1000000000` | Relay storage quota per account (1000 MB)                                       |
 | `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight                                                     |
@@ -179,13 +179,14 @@ variables explicitly.
 | `SCRAPSCACHE_IMAGE`           |         required (prod) | Pinned image tag or digest                                    |
 | `SCRAPSCACHE_ORIGIN`          | `http://localhost:3000` | Exact public origin used by SvelteKit                         |
 | `SCRAPSCACHE_BODY_SIZE_LIMIT` |                  `110M` | Node adapter request limit; must exceed the 101 MB sync cap   |
-| `SCRAPSCACHE_SQLD_PORT`       |                  `8080` | Host port for sqld HTTP interface                             |
+| `SCRAPSCACHE_RELAY_SQLD_PORT` |                  `8080` | Host port for the relay sqld HTTP interface                   |
+| `SCRAPSCACHE_OPS_SQLD_PORT`   |                  `8081` | Host port for the ops sqld HTTP interface                     |
 | `TS_HOSTNAME`                 |           `scrapscache` | Tailnet machine name (`https://<name>.<tailnet>.ts.net`)      |
 | `TS_AUTHKEY`                  |                       — | Auth key or OAuth secret; required with the Tailscale overlay |
 | `TS_EXTRA_ARGS`               |                       — | Extra `tailscale up` flags (OAuth tag advertisement)          |
 
 Inside Compose, `HOST`, `PORT`, `SCRAPSCACHE_RELAY_DB_URL`, and
-`SCRAPSCACHE_OPS_DB_URL` are fixed to the sqld service. Direct `docker run`
+`SCRAPSCACHE_OPS_DB_URL` are fixed to their respective sqld services. Direct `docker run`
 may override them.
 
 ## Health, metrics, and administration
@@ -203,9 +204,9 @@ may override them.
 With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the three token-protected
 endpoints return 404 — the admin API is disabled.
 
-The cron endpoint (`/api/cron/tick`) is the scheduler entry point. On
-Cloudflare Workers, configure a Cron Trigger that POSTs to this endpoint
-every minute. For self-hosted deployments, add a crontab entry:
+The cron endpoint (`/api/cron/tick`) is the scheduler entry point. The included
+Cloudflare scheduler Worker calls it through a private service binding every
+minute. For self-hosted deployments, add a crontab entry:
 
 ```sh
 * * * * * curl -sf -X POST -H "Authorization: Bearer $SCRAPSCACHE_TICK_SECRET" http://localhost:3000/api/cron/tick || echo "cron tick failed" >&2
@@ -251,7 +252,8 @@ curl -fsS -X DELETE \
 
 [`.github/workflows/ci-cd.yaml`](../.github/workflows/ci-cd.yaml):
 
-- Every PR: typecheck + Vitest + production build, then an `amd64` image build
+- Every PR: typecheck + Vitest + Node/Cloudflare builds and Worker dry-runs,
+  then an `amd64` image build
   published as **`dev-<n>`** / **`dev-sha-<commit>`** (never `latest`)
 - Push/merge to `master`: multi-arch (`amd64`/`arm64`) publish with **`latest`**,
   **`master`**, and **`sha-<commit>`**, plus SBOM and provenance
@@ -267,5 +269,7 @@ password is required for GitHub Actions.
 
 See [security.md](security.md). Short version: the database holds **encrypted
 envelopes**, not readable notes — but you still protect availability, auth
-tokens and TLS configuration carefully. The sqld sidecar stores all data in
-`/var/lib/sqld` on a persistent volume.
+tokens and TLS configuration carefully. Relay and ops sqld each store their data
+in `/var/lib/sqld` on distinct persistent volumes. Back up the relay volume for
+durable encrypted sync state. Back up ops as well unless VAPID keys are pinned
+in the environment and losing sessions, pairing state, and push registrations is acceptable.

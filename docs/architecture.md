@@ -17,11 +17,11 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 └───────────────────────────┼────────────────────────────────┘
                             │ HTTPS (opaque envelopes)
 ┌───────────────────────────▼────────────────────────────────┐
-│  Node / Cloudflare Workers                                 │
+│  SvelteKit API (Node or Cloudflare Workers)                │
 │  ┌────────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-│  │ /api/sync/*    │  │ rate limit  │  │ sqld (libSQL)   │  │
-│  │ pair / delta / │──┤ auth        │──┤ relay + ops DBs  │  │
-│  │ register / …   │  │ metrics     │  │                 │  │
+│  │ /api/sync/*    │  │ rate limit  │  │ platform store  │  │
+│  │ pair / delta / │──┤ auth        │──┤ local libSQL or │  │
+│  │ register / …   │  │ metrics     │  │ D1 + R2 + DO    │  │
 │  └────────────────┘  └─────────────┘  └─────────────────┘  │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -31,8 +31,8 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 1. **Offline-first** — IndexedDB is the durable source of truth on each device.
 2. **Ciphertext relay** — the server stores slots of encrypted blobs; it never
    receives note plaintext, labels, or attachment bytes.
-3. **Simple deployment** — single app process, sqld for state, no
-   required Redis/Postgres/object store for core operation.
+3. **Native deployment** — self-hosting uses two local sqld stores; Cloudflare
+   uses D1 metadata, R2 ciphertext objects, and a per-account Durable Object.
 4. **Client-side crypto** — sync keys, backup passphrases, and encryption live
    in the browser using audited primitives (`@noble/*`, CPace).
 
@@ -91,6 +91,7 @@ authentication. The account ID and encrypted relay data do not move.
 | --------------- | -------------------------------------------------------- | ----------------------------------------------- |
 | DB layer        | `src/lib/server/db.ts`                                   | sqld/libSQL clients, withTxn, DDL, meta helpers |
 | Sync store      | `src/lib/server/syncStore.ts`                            | Relay DB: accounts, envelopes, quotas           |
+| Workers store   | `src/lib/server/cloudflare/`, `cf/accountCoordinator.ts` | D1/R2 storage + serialized account sync         |
 | Sync auth       | `src/lib/server/syncAuth.ts`                             | Ops DB: challenges, sessions, public key auth   |
 | Pairing         | `src/lib/server/pairingSessions.ts`                      | Ops DB: rendezvous for PAKE shares              |
 | Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes |
@@ -122,15 +123,15 @@ temporarily retained deletions, and estimated per-record database overhead
 
 ## Deployment shapes
 
-| Mode               | How                             | Notes                                                  |
-| ------------------ | ------------------------------- | ------------------------------------------------------ |
-| Dev                | `npm run dev`                   | Vite + HMR; sqld required locally                      |
-| Workers dev        | `npm run cf:dev`                | Wrangler dev server with workerd runtime               |
-| Local prod build   | `npm run build && npm start`    | Node adapter; same env vars as Docker                  |
-| Workers prod       | `npm run cf:deploy`             | Cloudflare Workers with sqld or Turso                  |
-| Compose            | `docker/compose.yaml`           | Pull pinned GHCR image; sqld sidecar, loopback port    |
-| PR preview Compose | `docker/compose.dev.yaml`       | Pull GHCR `dev-*` image on port 3000, isolated volumes |
-| Tailscale overlay  | `docker/compose.tailscale.yaml` | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)       |
+| Mode               | How                             | Notes                                                    |
+| ------------------ | ------------------------------- | -------------------------------------------------------- |
+| Dev                | `npm run dev`                   | Vite + HMR; sqld required locally                        |
+| Workers dev        | `npm run cf:dev`                | Wrangler dev server with workerd runtime                 |
+| Local prod build   | `npm run build && npm start`    | Node adapter; same env vars as Docker                    |
+| Workers prod       | `npm run cf:deploy`             | App + scheduler Workers with D1, R2, and Durable Objects |
+| Compose            | `docker/compose.yaml`           | Pull pinned GHCR image; isolated relay/ops sqld stores   |
+| PR preview Compose | `docker/compose.dev.yaml`       | Pull GHCR `dev-*` image on port 3000, isolated volumes   |
+| Tailscale overlay  | `docker/compose.tailscale.yaml` | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)         |
 
 ## Related docs
 

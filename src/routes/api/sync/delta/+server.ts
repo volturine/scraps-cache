@@ -1,6 +1,10 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getSyncStore, SyncQuotaExceededError } from '$lib/server/syncStore';
+import {
+	getSyncStore,
+	MAX_SYNC_MUTATIONS_PER_REQUEST,
+	SyncQuotaExceededError
+} from '$lib/server/syncStore';
 import { getSyncAuth } from '$lib/server/syncAuth';
 import { readJsonBody } from '$lib/server/request';
 import {
@@ -16,7 +20,6 @@ import { recordSqliteError, recordSyncBatch } from '$lib/server/metrics';
 // 16 MB leaves ample headroom for base64 expansion and encoding variance.
 const MAX_ENVELOPE_BYTES = 16_000_000;
 const MAX_REQUEST_BYTES = MAX_ENVELOPE_BYTES + 1_000_000;
-const MAX_ENVELOPES_PER_REQUEST = 2_000;
 const DEFAULT_DOWNLOAD_LIMIT = 12;
 type OpaqueEnvelope = { id: string; ciphertext: string; slot: string; expectedId: string | null };
 type OpaqueDelete = { id: string; slot: string };
@@ -89,7 +92,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		const envelopes = body.envelopes == null ? [] : body.envelopes;
 		if (
 			!Array.isArray(envelopes) ||
-			envelopes.length > MAX_ENVELOPES_PER_REQUEST ||
+			envelopes.length > MAX_SYNC_MUTATIONS_PER_REQUEST ||
 			!envelopes.every(isOpaqueEnvelope)
 		) {
 			return json({ error: 'Invalid encrypted envelope batch' }, { status: 400 });
@@ -97,7 +100,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		const deleteSlots = body.deleteSlots == null ? [] : body.deleteSlots;
 		if (
 			!Array.isArray(deleteSlots) ||
-			deleteSlots.length > MAX_ENVELOPES_PER_REQUEST ||
+			deleteSlots.length > MAX_SYNC_MUTATIONS_PER_REQUEST ||
 			!deleteSlots.every(isOpaqueDelete)
 		) {
 			return json({ error: 'Invalid encrypted deletion batch' }, { status: 400 });

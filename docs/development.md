@@ -16,6 +16,7 @@ Contributor-oriented notes for working on Scraps Cache. Also read
 | `npm run dev`              | Vite dev server (SvelteKit)                                      |
 | `npm run build`            | Production build (`adapter-node` → `build/`)                     |
 | `npm run build:cloudflare` | Workers build (`adapter-cloudflare` → `.svelte-kit/cloudflare/`) |
+| `npm run cf:cron:dev`      | Scheduled worker + app service binding with test triggers        |
 | `npm start`                | Run the built server (`node build`)                              |
 | `npm run preview`          | Vite preview of the production build                             |
 | `npm run check`            | `svelte-check` with native TypeScript                            |
@@ -27,14 +28,16 @@ Contributor-oriented notes for working on Scraps Cache. Also read
 
 ## Local development
 
-By default the app connects to a local sqld instance. Start one with:
+By default the app connects to separate local sqld processes for relay and
+operational state. Start them in two terminals:
 
 ```sh
-docker run --rm -p 8080:8080 ghcr.io/tursodatabase/libsql-server:latest
+docker run --rm -p 8080:8080 ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
+docker run --rm -p 8081:8080 ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
 ```
 
-The dev server reads `http://127.0.0.1:8080/relay` and
-`http://127.0.0.1:8080/ops` by default (env vars
+The dev server reads `http://127.0.0.1:8080` and
+`http://127.0.0.1:8081` by default (env vars
 `SCRAPSCACHE_RELAY_DB_URL` and `SCRAPSCACHE_OPS_DB_URL`).
 
 Tests use `@libsql/client/node` with `file:` URLs (no sqld required).
@@ -47,6 +50,45 @@ For Cloudflare Workers local development:
 ```sh
 npm run cf:dev
 ```
+
+The Workers build does not use libSQL or Turso Cloud. Wrangler provides local
+D1, R2, and Durable Object persistence. Before the first remote deployment,
+create separate production and development resources:
+
+```sh
+npx wrangler d1 create scrapscache
+npx wrangler d1 create scrapscache-dev
+npx wrangler r2 bucket create scrapscache-envelopes
+npx wrangler r2 bucket create scrapscache-envelopes-dev
+```
+
+Copy the two returned D1 UUIDs into the matching `database_id` entries in
+`wrangler.jsonc`. Deployment applies `cf/migrations/` before publishing the app
+Worker.
+
+The app and scheduled worker are deliberately separate. Use
+`npm run cf:cron:dev` to exercise the Cron Trigger through the private `APP`
+service binding. For local multi-worker testing, put the app variables in
+`.dev.vars` and the scheduler's matching `SCRAPSCACHE_TICK_SECRET` in
+`cf/.dev.vars`; both files are ignored by Git. Configure the secret for both
+Workers before deployment; `npm run cf:deploy` deploys the app first and then
+the scheduler.
+
+```sh
+npx wrangler secret put SCRAPSCACHE_TICK_SECRET
+npx wrangler secret put SCRAPSCACHE_TICK_SECRET --config cf/wrangler.cron.jsonc
+npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env dev
+npx wrangler secret put SCRAPSCACHE_TICK_SECRET --config cf/wrangler.cron.jsonc --env dev
+```
+
+GitHub Actions reads this value from the `SCRAPSCACHE_TICK_SECRET` environment
+secret in the matching `development` or `production` GitHub environment and
+installs it on both Workers during every deployment.
+
+Pull requests from this repository deploy the development Workers to
+`dev.scrapscache.com` after validation succeeds. Pushes to `master` deploy the
+production Workers to `scrapscache.com`. Both use Worker routes on the existing
+proxied DNS records, so the records must remain in place during the cutover.
 
 ## Testing layout
 
@@ -66,7 +108,8 @@ Prefer tests for:
 
 GitHub Actions workflow: `.github/workflows/ci-cd.yaml`.
 
-- **validate** job: typecheck + Prettier + Vitest + production build (required PR check)
+- **validate** job: typecheck + Prettier + Vitest + Node and Cloudflare builds,
+  including dry-run validation of both Workers (required PR check)
 - **image** job: Docker build; PRs publish `dev-<n>` / `dev-sha-*` only, `master`
   publishes `latest` / `master` / `sha-*`
 

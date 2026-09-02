@@ -12,19 +12,19 @@ export const RATE_BUCKET_STALE_MS = 10 * 60_000;
 
 const CHECK_SQL = `
 	INSERT INTO rate_buckets (bucket_key, tokens, updated_at, last_seen_at, last_allowed)
-	VALUES (@key, @cap - 1, @now, @now, 1)
+	VALUES (?1, ?2 - 1, ?3, ?3, 1)
 	ON CONFLICT(bucket_key) DO UPDATE SET
 		tokens = CASE
-			WHEN min(@cap, rate_buckets.tokens + (@now - rate_buckets.updated_at) * @rate) >= 1
-			THEN min(@cap, rate_buckets.tokens + (@now - rate_buckets.updated_at) * @rate) - 1
-			ELSE min(@cap, rate_buckets.tokens + (@now - rate_buckets.updated_at) * @rate)
+			WHEN min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4) >= 1
+			THEN min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4) - 1
+			ELSE min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4)
 		END,
 		last_allowed = CASE
-			WHEN min(@cap, rate_buckets.tokens + (@now - rate_buckets.updated_at) * @rate) >= 1 THEN 1
+			WHEN min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4) >= 1 THEN 1
 			ELSE 0
 		END,
-		updated_at = @now,
-		last_seen_at = @now
+		updated_at = ?3,
+		last_seen_at = ?3
 	RETURNING tokens AS tokens, last_allowed AS allowed
 `;
 
@@ -39,7 +39,7 @@ export class TokenBucketLimiter {
 			await this.db.ready;
 			const result = await this.db.ops.execute({
 				sql: CHECK_SQL,
-				args: { key, cap: policy.capacity, rate: refillPerMs, now }
+				args: [key, policy.capacity, now, refillPerMs]
 			});
 			const bucket = result.rows[0] as unknown as { tokens: number; allowed: number };
 			if (bucket.allowed === 1) return { allowed: true };

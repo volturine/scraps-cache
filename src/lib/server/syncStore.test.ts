@@ -8,6 +8,7 @@ import {
 } from './syncStore';
 import { testDb, cleanupTestDbs } from './testDb';
 import type { Db } from './db';
+import type { Client, Transaction, TransactionMode } from '@libsql/client/node';
 
 const slot = (character: string) => character.repeat(64);
 const wake = (character: string, fireAt: number) => ({ id: character.repeat(43), fireAt });
@@ -118,6 +119,53 @@ describe('SQLite sync store', () => {
 			if (!result.hasMore) break;
 		}
 		expect(seen).toBe(600);
+	});
+
+	it('processes a maximum normal upload batch with bounded database round trips', async () => {
+		const db = testDb();
+		let executeCalls = 0;
+		let batchCalls = 0;
+		const relay = new Proxy(db.relay, {
+			get(target, property) {
+				if (property === 'transaction') {
+					return async (mode?: TransactionMode): Promise<Transaction> => {
+						const transaction = await target.transaction(mode);
+						return new Proxy(transaction, {
+							get(txTarget, txProperty) {
+								if (txProperty === 'execute') {
+									return (...args: Parameters<Transaction['execute']>) => {
+										executeCalls += 1;
+										return txTarget.execute(...args);
+									};
+								}
+								if (txProperty === 'batch') {
+									return (...args: Parameters<Transaction['batch']>) => {
+										batchCalls += 1;
+										return txTarget.batch(...args);
+									};
+								}
+								const value = Reflect.get(txTarget, txProperty, txTarget) as unknown;
+								return typeof value === 'function' ? value.bind(txTarget) : value;
+							}
+						}) as Transaction;
+					};
+				}
+				const value = Reflect.get(target, property, target) as unknown;
+				return typeof value === 'function' ? value.bind(target) : value;
+			}
+		}) as Client;
+		const store = new SyncStore({ relay, ops: db.ops, ready: db.ready });
+		await store.createAccount('account', 'credential');
+		const uploads = Array.from({ length: 500 }, (_, index) => ({
+			id: `id-${index}`,
+			slot: index.toString(16).padStart(64, '0'),
+			ciphertext: `ciphertext-${index}`
+		}));
+
+		await store.sync('account', 0, uploads, [], 10);
+
+		expect(executeCalls).toBeLessThan(20);
+		expect(batchCalls).toBeLessThanOrEqual(2);
 	});
 
 	it('finishes paginated downloads before accepting simultaneous uploads', async () => {
@@ -670,6 +718,28 @@ describe('SQLite sync store', () => {
 		expect(await store.claimDueWakes(1_000)).toEqual([]);
 	});
 
+	it('stores the wake snapshot and revision as one monotonic ops state', async () => {
+		const { store, db } = createStore();
+		await store.createAccount('account', 'credential');
+		const older = wake('a', 1_000);
+		const newer = wake('b', 2_000);
+
+		expect(await store.replaceReminderWakes('account', [older], 5)).toBe(true);
+		expect(await store.replaceReminderWakes('account', [newer], 6)).toBe(true);
+		expect(await store.replaceReminderWakes('account', [older], 5)).toBe(false);
+
+		const revision = await db.ops.execute({
+			sql: 'SELECT revision FROM reminder_wake_revisions WHERE account_id = ?',
+			args: ['account']
+		});
+		const wakes = await db.ops.execute({
+			sql: 'SELECT wake_id AS wakeId FROM reminder_wakes WHERE account_id = ?',
+			args: ['account']
+		});
+		expect(revision.rows[0]?.revision).toBe(6);
+		expect(wakes.rows[0]?.wakeId).toBe(newer.id);
+	});
+
 	it('rejects uploads whose ciphertext is not base64url', async () => {
 		const { store } = createStore();
 		await store.createAccount('account', 'credential');
@@ -750,8 +820,27 @@ describe('SQLite sync store', () => {
 		expect(await store.getAuthCredential('account')).toBe('credential');
 	});
 
-	it('resets a cursor that is ahead of a restored relay sequence', async () => {
-		const { store } = createStore();
+	it('never deletes an account when a concurrent activity update wins first', async () => {
+		const { store, db } = createStore();
+		const cutoff = 1_000;
+		for (let index = 0; index < 20; index++) {
+			const accountId = `account-${index}`;
+			await store.createAccount(accountId, 'credential', 1);
+			const [activity] = await Promise.all([
+				db.relay.execute({
+					sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ? RETURNING account_id',
+					args: [cutoff + 1, accountId]
+				}),
+				store.deleteInactiveAccounts(cutoff)
+			]);
+			if (activity.rows.length > 0) {
+				expect(await store.getAuthCredential(accountId)).toBe('credential');
+			}
+		}
+	});
+
+	it('resets a cursor and wake snapshot that are ahead of a restored relay sequence', async () => {
+		const { store, db } = createStore();
 		await store.createAccount('account', 'credential');
 		await store.sync(
 			'account',
@@ -760,12 +849,23 @@ describe('SQLite sync store', () => {
 			[],
 			10
 		);
+		await store.replaceReminderWakes('account', [wake('a', 1_000)], 50);
 
 		expect(await store.sync('account', 50, [], [], 10)).toMatchObject({
 			cursor: 0,
 			reset: true,
 			writesAccepted: false
 		});
+		const revisions = await db.ops.execute({
+			sql: 'SELECT revision FROM reminder_wake_revisions WHERE account_id = ?',
+			args: ['account']
+		});
+		const wakes = await db.ops.execute({
+			sql: 'SELECT wake_id FROM reminder_wakes WHERE account_id = ?',
+			args: ['account']
+		});
+		expect(revisions.rows).toHaveLength(0);
+		expect(wakes.rows).toHaveLength(0);
 	});
 
 	it('deletes an account and all of its opaque envelopes', async () => {
@@ -789,5 +889,44 @@ describe('SQLite sync store', () => {
 		expect(await store.deleteAccount('account')).toBe(true);
 		expect(await store.getAuthCredential('account')).toBeNull();
 		expect(await store.countPushDevices()).toBe(0);
+	});
+
+	it('retries durable ops cleanup after relay deletion has committed', async () => {
+		const db = testDb();
+		let failOpsCleanup = true;
+		const ops = new Proxy(db.ops, {
+			get(target, property) {
+				if (property === 'batch') {
+					return (...args: Parameters<Client['batch']>) => {
+						if (failOpsCleanup) throw new Error('ops unavailable');
+						return target.batch(...args);
+					};
+				}
+				const value = Reflect.get(target, property, target) as unknown;
+				return typeof value === 'function' ? value.bind(target) : value;
+			}
+		}) as Client;
+		const store = new SyncStore({ relay: db.relay, ops, ready: db.ready });
+		await store.createAccount('account', 'credential');
+		await store.savePushDevice({
+			accountId: 'account',
+			deviceId: 'device-aaaaaaaaaaaa',
+			endpoint: 'https://push.example/account',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16)
+		});
+
+		await expect(store.deleteAccount('account')).rejects.toThrow('ops unavailable');
+		expect(await store.getAuthCredential('account')).toBeNull();
+		expect(
+			(await db.relay.execute('SELECT account_id FROM pending_ops_deletions')).rows
+		).toHaveLength(1);
+
+		failOpsCleanup = false;
+		expect(await store.deleteAccount('account')).toBe(false);
+		expect(await store.countPushDevices()).toBe(0);
+		expect(
+			(await db.relay.execute('SELECT account_id FROM pending_ops_deletions')).rows
+		).toHaveLength(0);
 	});
 });

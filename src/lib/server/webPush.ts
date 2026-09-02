@@ -1,13 +1,11 @@
 import { env } from '$env/dynamic/private';
 import webPushPkg from 'web-push';
-import { getMeta, getDb, setMeta, type Db } from '$lib/server/db';
-import type { DueWake } from '$lib/server/syncStore';
-import { getSyncStore } from '$lib/server/syncStore';
+import { getMeta, getDb, setMetaIfAbsent, type Db } from '$lib/server/db';
+import { getSyncStore, type DueWake } from '$lib/server/syncStore';
 
 const webpush = ('default' in webPushPkg ? webPushPkg.default : webPushPkg) as typeof webPushPkg;
 
-const META_PUBLIC = 'vapid-public-v1';
-export const VAPID_PRIVATE_META_KEY = 'vapid-private-v1';
+export const VAPID_KEY_PAIR_META_KEY = 'vapid-key-pair-v1';
 
 export type WakeSendResult = 'sent' | 'gone' | 'failed';
 
@@ -46,6 +44,26 @@ function warnKeyRegeneration(registeredDevices: number): void {
 	);
 }
 
+function parseVapidKeyPair(value: string): { publicKey: string; privateKey: string } {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(value);
+	} catch {
+		throw new Error('Stored VAPID key pair is invalid');
+	}
+	if (
+		!parsed ||
+		typeof parsed !== 'object' ||
+		typeof (parsed as { publicKey?: unknown }).publicKey !== 'string' ||
+		typeof (parsed as { privateKey?: unknown }).privateKey !== 'string' ||
+		(parsed as { publicKey: string }).publicKey.length === 0 ||
+		(parsed as { privateKey: string }).privateKey.length === 0
+	) {
+		throw new Error('Stored VAPID key pair is invalid');
+	}
+	return parsed as { publicKey: string; privateKey: string };
+}
+
 export async function getVapidKeys(
 	db: Db = getDb()
 ): Promise<{ publicKey: string; privateKey: string }> {
@@ -61,17 +79,16 @@ export async function getVapidKeys(
 		return { publicKey: fromEnvPublic, privateKey: fromEnvPrivate };
 	}
 
-	const storedPublic = await getMeta(db, META_PUBLIC);
-	const storedPrivate = await getMeta(db, VAPID_PRIVATE_META_KEY);
-	if (storedPublic && storedPrivate) {
-		return { publicKey: storedPublic, privateKey: storedPrivate };
-	}
+	const stored = await getMeta(db, VAPID_KEY_PAIR_META_KEY);
+	if (stored) return parseVapidKeyPair(stored);
 
 	const generated = webpush.generateVAPIDKeys();
-	await setMeta(db, META_PUBLIC, generated.publicKey);
-	await setMeta(db, VAPID_PRIVATE_META_KEY, generated.privateKey);
-	warnKeyRegeneration(await getSyncStore().countPushDevices());
-	return generated;
+	const candidate = JSON.stringify(generated);
+	const persisted = await setMetaIfAbsent(db, VAPID_KEY_PAIR_META_KEY, candidate);
+	if (persisted === candidate) {
+		warnKeyRegeneration(await getSyncStore().countPushDevices());
+	}
+	return parseVapidKeyPair(persisted);
 }
 
 /** Web Push delivery via `generateRequestDetails` + `fetch`: the web-push crypto

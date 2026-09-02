@@ -1,13 +1,84 @@
 {
+	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "scrapscache",
-	"main": "cf/worker.ts",
-	"compatibility_date": "2025-01-01",
+	"main": "cf/app.ts",
+	"compatibility_date": "2026-08-28",
 	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"routes": [
+		{
+			"pattern": "scrapscache.com/*",
+			"zone_name": "scrapscache.com"
+		}
+	],
+	"vars": {
+		"SCRAPSCACHE_ORIGIN": "https://scrapscache.com"
+	},
 	"assets": {
 		"binding": "ASSETS",
 		"directory": ".svelte-kit/cloudflare"
 	},
-	"triggers": {
-		"crons": ["* * * * *"]
+	"d1_databases": [
+		{
+			"binding": "SCRAPSCACHE_DB",
+			"database_name": "scrapscache",
+			"database_id": "c132b1a5-0263-489e-872b-f91f3373d01a",
+			"migrations_dir": "cf/migrations"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "SCRAPSCACHE_ENVELOPES",
+			"bucket_name": "scrapscache-envelopes"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "ACCOUNT_COORDINATOR",
+				"class_name": "AccountCoordinator"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["AccountCoordinator"]
+		}
+	],
+	"env": {
+		"dev": {
+			"d1_databases": [
+				{
+					"binding": "SCRAPSCACHE_DB",
+					"database_name": "scrapscache-dev",
+					"database_id": "3dd5fae0-a9d1-4476-b2d1-a3936ee57a08",
+					"migrations_dir": "cf/migrations"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "SCRAPSCACHE_ENVELOPES",
+					"bucket_name": "scrapscache-envelopes-dev"
+				}
+			],
+			"durable_objects": {
+				"bindings": [
+					{
+						"name": "ACCOUNT_COORDINATOR",
+						"class_name": "AccountCoordinator"
+					}
+				]
+			},
+			"routes": [
+				{
+					"pattern": "dev.scrapscache.com/*",
+					"zone_name": "scrapscache.com"
+				}
+			],
+			"vars": {
+				"SCRAPSCACHE_ORIGIN": "https://dev.scrapscache.com"
+			}
+		}
 	}
 }

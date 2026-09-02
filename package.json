@@ -30,8 +30,10 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"build:cloudflare": "DEPLOY_TARGET=cloudflare vite build",
-		"cf:dev": "npm run build:cloudflare && wrangler dev",
-		"cf:deploy": "npm run build:cloudflare && wrangler deploy",
+		"cf:dev": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --local --env '' && wrangler dev --env ''",
+		"cf:cron:dev": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --local --env '' && wrangler dev --config cf/wrangler.cron.jsonc --config wrangler.jsonc --env '' --test-scheduled",
+		"cf:deploy": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env '' && wrangler deploy --env '' && wrangler deploy --config cf/wrangler.cron.jsonc --env ''",
+		"cf:deploy:dev": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env dev && wrangler deploy --env dev && wrangler deploy --config cf/wrangler.cron.jsonc --env dev",
 		"start": "node build",
 		"preview": "vite preview",
 		"test": "vitest run",
@@ -44,6 +46,7 @@
 		"format:check": "prettier --check ."
 	},
 	"devDependencies": {
+		"@cloudflare/workers-types": "^5.20260902.1",
 		"@lucide/svelte": "^1.35.0",
 		"@sveltejs/adapter-cloudflare": "^7.2.9",
 		"@sveltejs/adapter-node": "^5.5.7",

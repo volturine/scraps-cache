@@ -21,7 +21,6 @@ const RELAY_DDL = `
 		next_seq INTEGER NOT NULL DEFAULT 0,
 		envelope_count INTEGER NOT NULL DEFAULT 0,
 		ciphertext_bytes INTEGER NOT NULL DEFAULT 0,
-		wake_revision INTEGER NOT NULL DEFAULT 0,
 		updated_at INTEGER NOT NULL,
 		last_seen_at INTEGER NOT NULL
 	);
@@ -42,6 +41,10 @@ const RELAY_DDL = `
 		account_id TEXT PRIMARY KEY,
 		max_bytes INTEGER NOT NULL CHECK(max_bytes > 0),
 		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+	);
+	CREATE TABLE IF NOT EXISTS pending_ops_deletions (
+		account_id TEXT PRIMARY KEY,
+		queued_at INTEGER NOT NULL
 	);
 	CREATE TABLE IF NOT EXISTS deleted_envelopes (
 		account_id TEXT NOT NULL,
@@ -115,6 +118,10 @@ const OPS_DDL = `
 		PRIMARY KEY (account_id, wake_id)
 	);
 	CREATE INDEX IF NOT EXISTS reminder_wakes_due ON reminder_wakes(fire_at);
+	CREATE TABLE IF NOT EXISTS reminder_wake_revisions (
+		account_id TEXT PRIMARY KEY,
+		revision INTEGER NOT NULL
+	);
 	CREATE TABLE IF NOT EXISTS reminder_wake_deliveries (
 		account_id TEXT NOT NULL,
 		device_id TEXT NOT NULL,
@@ -150,8 +157,8 @@ export function createDb(clients: DbClients): Db {
 
 function dbUrl(value: string | undefined, fallback: string, name: string): string {
 	const url = value?.trim() || fallback;
-	if (!/^https?:\/\//i.test(url)) {
-		throw new Error(`${name} must be an http:// or https:// libSQL/sqld URL`);
+	if (!/^(?:https?|wss?|libsql):\/\//i.test(url)) {
+		throw new Error(`${name} must be a libSQL URL`);
 	}
 	return url;
 }
@@ -162,15 +169,11 @@ let singleton: Db | undefined;
 export function getDb(): Db {
 	singleton ??= createDb({
 		relay: createClient({
-			url: dbUrl(
-				env.SCRAPSCACHE_RELAY_DB_URL,
-				'http://127.0.0.1:8080/relay',
-				'SCRAPSCACHE_RELAY_DB_URL'
-			),
+			url: dbUrl(env.SCRAPSCACHE_RELAY_DB_URL, 'http://127.0.0.1:8080', 'SCRAPSCACHE_RELAY_DB_URL'),
 			authToken: env.SCRAPSCACHE_RELAY_DB_AUTH_TOKEN || undefined
 		}),
 		ops: createClient({
-			url: dbUrl(env.SCRAPSCACHE_OPS_DB_URL, 'http://127.0.0.1:8080/ops', 'SCRAPSCACHE_OPS_DB_URL'),
+			url: dbUrl(env.SCRAPSCACHE_OPS_DB_URL, 'http://127.0.0.1:8081', 'SCRAPSCACHE_OPS_DB_URL'),
 			authToken: env.SCRAPSCACHE_OPS_DB_AUTH_TOKEN || undefined
 		})
 	});
@@ -187,7 +190,7 @@ export async function withTxn<T>(
 	client: Client,
 	body: (tx: Transaction) => Promise<T>
 ): Promise<T> {
-	const tx = await client.transaction();
+	const tx = await client.transaction('write');
 	try {
 		const result = await body(tx);
 		await tx.commit();
@@ -213,4 +216,17 @@ export async function setMeta(db: Db, key: string, value: string): Promise<void>
 		sql: 'INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
 		args: [key, value]
 	});
+}
+
+/** Persist a generated value exactly once and return the winning value when
+ * multiple processes initialize the same metadata concurrently. */
+export async function setMetaIfAbsent(db: Db, key: string, value: string): Promise<string> {
+	await db.ready;
+	const result = await db.ops.execute({
+		sql: `INSERT INTO meta(key, value) VALUES (?, ?)
+			ON CONFLICT(key) DO UPDATE SET value = meta.value
+			RETURNING value`,
+		args: [key, value]
+	});
+	return (result.rows[0] as unknown as { value: string }).value;
 }

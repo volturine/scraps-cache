@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('$lib/server/syncStore', () => ({
 	SyncQuotaExceededError: mocks.QuotaError,
+	MAX_SYNC_MUTATIONS_PER_REQUEST: 2_000,
 	getSyncStore: () => ({
 		sync: mocks.sync
 	})

@@ -7,7 +7,10 @@ const config = {
 	preprocess: vitePreprocess(),
 	kit: {
 		// Self-hosted Node builds are the default; DEPLOY_TARGET=cloudflare builds the Workers bundle.
-		adapter: process.env.DEPLOY_TARGET === 'cloudflare' ? adapterCloudflare() : adapterNode(),
+		adapter:
+			process.env.DEPLOY_TARGET === 'cloudflare'
+				? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
+				: adapterNode(),
 		csp: {
 			mode: 'nonce',
 			directives: {
