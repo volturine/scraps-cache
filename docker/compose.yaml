@@ -1,28 +1,44 @@
 name: scrapscache
 
 services:
+  sqld:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "${SCRAPSCACHE_SQLD_BIND:-127.0.0.1}:${SCRAPSCACHE_SQLD_PORT:-8080}:8080"
+    environment:
+      SQLD_NODE: primary
+    volumes:
+      - scrapscache-sqld-data:/var/lib/sqld
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
   app:
     image: "${SCRAPSCACHE_IMAGE:?Set SCRAPSCACHE_IMAGE to a pinned release tag or digest in docker/.env}"
     restart: unless-stopped
     init: true
+    depends_on:
+      - sqld
     ports:
       - "${SCRAPSCACHE_BIND:-127.0.0.1}:${SCRAPSCACHE_PORT:-3000}:3000"
     environment:
       ORIGIN: "${SCRAPSCACHE_ORIGIN:-http://localhost:3000}"
       SCRAPSCACHE_ORIGIN: "${SCRAPSCACHE_ORIGIN:-http://localhost:3000}"
+      SCRAPSCACHE_RELAY_DB_URL: "http://sqld:8080/relay"
+      SCRAPSCACHE_OPS_DB_URL: "http://sqld:8080/ops"
+      SCRAPSCACHE_TICK_SECRET: "${SCRAPSCACHE_TICK_SECRET:?Set SCRAPSCACHE_TICK_SECRET for cron endpoint}"
       SCRAPSCACHE_VAPID_PUBLIC_KEY: "${SCRAPSCACHE_VAPID_PUBLIC_KEY:-}"
       SCRAPSCACHE_VAPID_PRIVATE_KEY: "${SCRAPSCACHE_VAPID_PRIVATE_KEY:-}"
       SCRAPSCACHE_VAPID_SUBJECT: "${SCRAPSCACHE_VAPID_SUBJECT:-}"
       BODY_SIZE_LIMIT: "${SCRAPSCACHE_BODY_SIZE_LIMIT:-110M}"
       ADDRESS_HEADER: "${SCRAPSCACHE_ADDRESS_HEADER:-}"
       XFF_DEPTH: "${SCRAPSCACHE_XFF_DEPTH:-1}"
-      SCRAPSCACHE_SYNC_DATA_DIR: /data
       SCRAPSCACHE_ADMIN_TOKEN: "${SCRAPSCACHE_ADMIN_TOKEN:-}"
       SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES: "${SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES:-1000000000}"
       SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS: "${SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS:-8}"
       SCRAPSCACHE_RETENTION_INACTIVE_DAYS: "${SCRAPSCACHE_RETENTION_INACTIVE_DAYS:-0}"
-    volumes:
-      - scrapscache-sync-data:/data
     read_only: true
     tmpfs:
       - /tmp
@@ -30,4 +46,4 @@ services:
       - no-new-privileges:true
 
 volumes:
-  scrapscache-sync-data:
+  scrapscache-sqld-data:

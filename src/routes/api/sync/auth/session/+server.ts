@@ -1,12 +1,12 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { exchangeSyncChallenge } from '$lib/server/syncAuth';
+import { getSyncAuth } from '$lib/server/syncAuth';
 import { getSyncStore } from '$lib/server/syncStore';
 import { readJsonBody } from '$lib/server/request';
-import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const limited = publicApiLimiter.check(`auth-ip:${clientAddress(getClientAddress)}`, {
+	const limited = await getPublicApiLimiter().check(`auth-ip:${clientAddress(getClientAddress)}`, {
 		capacity: 30,
 		refillWindowMs: 60_000
 	});
@@ -24,9 +24,15 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	) {
 		return json({ error: 'Authentication failed' }, { status: 401 });
 	}
-	const publicKey = getSyncStore().getAuthCredential(body.accountId);
+	const publicKey = await getSyncStore().getAuthCredential(body.accountId);
 	const session =
-		publicKey && exchangeSyncChallenge(body.accountId, publicKey, body.challengeId, body.signature);
+		publicKey &&
+		(await getSyncAuth().exchangeSyncChallenge(
+			body.accountId,
+			publicKey,
+			body.challengeId,
+			body.signature
+		));
 	if (!session) return json({ error: 'Authentication failed' }, { status: 401 });
 	return json(session);
 };

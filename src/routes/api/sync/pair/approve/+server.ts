@@ -1,11 +1,11 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { pairingSessions } from '$lib/server/pairingSessions';
+import { getPairingSessions } from '$lib/server/pairingSessions';
 import { readJsonBody } from '$lib/server/request';
-import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const limited = publicApiLimiter.check(`pair:${clientAddress(getClientAddress)}`, {
+	const limited = await getPublicApiLimiter().check(`pair:${clientAddress(getClientAddress)}`, {
 		capacity: 60,
 		refillWindowMs: 60_000
 	});
@@ -27,7 +27,9 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	) {
 		return json({ error: 'Invalid encrypted rendezvous grant' }, { status: 400 });
 	}
-	const result = pairingSessions.submitGrant(body.sessionId, { ciphertext: grant.ciphertext });
+	const result = await getPairingSessions().submitGrant(body.sessionId, {
+		ciphertext: grant.ciphertext
+	});
 	return result.success
 		? json({ ok: true })
 		: json({ error: 'Rendezvous no longer active' }, { status: 404 });

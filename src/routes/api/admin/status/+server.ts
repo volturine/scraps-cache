@@ -4,11 +4,11 @@ import { isAdminAuthorized, unauthorizedAdminResponse } from '$lib/server/adminA
 import { checkAdminApiLimit, rateLimitResponse } from '$lib/server/rateLimit';
 import { getOperatorSnapshot } from '$lib/server/operatorMonitor';
 
-export const GET: RequestHandler = ({ request, getClientAddress }) => {
-	const limit = checkAdminApiLimit(getClientAddress);
+export const GET: RequestHandler = async ({ request, getClientAddress }) => {
+	const limit = await checkAdminApiLimit(getClientAddress);
 	if (!limit.allowed) return rateLimitResponse(limit);
 	if (!isAdminAuthorized(request)) return unauthorizedAdminResponse();
-	return json(getOperatorSnapshot(), {
+	return json(await getOperatorSnapshot(), {
 		headers: { 'cache-control': 'no-store' }
 	});
 };

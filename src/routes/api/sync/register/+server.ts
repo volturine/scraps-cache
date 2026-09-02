@@ -3,10 +3,10 @@ import { json } from '@sveltejs/kit';
 import { getSyncStore } from '$lib/server/syncStore';
 import { verifySyncRegistration } from '$lib/server/syncAuth';
 import { readJsonBody } from '$lib/server/request';
-import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const limited = publicApiLimiter.check(
+	const limited = await getPublicApiLimiter().check(
 		`register:${clientAddress(getClientAddress)}`,
 		// Two immediately, then five tokens per hour.
 		{ capacity: 2, refillWindowMs: 24 * 60 * 1000 }
@@ -29,7 +29,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		return json({ error: 'Invalid account credential' }, { status: 400 });
 	}
 	try {
-		const created = getSyncStore().createAccount(body.accountId, body.authPublicKey);
+		const created = await getSyncStore().createAccount(body.accountId, body.authPublicKey);
 		if (!created)
 			return json({ error: 'This sync account already exists on this device.' }, { status: 409 });
 		return json({ accountId: body.accountId });

@@ -1,11 +1,5 @@
 import type { Handle } from '@sveltejs/kit';
-import { randomUUID } from 'node:crypto';
 import { recordHttpRequest } from '$lib/server/metrics';
-import { retentionManager } from '$lib/server/retentionManager';
-import { closeSyncStore } from '$lib/server/syncStore';
-import { wakeScheduler } from '$lib/server/wakeScheduler';
-
-wakeScheduler.start();
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
@@ -16,13 +10,11 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 export const handle: Handle = async ({ event, resolve }) => {
-	retentionManager.start();
-	wakeScheduler.start();
 	const startedAt = performance.now();
 	const suppliedRequestId = event.request.headers.get('x-request-id') ?? '';
 	const requestId = /^[A-Za-z0-9._-]{1,128}$/.test(suppliedRequestId)
 		? suppliedRequestId
-		: randomUUID();
+		: crypto.randomUUID();
 	const response = await resolve(event);
 	for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
 	response.headers.set('x-request-id', requestId);
@@ -42,9 +34,3 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 	return response;
 };
-
-process.on('sveltekit:shutdown', async () => {
-	retentionManager.stop();
-	wakeScheduler.stop();
-	closeSyncStore();
-});

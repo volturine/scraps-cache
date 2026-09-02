@@ -15,14 +15,16 @@ vi.mock('$lib/server/syncStore', () => ({
 	})
 }));
 vi.mock('$lib/server/syncAuth', () => ({
-	createSyncSession: () => ({ accessToken: 'token', expiresAt: 123 }),
+	getSyncAuth: () => ({
+		createSyncSession: () => ({ accessToken: 'token', expiresAt: 123 })
+	}),
 	isLegacySyncCredential: (value: string) => value.startsWith('scrypt:v1:'),
 	sameLegacySyncSecret: mocks.sameSecret,
 	verifySyncMigration: mocks.verifySignature
 }));
 vi.mock('$lib/server/rateLimit', () => ({
 	clientAddress: () => '127.0.0.1',
-	publicApiLimiter: { check: mocks.rateLimit },
+	getPublicApiLimiter: () => ({ check: mocks.rateLimit }),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
 

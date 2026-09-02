@@ -11,33 +11,49 @@ Contributor-oriented notes for working on Scraps Cache. Also read
 
 ## Scripts
 
-| Script                 | Description                                   |
-| ---------------------- | --------------------------------------------- |
-| `npm run dev`          | Vite dev server (SvelteKit)                   |
-| `npm run build`        | Production build (`adapter-node` → `build/`)  |
-| `npm start`            | Run the built server (`node build`)           |
-| `npm run preview`      | Vite preview of the production build          |
-| `npm run check`        | `svelte-check` with native TypeScript         |
-| `npm run format`       | Prettier write                                |
-| `npm run format:check` | Prettier check (also runs in CI / `validate`) |
-| `npm test`             | Run the Vitest suite                          |
-| `npm run test:watch`   | Vitest watch mode                             |
-| `npm run validate`     | check + format + test + build                 |
+| Script                     | Description                                                      |
+| -------------------------- | ---------------------------------------------------------------- |
+| `npm run dev`              | Vite dev server (SvelteKit)                                      |
+| `npm run build`            | Production build (`adapter-node` → `build/`)                     |
+| `npm run build:cloudflare` | Workers build (`adapter-cloudflare` → `.svelte-kit/cloudflare/`) |
+| `npm start`                | Run the built server (`node build`)                              |
+| `npm run preview`          | Vite preview of the production build                             |
+| `npm run check`            | `svelte-check` with native TypeScript                            |
+| `npm run format`           | Prettier write                                                   |
+| `npm run format:check`     | Prettier check (also runs in CI / `validate`)                    |
+| `npm test`                 | Run the Vitest suite                                             |
+| `npm run test:watch`       | Vitest watch mode                                                |
+| `npm run validate`         | check + format + test + build                                    |
 
-## Local sync data
+## Local development
 
-By default the Node process stores the relay database under `sync-data/`
-(gitignored). Override with `SCRAPSCACHE_SYNC_DATA_DIR`.
+By default the app connects to a local sqld instance. Start one with:
+
+```sh
+docker run --rm -p 8080:8080 ghcr.io/tursodatabase/libsql-server:latest
+```
+
+The dev server reads `http://127.0.0.1:8080/relay` and
+`http://127.0.0.1:8080/ops` by default (env vars
+`SCRAPSCACHE_RELAY_DB_URL` and `SCRAPSCACHE_OPS_DB_URL`).
+
+Tests use `@libsql/client/node` with `file:` URLs (no sqld required).
 
 When developing sync features, use two browser profiles (or a normal window +
 a private window) against the same origin and exercise pairing in the Sync UI.
+
+For Cloudflare Workers local development:
+
+```sh
+npm run cf:dev
+```
 
 ## Testing layout
 
 - Co-located unit tests: `src/lib/**/*.test.ts`, some component tests
 - Shared setup: `src/tests/setup.ts` (e.g. fake IndexedDB)
-- Operator monitoring / inactive-account retention: `operatorMonitor.test.ts`,
-  `retentionManager.test.ts`, `operatorConfig.test.ts`
+- Operator monitoring: `operatorMonitor.test.ts`, `operatorConfig.test.ts`
+- Wake dispatch and retention sweep: `wakeDispatch.test.ts`, `retentionSweep.test.ts`
 
 Prefer tests for:
 

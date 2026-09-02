@@ -1,13 +1,13 @@
 # Self-hosting
 
-Run Scraps Cache as a single Node service with SQLite for the optional encrypted sync
-relay. This guide covers Docker production deployment and configuration.
+Run Scraps Cache as a Node service with sqld (libSQL) for the encrypted sync
+relay and operational state. This guide covers Docker production deployment and
+configuration.
 
 ## Requirements
 
 - Docker Engine with Compose v2
 - For public deployments: a reverse proxy or tunnel that terminates TLS
-- A persistent volume for sync data
 
 ## Production (recommended)
 
@@ -19,11 +19,12 @@ cp docker/.env.example docker/.env
 
 Edit `docker/.env` at minimum:
 
-| Variable             | Guidance                                                                          |
-| -------------------- | --------------------------------------------------------------------------------- |
-| `SCRAPSCACHE_IMAGE`  | Pin a release, e.g. `ghcr.io/volturine/scrapscache:1.2.3`, or an immutable digest |
-| `SCRAPSCACHE_ORIGIN` | Exact public origin, e.g. `https://scrapscache.com`                               |
-| `SCRAPSCACHE_PORT`   | Host port (default `3000`)                                                        |
+| Variable                  | Guidance                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `SCRAPSCACHE_IMAGE`       | Pin a release, e.g. `ghcr.io/volturine/scrapscache:1.2.3`, or an immutable digest |
+| `SCRAPSCACHE_ORIGIN`      | Exact public origin, e.g. `https://scrapscache.com`                               |
+| `SCRAPSCACHE_PORT`        | Host port (default `3000`)                                                        |
+| `SCRAPSCACHE_TICK_SECRET` | Generate with `openssl rand -hex 32`; used to protect the cron endpoint           |
 
 Optionally set `SCRAPSCACHE_ADMIN_TOKEN` (long random secret, e.g.
 `openssl rand -hex 32`) to enable `/metrics` and the admin API; leaving it unset
@@ -39,7 +40,7 @@ Scraps Cache listens on container port **3000**, published on `127.0.0.1` by
 default (`SCRAPSCACHE_BIND` to override). The production template:
 
 - Runs with a read-only application filesystem
-- Stores SQLite under the `scrapscache-sync-data` volume
+- Runs an sqld sidecar with relay and ops databases on a named volume
 
 ### Build locally instead of pulling
 
@@ -144,7 +145,9 @@ client-address settings above so rate limits see real client IPs.
 
 | Variable                                   |                        Default | Purpose                                                                         |
 | ------------------------------------------ | -----------------------------: | ------------------------------------------------------------------------------- |
-| `SCRAPSCACHE_SYNC_DATA_DIR`                |                    `sync-data` | Persistent sync-data directory (`/data` in Compose)                             |
+| `SCRAPSCACHE_RELAY_DB_URL`                 |  `http://127.0.0.1:8080/relay` | libSQL URL for relay (accounts, envelopes, deleted_envelopes, quotas)           |
+| `SCRAPSCACHE_OPS_DB_URL`                   |    `http://127.0.0.1:8080/ops` | libSQL URL for operational state (rate limits, auth, pairing, push, VAPID)      |
+| `SCRAPSCACHE_TICK_SECRET`                  |                       required | Shared secret protecting the `/api/cron/tick` endpoint                          |
 | `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                   `1000000000` | Relay storage quota per account (1000 MB)                                       |
 | `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight                                                     |
 | `SCRAPSCACHE_ADMIN_TOKEN`                  |                          unset | Enables and protects metrics, JSON status, and retention; unset disables them   |
@@ -158,11 +161,10 @@ Compose maps `SCRAPSCACHE_ADDRESS_HEADER` → `ADDRESS_HEADER` and
 `SCRAPSCACHE_XFF_DEPTH` → `XFF_DEPTH`.
 
 Provide both VAPID key variables or neither. When omitted, Scraps Cache generates a
-pair once and persists it in the sync SQLite database. Changing the pair causes
+pair once and persists it in the ops database. Changing the pair causes
 browsers to replace their subscription the next time Scraps Cache opens.
 
-If you lose the live database (or the key row) without setting
-`SCRAPSCACHE_VAPID_PRIVATE_KEY`,
+If you lose the ops database without setting `SCRAPSCACHE_VAPID_PRIVATE_KEY`,
 a new key is generated and existing push subscriptions are rejected by the Web
 Push spec — devices must re-register (the server logs a warning when this
 happens). To keep subscriptions working across restores, set both VAPID env
@@ -177,26 +179,37 @@ variables explicitly.
 | `SCRAPSCACHE_IMAGE`           |         required (prod) | Pinned image tag or digest                                    |
 | `SCRAPSCACHE_ORIGIN`          | `http://localhost:3000` | Exact public origin used by SvelteKit                         |
 | `SCRAPSCACHE_BODY_SIZE_LIMIT` |                  `110M` | Node adapter request limit; must exceed the 101 MB sync cap   |
+| `SCRAPSCACHE_SQLD_PORT`       |                  `8080` | Host port for sqld HTTP interface                             |
 | `TS_HOSTNAME`                 |           `scrapscache` | Tailnet machine name (`https://<name>.<tailnet>.ts.net`)      |
 | `TS_AUTHKEY`                  |                       — | Auth key or OAuth secret; required with the Tailscale overlay |
 | `TS_EXTRA_ARGS`               |                       — | Extra `tailscale up` flags (OAuth tag advertisement)          |
 
-Inside Compose, `HOST`, `PORT`, and `SCRAPSCACHE_SYNC_DATA_DIR` are fixed to
-`0.0.0.0`, `3000`, and `/data`. Direct `docker run` may override them.
+Inside Compose, `HOST`, `PORT`, `SCRAPSCACHE_RELAY_DB_URL`, and
+`SCRAPSCACHE_OPS_DB_URL` are fixed to the sqld service. Direct `docker run`
+may override them.
 
 ## Health, metrics, and administration
 
 | Endpoint                                   | Auth                                             | Purpose                                             |
 | ------------------------------------------ | ------------------------------------------------ | --------------------------------------------------- |
 | `GET /health/live`                         | none                                             | Process liveness                                    |
-| `GET /health/ready`                        | none                                             | SQLite and volume readiness                         |
+| `GET /health/ready`                        | none                                             | Database readiness                                  |
 | `GET /metrics`                             | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                            |
 | `GET /api/admin/status`                    | same bearer token                                | Anonymous JSON: storage, users, activity, retention |
 | `POST /api/admin/retention`                | same bearer token                                | Run the inactive-account sweeper now                |
 | `POST/PUT/DELETE /api/admin/account-quota` | same bearer token                                | Inspect, set, or clear one account's byte quota     |
+| `POST /api/cron/tick`                      | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                 |
 
 With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the three token-protected
 endpoints return 404 — the admin API is disabled.
+
+The cron endpoint (`/api/cron/tick`) is the scheduler entry point. On
+Cloudflare Workers, configure a Cron Trigger that POSTs to this endpoint
+every minute. For self-hosted deployments, add a crontab entry:
+
+```sh
+* * * * * curl -sf -X POST -H "Authorization: Bearer $SCRAPSCACHE_TICK_SECRET" http://localhost:3000/api/cron/tick || echo "cron tick failed" >&2
+```
 
 `GET /api/admin/status` is the JSON companion to `/metrics`. It reports
 ciphertext bytes and decimal GB, account totals, activity in the last 1 / 7 / 30
@@ -254,4 +267,5 @@ password is required for GitHub Actions.
 
 See [security.md](security.md). Short version: the database holds **encrypted
 envelopes**, not readable notes — but you still protect availability, auth
-tokens and TLS configuration carefully.
+tokens and TLS configuration carefully. The sqld sidecar stores all data in
+`/var/lib/sqld` on a persistent volume.

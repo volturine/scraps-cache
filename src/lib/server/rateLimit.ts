@@ -1,4 +1,5 @@
 import { recordRateLimit } from '$lib/server/metrics';
+import { getDb, type Db } from '$lib/server/db';
 
 export type RateLimitPolicy = {
 	capacity: number;
@@ -7,78 +8,76 @@ export type RateLimitPolicy = {
 
 export type RateLimitResult = { allowed: true } | { allowed: false; retryAfterSeconds: number };
 
-const STALE_AFTER_MS = 10 * 60_000;
-const PRUNE_INTERVAL_MS = 60_000;
+export const RATE_BUCKET_STALE_MS = 10 * 60_000;
 
-type Bucket = {
-	tokens: number;
-	updatedAt: number;
-	lastSeen: number;
-};
+const CHECK_SQL = `
+	INSERT INTO rate_buckets (bucket_key, tokens, updated_at, last_seen_at, last_allowed)
+	VALUES (@key, @cap - 1, @now, @now, 1)
+	ON CONFLICT(bucket_key) DO UPDATE SET
+		tokens = CASE
+			WHEN min(@cap, rate_buckets.tokens + (@now - rate_buckets.updated_at) * @rate) >= 1
+			THEN min(@cap, rate_buckets.tokens + (@now - rate_buckets.updated_at) * @rate) - 1
+			ELSE min(@cap, rate_buckets.tokens + (@now - rate_buckets.updated_at) * @rate)
+		END,
+		last_allowed = CASE
+			WHEN min(@cap, rate_buckets.tokens + (@now - rate_buckets.updated_at) * @rate) >= 1 THEN 1
+			ELSE 0
+		END,
+		updated_at = @now,
+		last_seen_at = @now
+	RETURNING tokens AS tokens, last_allowed AS allowed
+`;
 
+/** Durable token bucket: one atomic upsert per check so every server isolate
+ * shares the same allowance for a key. */
 export class TokenBucketLimiter {
-	private readonly buckets = new Map<string, Bucket>();
-	private lastPruneAt = Number.NEGATIVE_INFINITY;
+	constructor(private readonly db: Db) {}
 
-	constructor(
-		private readonly maxEntries = 20_000,
-		private readonly now: () => number = Date.now
-	) {}
-
-	check(key: string, policy: RateLimitPolicy): RateLimitResult {
-		const now = this.now();
+	async check(key: string, policy: RateLimitPolicy, now = Date.now()): Promise<RateLimitResult> {
 		const refillPerMs = policy.capacity / policy.refillWindowMs;
-		this.pruneExpired(now);
-		const existing = this.buckets.get(key);
-		if (!existing && this.buckets.size >= this.maxEntries && !this.evictExpired(now)) {
+		try {
+			await this.db.ready;
+			const result = await this.db.ops.execute({
+				sql: CHECK_SQL,
+				args: { key, cap: policy.capacity, rate: refillPerMs, now }
+			});
+			const bucket = result.rows[0] as unknown as { tokens: number; allowed: number };
+			if (bucket.allowed === 1) return { allowed: true };
+			const retryAfterSeconds = Math.max(1, Math.ceil((1 - bucket.tokens) / refillPerMs / 1000));
+			return { allowed: false, retryAfterSeconds };
+		} catch {
 			return { allowed: false, retryAfterSeconds: 1 };
 		}
-		const bucket = existing ?? { tokens: policy.capacity, updatedAt: now, lastSeen: now };
-		bucket.tokens = Math.min(
-			policy.capacity,
-			bucket.tokens + Math.max(0, now - bucket.updatedAt) * refillPerMs
-		);
-		bucket.updatedAt = now;
-		bucket.lastSeen = now;
-		if (!existing) this.buckets.set(key, bucket);
-		if (bucket.tokens >= 1) {
-			bucket.tokens -= 1;
-			return { allowed: true };
-		}
-		const retryAfterSeconds = Math.max(1, Math.ceil((1 - bucket.tokens) / refillPerMs / 1000));
-		return { allowed: false, retryAfterSeconds };
-	}
-
-	private pruneExpired(now: number): void {
-		if (now - this.lastPruneAt < PRUNE_INTERVAL_MS) return;
-		this.lastPruneAt = now;
-		const staleBefore = now - STALE_AFTER_MS;
-		for (const [key, bucket] of this.buckets) {
-			if (bucket.lastSeen < staleBefore) this.buckets.delete(key);
-		}
-	}
-
-	/** Fallback when the table is full between throttled prunes: make room from expired entries. */
-	private evictExpired(now: number): boolean {
-		const staleBefore = now - STALE_AFTER_MS;
-		for (const [key, bucket] of this.buckets) {
-			if (bucket.lastSeen < staleBefore) {
-				this.buckets.delete(key);
-				return true;
-			}
-		}
-		return false;
 	}
 }
 
-export const publicApiLimiter = new TokenBucketLimiter();
+let publicLimiter: TokenBucketLimiter | undefined;
 
-const adminApiLimiter = new TokenBucketLimiter();
+export function getPublicApiLimiter(): TokenBucketLimiter {
+	publicLimiter ??= new TokenBucketLimiter(getDb());
+	return publicLimiter;
+}
 
-export function checkAdminApiLimit(getClientAddress: () => string): RateLimitResult {
-	return adminApiLimiter.check(`admin:${clientAddress(getClientAddress)}`, {
-		capacity: 30,
-		refillWindowMs: 60_000
+export async function checkAdminApiLimit(
+	getClientAddress: () => string,
+	now = Date.now()
+): Promise<RateLimitResult> {
+	const limiter = new TokenBucketLimiter(getDb());
+	return limiter.check(
+		`admin:${clientAddress(getClientAddress)}`,
+		{
+			capacity: 30,
+			refillWindowMs: 60_000
+		},
+		now
+	);
+}
+
+export async function pruneRateBuckets(db: Db, now = Date.now()): Promise<void> {
+	await db.ready;
+	await db.ops.execute({
+		sql: 'DELETE FROM rate_buckets WHERE last_seen_at <= ?',
+		args: [now - RATE_BUCKET_STALE_MS]
 	});
 }
 

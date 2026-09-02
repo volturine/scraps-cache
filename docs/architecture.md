@@ -17,11 +17,11 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 └───────────────────────────┼────────────────────────────────┘
                             │ HTTPS (opaque envelopes)
 ┌───────────────────────────▼────────────────────────────────┐
-│  Node (SvelteKit adapter-node)                             │
+│  Node / Cloudflare Workers                                 │
 │  ┌────────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-│  │ /api/sync/*    │  │ rate limit  │  │ SQLite          │  │
-│  │ pair / delta / │──┤ auth        │──┤ accounts +      │  │
-│  │ register / …   │  │ metrics     │  │ encrypted slots │  │
+│  │ /api/sync/*    │  │ rate limit  │  │ sqld (libSQL)   │  │
+│  │ pair / delta / │──┤ auth        │──┤ relay + ops DBs  │  │
+│  │ register / …   │  │ metrics     │  │                 │  │
 │  └────────────────┘  └─────────────┘  └─────────────────┘  │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -31,7 +31,7 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 1. **Offline-first** — IndexedDB is the durable source of truth on each device.
 2. **Ciphertext relay** — the server stores slots of encrypted blobs; it never
    receives note plaintext, labels, or attachment bytes.
-3. **Single node simplicity** — one app process, one SQLite file (WAL), no
+3. **Simple deployment** — single app process, sqld for state, no
    required Redis/Postgres/object store for core operation.
 4. **Client-side crypto** — sync keys, backup passphrases, and encryption live
    in the browser using audited primitives (`@noble/*`, CPace).
@@ -52,7 +52,7 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 | Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                 | Export/import encrypted `.scraps-cache-backup`        |
 | Images         | `src/lib/imageOptimize.ts`                             | Resize, WebP, strip EXIF before store/sync            |
 | App viewport   | `src/lib/appViewport.ts`                               | Safe area + keyboard frame; overlay host              |
-| Reminder wakes | `src/lib/server/wakeScheduler.ts`, `webPush.ts`        | Contentless Web Push ticks; SW reads notes locally    |
+| Reminder wakes | `src/lib/server/wakeDispatch.ts`, `webPush.ts`         | Contentless Web Push ticks; SW reads notes locally    |
 
 ### Local data model (conceptual)
 
@@ -87,20 +87,25 @@ authentication. The account ID and encrypted relay data do not move.
 
 ## Server
 
-| Area            | Location                                                 | Responsibility                                     |
-| --------------- | -------------------------------------------------------- | -------------------------------------------------- |
-| Sync store      | `src/lib/server/syncStore.ts`                            | SQLite accounts, envelopes, and quotas             |
-| Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes    |
-| Register        | `src/routes/api/sync/register/`                          | Create account credentials                         |
-| Pairing         | `src/routes/api/sync/pair/*`                             | Rendezvous for PAKE shares (no plaintext key)      |
-| Reminder wakes  | `src/routes/api/sync/push/*`                             | Device subscriptions + opaque wake ticks           |
-| Account delete  | `src/routes/api/sync/account/`                           | Wipe cloud ciphertext for an account               |
-| Rate limits     | `src/lib/server/rateLimit.ts`                            | In-memory token buckets (single-node)              |
-| Metrics         | `src/lib/server/metrics.ts`, `/metrics`                  | Operator metrics (admin token)                     |
-| Operator status | `src/lib/server/operatorMonitor.ts`, `/api/admin/status` | Anonymous JSON usage + activity                    |
-| Retention       | `src/lib/server/retentionManager.ts`                     | Optional inactive-account sweep (env, admin token) |
-| Health          | `/health/live`, `/health/ready`                          | Liveness and readiness probes                      |
-| Hooks           | `src/hooks.server.ts`                                    | Security headers, request IDs, graceful shutdown   |
+| Area            | Location                                                 | Responsibility                                  |
+| --------------- | -------------------------------------------------------- | ----------------------------------------------- |
+| DB layer        | `src/lib/server/db.ts`                                   | sqld/libSQL clients, withTxn, DDL, meta helpers |
+| Sync store      | `src/lib/server/syncStore.ts`                            | Relay DB: accounts, envelopes, quotas           |
+| Sync auth       | `src/lib/server/syncAuth.ts`                             | Ops DB: challenges, sessions, public key auth   |
+| Pairing         | `src/lib/server/pairingSessions.ts`                      | Ops DB: rendezvous for PAKE shares              |
+| Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes |
+| Register        | `src/routes/api/sync/register/`                          | Create account credentials                      |
+| Reminder wakes  | `src/routes/api/sync/push/*`                             | Device subscriptions + opaque wake ticks        |
+| Account delete  | `src/routes/api/sync/account/`                           | Wipe cloud ciphertext for an account            |
+| Rate limits     | `src/lib/server/rateLimit.ts`                            | Atomic SQL token bucket on ops DB               |
+| Metrics         | `src/lib/server/metrics.ts`, `/metrics`                  | Operator metrics (admin token)                  |
+| Operator status | `src/lib/server/operatorMonitor.ts`, `/api/admin/status` | Anonymous JSON usage + activity                 |
+| Wake dispatch   | `src/lib/server/wakeDispatch.ts`                         | Pull-based wake claiming and push delivery      |
+| Retention sweep | `src/lib/server/retentionSweep.ts`                       | Optional inactive-account sweep (daily gate)    |
+| Cron tick       | `src/lib/server/cronTick.ts`                             | Orchestrator for wake + retention + prune       |
+| Cron endpoint   | `src/routes/api/cron/tick/`                              | Scheduler entry point for cron triggers         |
+| Health          | `/health/live`, `/health/ready`                          | Liveness and readiness probes                   |
+| Hooks           | `src/hooks.server.ts`                                    | Security headers, request IDs                   |
 
 ### Opaque envelopes
 
@@ -117,13 +122,15 @@ temporarily retained deletions, and estimated per-record database overhead
 
 ## Deployment shapes
 
-| Mode               | How                             | Notes                                                       |
-| ------------------ | ------------------------------- | ----------------------------------------------------------- |
-| Dev                | `npm run dev`                   | Vite + HMR; sync data under `sync-data/` by default         |
-| Local prod build   | `npm run build && npm start`    | Node adapter; same env vars as Docker                       |
-| Compose            | `docker/compose.yaml`           | Pull pinned GHCR image; loopback port, optional admin token |
-| PR preview Compose | `docker/compose.dev.yaml`       | Pull GHCR `dev-*` image on port 3000, isolated volumes      |
-| Tailscale overlay  | `docker/compose.tailscale.yaml` | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)            |
+| Mode               | How                             | Notes                                                  |
+| ------------------ | ------------------------------- | ------------------------------------------------------ |
+| Dev                | `npm run dev`                   | Vite + HMR; sqld required locally                      |
+| Workers dev        | `npm run cf:dev`                | Wrangler dev server with workerd runtime               |
+| Local prod build   | `npm run build && npm start`    | Node adapter; same env vars as Docker                  |
+| Workers prod       | `npm run cf:deploy`             | Cloudflare Workers with sqld or Turso                  |
+| Compose            | `docker/compose.yaml`           | Pull pinned GHCR image; sqld sidecar, loopback port    |
+| PR preview Compose | `docker/compose.dev.yaml`       | Pull GHCR `dev-*` image on port 3000, isolated volumes |
+| Tailscale overlay  | `docker/compose.tailscale.yaml` | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)       |
 
 ## Related docs
 

@@ -14,6 +14,12 @@ vi.mock('$lib/server/syncStore', () => ({
 	getSyncStore: () => storeMock
 }));
 
+vi.mock('$lib/server/db', () => ({
+	getDb: () => ({ ready: Promise.resolve() }),
+	getMeta: (_db: unknown, key: string) => storeMock.getMeta(key),
+	setMeta: (_db: unknown, key: string, value: string) => storeMock.setMeta(key, value)
+}));
+
 function setEnv(name: string, value: string | undefined): void {
 	if (value === undefined) delete envMock[name];
 	else envMock[name] = value;
@@ -21,6 +27,15 @@ function setEnv(name: string, value: string | undefined): void {
 
 async function importFreshWebPush() {
 	vi.resetModules();
+	vi.doMock('$lib/server/db', () => ({
+		getDb: () => ({ ready: Promise.resolve() }),
+		getMeta: (_db: unknown, key: string) => storeMock.getMeta(key),
+		setMeta: (_db: unknown, key: string, value: string) => storeMock.setMeta(key, value)
+	}));
+	vi.doMock('$lib/server/syncStore', () => ({
+		getSyncStore: () => storeMock
+	}));
+	vi.doMock('$env/dynamic/private', () => ({ env: envMock }));
 	return await import('./webPush');
 }
 
@@ -45,14 +60,14 @@ describe('getVapidKeys', () => {
 		setEnv('SCRAPSCACHE_VAPID_PUBLIC_KEY', 'env-public');
 		setEnv('SCRAPSCACHE_VAPID_PRIVATE_KEY', 'env-private');
 		const { getVapidKeys } = await importFreshWebPush();
-		expect(getVapidKeys()).toEqual({ publicKey: 'env-public', privateKey: 'env-private' });
+		expect(await getVapidKeys()).toEqual({ publicKey: 'env-public', privateKey: 'env-private' });
 		expect(storeMock.setMeta).not.toHaveBeenCalled();
 	});
 
 	it('throws when only one VAPID env key is configured', async () => {
 		setEnv('SCRAPSCACHE_VAPID_PUBLIC_KEY', 'env-public');
 		const { getVapidKeys } = await importFreshWebPush();
-		expect(() => getVapidKeys()).toThrow('Both SCRAPSCACHE_VAPID_PUBLIC_KEY');
+		await expect(getVapidKeys()).rejects.toThrow('Both SCRAPSCACHE_VAPID_PUBLIC_KEY');
 	});
 
 	it('returns stored keys without regenerating', async () => {
@@ -60,7 +75,10 @@ describe('getVapidKeys', () => {
 			key === 'vapid-private-v1' ? 'stored-private' : 'stored-public'
 		);
 		const { getVapidKeys } = await importFreshWebPush();
-		expect(getVapidKeys()).toEqual({ publicKey: 'stored-public', privateKey: 'stored-private' });
+		expect(await getVapidKeys()).toEqual({
+			publicKey: 'stored-public',
+			privateKey: 'stored-private'
+		});
 		expect(storeMock.setMeta).not.toHaveBeenCalled();
 	});
 
@@ -69,13 +87,13 @@ describe('getVapidKeys', () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const { getVapidKeys } = await importFreshWebPush();
 
-		const first = getVapidKeys();
+		const first = await getVapidKeys();
 		expect(first.publicKey).toBeTruthy();
 		expect(first.privateKey).toBeTruthy();
 		expect(storeMock.setMeta).toHaveBeenCalledWith('vapid-public-v1', first.publicKey);
 		expect(storeMock.setMeta).toHaveBeenCalledWith('vapid-private-v1', first.privateKey);
 
-		getVapidKeys();
+		await getVapidKeys();
 
 		expect(warn).toHaveBeenCalledTimes(1);
 		const payload = JSON.parse(vi.mocked(warn).mock.calls[0][0]) as Record<string, unknown>;
@@ -90,7 +108,7 @@ describe('getVapidKeys', () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const { getVapidKeys } = await importFreshWebPush();
 
-		getVapidKeys();
+		await getVapidKeys();
 
 		expect(storeMock.setMeta).toHaveBeenCalledTimes(2);
 		expect(warn).not.toHaveBeenCalled();

@@ -6,13 +6,13 @@ import {
 	parseRetentionInactiveDays,
 	staleBeforeMs
 } from '$lib/server/operatorConfig';
-import { retentionManager } from '$lib/server/retentionManager';
+import { getRetentionStatus } from '$lib/server/retentionSweep';
 import { getSyncStore } from '$lib/server/syncStore';
 
-export const GET: RequestHandler = ({ request }) => {
+export const GET: RequestHandler = async ({ request }) => {
 	if (!isAdminAuthorized(request)) return unauthorizedAdminResponse();
 	const now = Date.now();
-	const usage = getSyncStore().operatorUsage({
+	const usage = await getSyncStore().operatorUsage({
 		now,
 		staleBefore: staleBeforeMs(parseRetentionInactiveDays(), now)
 	});
@@ -22,7 +22,7 @@ export const GET: RequestHandler = ({ request }) => {
 				...usage,
 				gigabytes: bytesToGigabytes(usage.storageBytes)
 			},
-			retentionManager.getStatus()
+			await getRetentionStatus()
 		),
 		{
 			headers: {

@@ -1,7 +1,8 @@
 import { env } from '$env/dynamic/private';
 import webPushPkg from 'web-push';
-import { getSyncStore } from '$lib/server/syncStore';
+import { getMeta, getDb, setMeta, type Db } from '$lib/server/db';
 import type { DueWake } from '$lib/server/syncStore';
+import { getSyncStore } from '$lib/server/syncStore';
 
 const webpush = ('default' in webPushPkg ? webPushPkg.default : webPushPkg) as typeof webPushPkg;
 
@@ -45,7 +46,10 @@ function warnKeyRegeneration(registeredDevices: number): void {
 	);
 }
 
-export function getVapidKeys(): { publicKey: string; privateKey: string } {
+export async function getVapidKeys(
+	db: Db = getDb()
+): Promise<{ publicKey: string; privateKey: string }> {
+	await db.ready;
 	const fromEnvPublic = env.SCRAPSCACHE_VAPID_PUBLIC_KEY?.trim();
 	const fromEnvPrivate = env.SCRAPSCACHE_VAPID_PRIVATE_KEY?.trim();
 	if (Boolean(fromEnvPublic) !== Boolean(fromEnvPrivate)) {
@@ -57,24 +61,26 @@ export function getVapidKeys(): { publicKey: string; privateKey: string } {
 		return { publicKey: fromEnvPublic, privateKey: fromEnvPrivate };
 	}
 
-	const store = getSyncStore();
-	const storedPublic = store.getMeta(META_PUBLIC);
-	const storedPrivate = store.getMeta(VAPID_PRIVATE_META_KEY);
+	const storedPublic = await getMeta(db, META_PUBLIC);
+	const storedPrivate = await getMeta(db, VAPID_PRIVATE_META_KEY);
 	if (storedPublic && storedPrivate) {
 		return { publicKey: storedPublic, privateKey: storedPrivate };
 	}
 
 	const generated = webpush.generateVAPIDKeys();
-	store.setMeta(META_PUBLIC, generated.publicKey);
-	store.setMeta(VAPID_PRIVATE_META_KEY, generated.privateKey);
-	warnKeyRegeneration(store.countPushDevices());
+	await setMeta(db, META_PUBLIC, generated.publicKey);
+	await setMeta(db, VAPID_PRIVATE_META_KEY, generated.privateKey);
+	warnKeyRegeneration(await getSyncStore().countPushDevices());
 	return generated;
 }
 
+/** Web Push delivery via `generateRequestDetails` + `fetch`: the web-push crypto
+ * pipeline runs on both Node and Workers, but its `https.request` transport does
+ * not exist under workerd. */
 export async function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
 	try {
-		const keys = getVapidKeys();
-		await webpush.sendNotification(
+		const keys = await getVapidKeys();
+		const details = webpush.generateRequestDetails(
 			{
 				endpoint: device.endpoint,
 				keys: { p256dh: device.p256dh, auth: device.auth }
@@ -82,7 +88,6 @@ export async function sendReminderTick(device: DueWake): Promise<WakeSendResult>
 			JSON.stringify({ type: 'reminder-wake', id: device.wakeId, fireAt: device.fireAt }),
 			{
 				TTL: 86_400,
-				timeout: 10_000,
 				urgency: 'high',
 				vapidDetails: {
 					subject: vapidSubject(),
@@ -91,20 +96,34 @@ export async function sendReminderTick(device: DueWake): Promise<WakeSendResult>
 				}
 			}
 		);
-		return 'sent';
-	} catch (error) {
-		const status =
-			error && typeof error === 'object' && 'statusCode' in error
-				? Number((error as { statusCode?: number }).statusCode)
-				: null;
+		const headers = { ...details.headers } as Record<string, string>;
+		delete headers['Content-Length'];
+		delete headers['content-length'];
+		const response = await fetch(details.endpoint, {
+			method: details.method,
+			headers,
+			body: details.body ? new Uint8Array(details.body) : undefined,
+			signal: AbortSignal.timeout(10_000)
+		});
+		if (response.ok) return 'sent';
 		console.info(
 			JSON.stringify({
 				level: 'info',
 				event: 'reminder_wake_failed',
-				status: Number.isFinite(status) ? status : null
+				status: response.status
 			})
 		);
-		if (status === 404 || status === 410) return 'gone';
+		if (response.status === 404 || response.status === 410) return 'gone';
+		return 'failed';
+	} catch (error) {
+		console.info(
+			JSON.stringify({
+				level: 'info',
+				event: 'reminder_wake_failed',
+				status: null,
+				message: error instanceof Error ? error.message : 'Web Push delivery failed'
+			})
+		);
 		return 'failed';
 	}
 }

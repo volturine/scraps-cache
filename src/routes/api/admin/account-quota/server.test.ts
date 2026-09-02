@@ -13,7 +13,7 @@ vi.mock('$lib/server/adminAuth', () => ({
 	unauthorizedAdminResponse: () => new Response('Not found\n', { status: 404 })
 }));
 vi.mock('$lib/server/rateLimit', () => ({
-	checkAdminApiLimit: () => ({ allowed: true }),
+	checkAdminApiLimit: async () => ({ allowed: true }),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
 vi.mock('$lib/server/syncStore', () => ({

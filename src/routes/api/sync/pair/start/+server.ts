@@ -1,12 +1,12 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { pairingSessions } from '$lib/server/pairingSessions';
+import { getPairingSessions } from '$lib/server/pairingSessions';
 import { readJsonBody } from '$lib/server/request';
-import { clientAddress, publicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 import { isPairingRole } from '$lib/pairingProtocol';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const limited = publicApiLimiter.check(`pair:${clientAddress(getClientAddress)}`, {
+	const limited = await getPublicApiLimiter().check(`pair:${clientAddress(getClientAddress)}`, {
 		capacity: 60,
 		refillWindowMs: 60_000
 	});
@@ -26,7 +26,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	)
 		return json({ error: 'Invalid pairing request' }, { status: 400 });
 	try {
-		return json(pairingSessions.start(body.codeTag, body.role, body.publicKey));
+		return json(await getPairingSessions().start(body.codeTag, body.role, body.publicKey));
 	} catch {
 		return json(
 			{ error: 'Pairing rendezvous is busy' },

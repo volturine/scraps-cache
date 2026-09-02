@@ -1,0 +1,13 @@
+{
+	"name": "scrapscache",
+	"main": "cf/worker.ts",
+	"compatibility_date": "2025-01-01",
+	"compatibility_flags": ["nodejs_compat"],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".svelte-kit/cloudflare"
+	},
+	"triggers": {
+		"crons": ["* * * * *"]
+	}
+}

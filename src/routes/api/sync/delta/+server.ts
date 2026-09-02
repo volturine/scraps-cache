@@ -1,12 +1,12 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { getSyncStore, SyncQuotaExceededError } from '$lib/server/syncStore';
-import { authenticateSyncRequest } from '$lib/server/syncAuth';
+import { getSyncAuth } from '$lib/server/syncAuth';
 import { readJsonBody } from '$lib/server/request';
 import {
 	clientAddress,
 	enterSyncRequest,
-	publicApiLimiter,
+	getPublicApiLimiter,
 	rateLimitResponse
 } from '$lib/server/rateLimit';
 import { env } from '$env/dynamic/private';
@@ -54,10 +54,13 @@ function isOpaqueDelete(value: unknown): value is OpaqueDelete {
 
 /** Current-state opaque relay: each keyed slot holds one latest ciphertext only. */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const addressLimit = publicApiLimiter.check(`sync-ip:${clientAddress(getClientAddress)}`, {
-		capacity: 120,
-		refillWindowMs: 60_000
-	});
+	const addressLimit = await getPublicApiLimiter().check(
+		`sync-ip:${clientAddress(getClientAddress)}`,
+		{
+			capacity: 120,
+			refillWindowMs: 60_000
+		}
+	);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
 	const release = enterSyncRequest(
 		Math.max(1, Number(env.SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS) || 8)
@@ -66,7 +69,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		return json({ error: 'Sync server is busy' }, { status: 503, headers: { 'retry-after': '2' } });
 	}
 	try {
-		const accountId = authenticateSyncRequest(request);
+		const accountId = await getSyncAuth().authenticateSyncRequest(request);
 		if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
 		let body: {
 			cursor?: unknown;
@@ -106,12 +109,12 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		recordSyncBatch(envelopes.length, deleteSlots.length);
 		try {
 			const store = getSyncStore();
-			const accountLimit = publicApiLimiter.check(`sync-account:${accountId}`, {
+			const accountLimit = await getPublicApiLimiter().check(`sync-account:${accountId}`, {
 				capacity: 60,
 				refillWindowMs: 60_000
 			});
 			if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
-			return json(store.sync(accountId, cursor, envelopes, deleteSlots, limit));
+			return json(await store.sync(accountId, cursor, envelopes, deleteSlots, limit));
 		} catch (error) {
 			recordSqliteError(error);
 			if (error instanceof SyncQuotaExceededError) {
