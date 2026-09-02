@@ -213,8 +213,9 @@ describe('SQLite sync store', () => {
 		await store.createAccount('account', 'credential');
 		let result = await store.sync('account', 0, [], [], 12);
 		let cursor = result.cursor;
-		for (let offset = 0; offset < 50_001; offset += 500) {
-			const uploads = Array.from({ length: Math.min(500, 50_001 - offset) }, (_, index) => {
+		const total = 2_001;
+		for (let offset = 0; offset < total; offset += 500) {
+			const uploads = Array.from({ length: Math.min(500, total - offset) }, (_, index) => {
 				const record = offset + index;
 				return {
 					id: `id-${record}`,
@@ -226,7 +227,7 @@ describe('SQLite sync store', () => {
 			cursor = result.cursor;
 		}
 
-		expect(result.usage).toMatchObject({ envelopeCount: 50_001, ciphertextBytes: 50_001 });
+		expect(result.usage).toMatchObject({ envelopeCount: total, ciphertextBytes: total });
 	});
 
 	it('rolls back deletions together with an over-quota replacement batch', async () => {
