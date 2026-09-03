@@ -2,8 +2,9 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import ExcalidrawPackage from '@excalidraw/excalidraw/dist/excalidraw.production.min.js';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/types';
-import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types/types';
+import type { AppState, BinaryFiles, LibraryItems } from '@excalidraw/excalidraw/types/types';
 import type { CanvasElement, CanvasFile, CanvasScene } from './canvasAttachment';
+import { loadCanvasLibrary, saveCanvasLibrary } from './canvasLibrary';
 
 const { Excalidraw, exportToCanvas } = ExcalidrawPackage;
 
@@ -157,18 +158,24 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 
 		root.render(
 			React.createElement(Excalidraw, {
-				initialData: options.initialScene
-					? {
-							elements: sceneElements(options.initialScene.elements),
-							appState: options.initialScene.appState as Partial<AppState>,
-							files: sceneFiles(options.initialScene.files)
-						}
-					: undefined,
+				initialData: {
+					...(options.initialScene
+						? {
+								elements: sceneElements(options.initialScene.elements),
+								appState: options.initialScene.appState as Partial<AppState>,
+								files: sceneFiles(options.initialScene.files)
+							}
+						: {}),
+					libraryItems: loadCanvasLibrary() as LibraryItems
+				},
 				excalidrawAPI: () => resolve(buildHost()),
 				onChange: (nextElements, nextAppState, nextFiles) => {
 					elements = nextElements.filter((element) => SAVED_ELEMENT_TYPES.has(element.type));
 					appState = nextAppState;
 					files = nextFiles;
+				},
+				onLibraryChange: (items) => {
+					saveCanvasLibrary(items);
 				},
 				autoFocus: true,
 				detectScroll: false,

@@ -221,10 +221,6 @@
 		opacity: 0.5;
 	}
 
-	:global(.scrapscache-canvas label[title='Library']) {
-		display: none !important;
-	}
-
 	:global(.scrapscache-canvas .excalidraw) {
 		--sat: 0px;
 		--sar: 0px;
