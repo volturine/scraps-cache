@@ -100,13 +100,14 @@ describe('token bucket rate limiter', () => {
 
 describe('admin api limiter', () => {
 	it('throttles each address to a conservative budget, independently per address', async () => {
+		const now = 0;
 		for (let i = 0; i < 30; i++) {
-			expect((await checkAdminApiLimit(() => '10.0.0.1')).allowed).toBe(true);
+			expect((await checkAdminApiLimit(() => '10.0.0.1', now)).allowed).toBe(true);
 		}
-		const blocked = await checkAdminApiLimit(() => '10.0.0.1');
+		const blocked = await checkAdminApiLimit(() => '10.0.0.1', now);
 		expect(blocked.allowed).toBe(false);
 		if (!blocked.allowed) expect(blocked.retryAfterSeconds).toBeGreaterThanOrEqual(1);
-		expect((await checkAdminApiLimit(() => '10.0.0.2')).allowed).toBe(true);
+		expect((await checkAdminApiLimit(() => '10.0.0.2', now)).allowed).toBe(true);
 	});
 
 	it('tolerates clients without an address by sharing one fallback bucket', async () => {
