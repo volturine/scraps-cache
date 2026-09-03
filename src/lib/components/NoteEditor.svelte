@@ -17,7 +17,7 @@
 	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Bell, ChevronLeft, Pin } from '@lucide/svelte';
+	import { Bell, ChevronLeft, Paperclip, Pin } from '@lucide/svelte';
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
 
 	let {
@@ -57,7 +57,9 @@
 	);
 	let draftDirty = false;
 	let bodyEditor = $state<{ focusDefault(): void } | null>(null);
+	let footer = $state<{ handlePickedFiles(files: File[]): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
+	let fileDropActive = $state(false);
 	let editorScroller = $state<HTMLDivElement | null>(null);
 	let revealTimer: ReturnType<typeof setTimeout> | null = null;
 	let editorTouchGesture:
@@ -72,7 +74,7 @@
 		| undefined;
 	const TOUCH_TAP_SLOP = 8;
 	const editorDialogClass = $derived(
-		`flex h-full w-full flex-col overflow-hidden rounded-2xl${paletteOpen || labelOpen ? ' editor-caret-hidden' : ''}`
+		`relative flex h-full w-full flex-col overflow-hidden rounded-2xl${paletteOpen || labelOpen ? ' editor-caret-hidden' : ''}`
 	);
 	const editorDialogStyle = $derived(
 		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
@@ -286,6 +288,48 @@
 		return editorDialog != null && target instanceof Node && editorDialog.contains(target);
 	}
 
+	function dataTransferHasFiles(dataTransfer: DataTransfer | null): boolean {
+		return !!dataTransfer && Array.from(dataTransfer.types).includes('Files');
+	}
+
+	function pointerLeftElement(event: DragEvent, el: EventTarget | null): boolean {
+		if (!(el instanceof Element)) return true;
+		const rect = el.getBoundingClientRect();
+		return (
+			event.clientX <= rect.left ||
+			event.clientX >= rect.right ||
+			event.clientY <= rect.top ||
+			event.clientY >= rect.bottom
+		);
+	}
+
+	function handleFileDragEnter(event: DragEvent) {
+		if (!dataTransferHasFiles(event.dataTransfer)) return;
+		event.preventDefault();
+		fileDropActive = true;
+	}
+
+	function handleFileDragOver(event: DragEvent) {
+		if (!dataTransferHasFiles(event.dataTransfer)) return;
+		event.preventDefault();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+		fileDropActive = true;
+	}
+
+	function handleFileDragLeave(event: DragEvent) {
+		if (!fileDropActive || !pointerLeftElement(event, event.currentTarget)) return;
+		fileDropActive = false;
+	}
+
+	function handleFileDrop(event: DragEvent) {
+		if (!dataTransferHasFiles(event.dataTransfer)) return;
+		event.preventDefault();
+		fileDropActive = false;
+		backdropPressOutside = false;
+		const files = Array.from(event.dataTransfer?.files ?? []);
+		if (files.length > 0) footer?.handlePickedFiles(files);
+	}
+
 	let backdropPressOutside = false;
 
 	function handleBackdropPointerDown(event: PointerEvent) {
@@ -383,6 +427,10 @@
 		role="presentation"
 		onpointerdown={handleBackdropPointerDown}
 		onclick={handleBackdropClick}
+		ondragenter={handleFileDragEnter}
+		ondragovercapture={handleFileDragOver}
+		ondragleave={handleFileDragLeave}
+		ondropcapture={handleFileDrop}
 	>
 		<div
 			class="absolute inset-0 flex items-start justify-center px-4 pb-[var(--app-sheet-pad-bottom)] md:items-center"
@@ -503,7 +551,23 @@
 						{/if}
 					</div>
 
+					{#if fileDropActive}
+						<div
+							class="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-2xl border-2 border-dashed border-[var(--scrapscache-accent)] bg-[color-mix(in_oklab,var(--scrapscache-accent)_16%,transparent)]"
+							data-file-drop-hint
+							aria-hidden="true"
+						>
+							<div
+								class="flex items-center gap-2 rounded-full bg-[var(--scrapscache-surface)] px-4 py-2 text-sm font-medium text-[var(--scrapscache-text)] shadow-sm"
+							>
+								<Paperclip class="h-4 w-4" aria-hidden="true" />
+								Drop to attach
+							</div>
+						</div>
+					{/if}
+
 					<NoteEditorFooter
+						bind:this={footer}
 						bind:images
 						bind:body
 						noteId={note.id}
