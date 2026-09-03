@@ -163,7 +163,8 @@
 		);
 	}
 
-	function handlePickedFiles(picked: File[]) {
+	export function handlePickedFiles(picked: File[]) {
+		if (picked.length === 0) return;
 		if (picked.some(looksLikePhoto)) {
 			filesAwaitingQuality = picked;
 			return;
@@ -326,6 +327,7 @@
 							class="h-full w-full object-contain"
 							loading="lazy"
 							decoding="async"
+							draggable="false"
 						/>
 					{:else}
 						<div
@@ -369,6 +371,7 @@
 						class="h-full w-full object-cover"
 						loading="lazy"
 						decoding="async"
+						draggable="false"
 					/>
 				</button>
 				<button
