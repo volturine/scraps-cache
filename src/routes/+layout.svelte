@@ -19,11 +19,9 @@
 	import { attachAppViewport } from '$lib/appViewport';
 	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
-	import { getClipboardFiles, looksLikePhoto } from '$lib/noteImages';
 
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
-	let pendingEditorFiles = $state<File[] | null>(null);
 	let closeOpenNote: (() => void) | null = null;
 
 	function applyEditorOpen(open: boolean) {
@@ -91,17 +89,7 @@
 		};
 	});
 
-	function handleGlobalPaste(event: ClipboardEvent) {
-		if (editingId !== null) return;
-		const el = event.target instanceof Element ? event.target : null;
-		if (el?.closest('input, textarea, [contenteditable], [role="dialog"]')) return;
-		const files = getClipboardFiles(event.clipboardData);
-		if (!files.some(looksLikePhoto)) return;
-		event.preventDefault();
-		startNewNote(files);
-	}
-
-	function startNewNote(initialFiles?: File[]) {
+	function startNewNote() {
 		const labels =
 			uiStore.view === 'label' &&
 			uiStore.activeLabelId &&
@@ -117,7 +105,6 @@
 					? reminderTimeForDay(uiStore.reminderFilter?.from ?? dayKey(Date.now()))
 					: null
 		});
-		pendingEditorFiles = initialFiles?.length ? initialFiles : null;
 		editingId = n.id;
 		applyEditorOpen(true);
 	}
@@ -157,7 +144,6 @@
 
 	function closeEditor() {
 		editingId = null;
-		pendingEditorFiles = null;
 		applyEditorOpen(false);
 	}
 
@@ -165,8 +151,6 @@
 		uiStore.sidebarOpen = false;
 	}
 </script>
-
-<svelte:window onpaste={handleGlobalPaste} />
 
 <svelte:head>
 	<title>Scraps Cache</title>
@@ -233,7 +217,6 @@
 					{#key editingId}
 						<NoteEditor
 							noteId={editingId}
-							initialFiles={pendingEditorFiles}
 							onClose={closeEditor}
 							registerClose={(fn) => {
 								closeOpenNote = fn;

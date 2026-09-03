@@ -165,24 +165,6 @@ describe('NoteEditor paste photo', () => {
 		expect(container.querySelector('#photo-quality-title')).toBeNull();
 	});
 
-	it('handles initialFiles passed to NoteEditor on mount', async () => {
-		notesStore.notes = [note()];
-		const photo = new File(['fake-jpg-bytes'], 'vacation.jpg', { type: 'image/jpeg' });
-		const { container } = render(NoteEditor, {
-			props: {
-				noteId: 'note-1',
-				initialFiles: [photo],
-				onClose: () => {}
-			}
-		});
-
-		await vi.waitFor(() => {
-			expect(container.querySelector('#photo-quality-title')?.textContent).toContain(
-				'Photo quality'
-			);
-		});
-	});
-
 	it('ignores paste events originating from inside CanvasEditor', async () => {
 		notesStore.notes = [note()];
 		const { container } = render(NoteEditor, {

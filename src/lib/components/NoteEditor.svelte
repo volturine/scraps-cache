@@ -23,12 +23,10 @@
 
 	let {
 		noteId = $bindable(),
-		initialFiles = null,
 		onClose,
 		registerClose
 	}: {
 		noteId: string | null;
-		initialFiles?: File[] | null;
 		onClose: () => void;
 		registerClose?: (close: () => void) => void;
 	} = $props();
@@ -139,9 +137,6 @@
 		registerClose?.(() => {
 			if (isOpen) void close();
 		});
-		if (initialFiles && initialFiles.length > 0) {
-			footer?.handlePickedFiles(initialFiles);
-		}
 		const viewport = window.visualViewport;
 		const onViewportChange = () => {
 			if (!isOpen) return;
