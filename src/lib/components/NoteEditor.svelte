@@ -59,16 +59,6 @@
 		note ? noteAttachments(note).map((attachment) => ({ ...attachment })) : []
 	);
 	let draftDirty = false;
-	let initialFilesHandled = false;
-	$effect(() => {
-		if (initialFiles && initialFiles.length > 0 && footer && !initialFilesHandled) {
-			initialFilesHandled = true;
-			const files = initialFiles;
-			queueMicrotask(() => {
-				footer?.handlePickedFiles(files);
-			});
-		}
-	});
 	let bodyEditor = $state<{ focusDefault(): void } | null>(null);
 	let footer = $state<{ handlePickedFiles(files: File[]): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
@@ -149,6 +139,9 @@
 		registerClose?.(() => {
 			if (isOpen) void close();
 		});
+		if (initialFiles && initialFiles.length > 0) {
+			footer?.handlePickedFiles(initialFiles);
+		}
 		const viewport = window.visualViewport;
 		const onViewportChange = () => {
 			if (!isOpen) return;
@@ -166,11 +159,6 @@
 		viewport?.addEventListener('scroll', onViewportChange);
 		window.addEventListener('resize', onViewportChange);
 		document.addEventListener('focusin', onFocusIn);
-		const onWindowPaste = (event: ClipboardEvent) => {
-			if (!isOpen || !note) return;
-			handlePaste(event);
-		};
-		window.addEventListener('paste', onWindowPaste, { capture: true });
 		if (noteId) {
 			lockPageScroll();
 			const id = noteId;
@@ -188,7 +176,6 @@
 			viewport?.removeEventListener('scroll', onViewportChange);
 			window.removeEventListener('resize', onViewportChange);
 			document.removeEventListener('focusin', onFocusIn);
-			window.removeEventListener('paste', onWindowPaste, { capture: true });
 			window.removeEventListener('scroll', onOuterScroll, { capture: true });
 			viewport?.removeEventListener('scroll', onOuterScroll);
 			if (revealTimer !== null) clearTimeout(revealTimer);
@@ -455,6 +442,7 @@
 	onkeydown={(e) => {
 		if (isOpen && e.key === 'Escape') void close();
 	}}
+	onpastecapture={handlePaste}
 />
 
 {#if isOpen && note}

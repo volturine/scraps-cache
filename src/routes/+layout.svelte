@@ -82,29 +82,27 @@
 					.catch(() => undefined);
 			}
 		}
-		const onGlobalPaste = (event: ClipboardEvent) => {
-			if (editingId !== null) return;
-			const target = event.target;
-			const el = target instanceof Element ? target : (target as Node | null)?.parentElement;
-			if (el?.closest('input, textarea, [contenteditable], [role="dialog"]')) {
-				return;
-			}
-			const files = getClipboardFiles(event.clipboardData);
-			if (files.length === 0 || !files.some(looksLikePhoto)) return;
-			event.preventDefault();
-			startNewNote(files);
-		};
-		window.addEventListener('paste', onGlobalPaste);
-
 		return () => {
 			uiStore.viewChangeHandler = null;
 			stopViewport();
 			applyEditorOpen(false);
 			document.removeEventListener('visibilitychange', onForeground);
-			window.removeEventListener('paste', onGlobalPaste);
 			stopReminders();
 		};
 	});
+
+	function handleGlobalPaste(event: ClipboardEvent) {
+		if (editingId !== null) return;
+		const target = event.target;
+		const el = target instanceof Element ? target : (target as Node | null)?.parentElement;
+		if (el?.closest('input, textarea, [contenteditable], [role="dialog"]')) {
+			return;
+		}
+		const files = getClipboardFiles(event.clipboardData);
+		if (files.length === 0 || !files.some(looksLikePhoto)) return;
+		event.preventDefault();
+		startNewNote(files);
+	}
 
 	function startNewNote(initialFiles?: File[]) {
 		const labels =
@@ -170,6 +168,8 @@
 		uiStore.sidebarOpen = false;
 	}
 </script>
+
+<svelte:window onpaste={handleGlobalPaste} />
 
 <svelte:head>
 	<title>Scraps Cache</title>
