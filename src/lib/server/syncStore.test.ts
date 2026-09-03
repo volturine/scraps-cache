@@ -335,8 +335,7 @@ describe('SQLite sync store', () => {
 			[{ id: 'new', slot: slot('a') }],
 			10
 		);
-		expect(removed.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0 });
-		expect(removed.usage.storageBytes).toBe(ENVELOPE_STORAGE_OVERHEAD_BYTES + 'replacement'.length);
+		expect(removed.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0, storageBytes: 0 });
 	});
 
 	it('hides deleted slots from downloads immediately but keeps their ciphertext during grace', async () => {
@@ -363,8 +362,7 @@ describe('SQLite sync store', () => {
 		expect(removed.usage).toMatchObject({
 			envelopeCount: 1,
 			ciphertextBytes: 'cipher-note'.length,
-			storageBytes:
-				2 * ENVELOPE_STORAGE_OVERHEAD_BYTES + 'cipher-note'.length + 'cipher-photo'.length
+			storageBytes: ENVELOPE_STORAGE_OVERHEAD_BYTES + 'cipher-note'.length
 		});
 
 		// A slower device rewinding behind the deletion never sees the slot again.
@@ -404,7 +402,9 @@ describe('SQLite sync store', () => {
 			[{ id: 'old', slot: slot('a') }],
 			10
 		);
-		expect(deleted.usage.storageBytes).toBe(maxAccountBytes);
+		expect(deleted.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0, storageBytes: 0 });
+		const retained = await db.relay.execute('SELECT COUNT(*) AS count FROM deleted_envelopes');
+		expect((retained.rows[0] as unknown as { count: number }).count).toBe(1);
 
 		const replacement = await store.sync(
 			'account',

@@ -254,14 +254,21 @@ export class SyncStore {
 			).rows[0] as unknown as { envelopeCount: number; ciphertextBytes: number };
 			let retainedEnvelopeCount = retained.envelopeCount;
 			let retainedCiphertextBytes = retained.ciphertextBytes;
-			const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes): number =>
-				activeBytes +
+			const liveStorageBytes = (
+				activeCount = envelopeCount,
+				activeBytes = ciphertextBytes
+			): number => activeBytes + activeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES;
+			const chargedStorageBytes = (
+				activeCount = envelopeCount,
+				activeBytes = ciphertextBytes
+			): number =>
+				liveStorageBytes(activeCount, activeBytes) +
 				retainedCiphertextBytes +
-				(activeCount + retainedEnvelopeCount) * ENVELOPE_STORAGE_OVERHEAD_BYTES;
+				retainedEnvelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES;
 			const usage = (): UsageRow & { maxBytes: number } => ({
 				envelopeCount,
 				ciphertextBytes,
-				storageBytes: storageBytes(),
+				storageBytes: liveStorageBytes(),
 				maxBytes: maxAccountBytes
 			});
 			if (cursor > account.nextSeq) {
@@ -409,7 +416,7 @@ export class SyncStore {
 				const projectedCount = envelopeCount + (prior ? 0 : 1);
 				const projectedBytes =
 					ciphertextBytes + upload.ciphertext.length - (prior?.ciphertext.length ?? 0);
-				let projectedStorageBytes = storageBytes(projectedCount, projectedBytes);
+				let projectedStorageBytes = chargedStorageBytes(projectedCount, projectedBytes);
 				if (projectedStorageBytes > maxAccountBytes && retainedEnvelopeCount > 0) {
 					retainedRows ??= (
 						await tx.execute({
@@ -426,11 +433,14 @@ export class SyncStore {
 						});
 						retainedEnvelopeCount -= 1;
 						retainedCiphertextBytes -= row.ciphertextBytes;
-						projectedStorageBytes = storageBytes(projectedCount, projectedBytes);
+						projectedStorageBytes = chargedStorageBytes(projectedCount, projectedBytes);
 						if (projectedStorageBytes <= maxAccountBytes) break;
 					}
 				}
-				if (projectedStorageBytes > maxAccountBytes && projectedStorageBytes >= storageBytes()) {
+				if (
+					projectedStorageBytes > maxAccountBytes &&
+					projectedStorageBytes >= chargedStorageBytes()
+				) {
 					throw new SyncQuotaExceededError();
 				}
 				sequence += 1;

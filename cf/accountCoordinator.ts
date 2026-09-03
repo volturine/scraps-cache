@@ -126,14 +126,16 @@ export class AccountCoordinator {
 		let ciphertextBytes = account.ciphertextBytes;
 		let retainedEnvelopeCount = retained.envelopeCount;
 		let retainedCiphertextBytes = retained.ciphertextBytes;
-		const storageBytes = () =>
-			ciphertextBytes +
+		const liveStorageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes) =>
+			activeBytes + activeCount * STORAGE_OVERHEAD_BYTES;
+		const chargedStorageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes) =>
+			liveStorageBytes(activeCount, activeBytes) +
 			retainedCiphertextBytes +
-			(envelopeCount + retainedEnvelopeCount) * STORAGE_OVERHEAD_BYTES;
+			retainedEnvelopeCount * STORAGE_OVERHEAD_BYTES;
 		const usage = () => ({
 			envelopeCount,
 			ciphertextBytes,
-			storageBytes: storageBytes(),
+			storageBytes: liveStorageBytes(),
 			maxBytes
 		});
 		const now = Date.now();
@@ -297,16 +299,36 @@ export class AccountCoordinator {
 		}
 
 		let sequence = account.nextSeq;
+		let retainedRows: Array<{ slot: string; r2Key: string; ciphertextBytes: number }> | undefined;
+		let retainedOffset = 0;
 		for (const upload of acceptedUploads) {
 			const prior = currentBySlot.get(upload.slot);
 			const projectedCount = envelopeCount + (prior ? 0 : 1);
 			const projectedBytes =
 				ciphertextBytes + upload.ciphertext.length - (prior?.ciphertextBytes ?? 0);
-			const projectedStorage =
-				projectedBytes +
-				retainedCiphertextBytes +
-				(projectedCount + retainedEnvelopeCount) * STORAGE_OVERHEAD_BYTES;
-			if (projectedStorage > maxBytes) {
+			let projectedStorage = chargedStorageBytes(projectedCount, projectedBytes);
+			if (projectedStorage > maxBytes && retainedEnvelopeCount > 0) {
+				retainedRows ??= (
+					await execute(db, {
+						sql: `SELECT slot, r2_key AS r2Key, ciphertext_bytes AS ciphertextBytes
+						 FROM deleted_envelopes WHERE account_id = ? ORDER BY deleted_at ASC, slot ASC`,
+						args: [input.accountId]
+					})
+				).rows as Array<{ slot: string; r2Key: string; ciphertextBytes: number }>;
+				while (retainedOffset < retainedRows.length) {
+					const row = retainedRows[retainedOffset++]!;
+					statements.push({
+						sql: 'DELETE FROM deleted_envelopes WHERE account_id = ? AND slot = ?',
+						args: [input.accountId, row.slot]
+					});
+					obsoleteObjects.push(row.r2Key);
+					retainedEnvelopeCount -= 1;
+					retainedCiphertextBytes -= row.ciphertextBytes;
+					projectedStorage = chargedStorageBytes(projectedCount, projectedBytes);
+					if (projectedStorage <= maxBytes) break;
+				}
+			}
+			if (projectedStorage > maxBytes && projectedStorage >= chargedStorageBytes()) {
 				await batch(
 					db,
 					acceptedUploads.map(({ id }) => ({
