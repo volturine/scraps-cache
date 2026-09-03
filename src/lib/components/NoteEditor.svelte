@@ -338,19 +338,12 @@
 
 	function handlePaste(event: ClipboardEvent) {
 		if (!isOpen || !note) return;
-		const target = event.target;
-		if (target instanceof Element && target.closest('.canvas-editor-shell')) return;
+		if (event.target instanceof Element && event.target.closest('.canvas-editor-shell')) return;
 		const files = getClipboardFiles(event.clipboardData);
 		if (files.length === 0) return;
 		event.preventDefault();
 		event.stopImmediatePropagation();
-		if (footer) {
-			footer.handlePickedFiles(files);
-		} else {
-			queueMicrotask(() => {
-				footer?.handlePickedFiles(files);
-			});
-		}
+		footer?.handlePickedFiles(files);
 	}
 
 	let backdropPressOutside = false;
@@ -455,7 +448,6 @@
 		ondragovercapture={handleFileDragOver}
 		ondragleave={handleFileDragLeave}
 		ondropcapture={handleFileDrop}
-		onpastecapture={handlePaste}
 	>
 		<div
 			class="absolute inset-0 flex items-start justify-center px-4 pb-[var(--app-sheet-pad-bottom)] md:items-center"

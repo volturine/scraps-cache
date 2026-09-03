@@ -30,17 +30,10 @@ export function looksLikePhoto(file: Pick<File, 'type' | 'name'>): boolean {
 /** Extract File objects from clipboardData (supports both files and items). */
 export function getClipboardFiles(clipboardData: DataTransfer | null): File[] {
 	if (!clipboardData) return [];
-	const fromFiles = Array.from(clipboardData.files ?? []);
-	if (fromFiles.length > 0) return fromFiles;
-	const items = Array.from(clipboardData.items ?? []);
-	const files: File[] = [];
-	for (const item of items) {
-		if (item && item.kind === 'file') {
-			const file = item.getAsFile();
-			if (file) files.push(file);
-		}
-	}
-	return files;
+	if (clipboardData.files?.length) return Array.from(clipboardData.files);
+	return Array.from(clipboardData.items ?? [])
+		.map((item) => item.getAsFile())
+		.filter((file): file is File => file !== null);
 }
 
 /** Approximate byte size from a data URL (for UI only). */

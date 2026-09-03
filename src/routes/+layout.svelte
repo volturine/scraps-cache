@@ -93,13 +93,10 @@
 
 	function handleGlobalPaste(event: ClipboardEvent) {
 		if (editingId !== null) return;
-		const target = event.target;
-		const el = target instanceof Element ? target : (target as Node | null)?.parentElement;
-		if (el?.closest('input, textarea, [contenteditable], [role="dialog"]')) {
-			return;
-		}
+		const el = event.target instanceof Element ? event.target : null;
+		if (el?.closest('input, textarea, [contenteditable], [role="dialog"]')) return;
 		const files = getClipboardFiles(event.clipboardData);
-		if (files.length === 0 || !files.some(looksLikePhoto)) return;
+		if (!files.some(looksLikePhoto)) return;
 		event.preventDefault();
 		startNewNote(files);
 	}
@@ -120,7 +117,7 @@
 					? reminderTimeForDay(uiStore.reminderFilter?.from ?? dayKey(Date.now()))
 					: null
 		});
-		pendingEditorFiles = initialFiles && initialFiles.length > 0 ? initialFiles : null;
+		pendingEditorFiles = initialFiles?.length ? initialFiles : null;
 		editingId = n.id;
 		applyEditorOpen(true);
 	}
