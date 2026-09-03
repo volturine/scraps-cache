@@ -19,13 +19,16 @@
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Bell, ChevronLeft, Paperclip, Pin } from '@lucide/svelte';
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
+	import { getClipboardFiles } from '$lib/noteImages';
 
 	let {
 		noteId = $bindable(),
+		initialFiles = null,
 		onClose,
 		registerClose
 	}: {
 		noteId: string | null;
+		initialFiles?: File[] | null;
 		onClose: () => void;
 		registerClose?: (close: () => void) => void;
 	} = $props();
@@ -56,6 +59,16 @@
 		note ? noteAttachments(note).map((attachment) => ({ ...attachment })) : []
 	);
 	let draftDirty = false;
+	let initialFilesHandled = false;
+	$effect(() => {
+		if (initialFiles && initialFiles.length > 0 && footer && !initialFilesHandled) {
+			initialFilesHandled = true;
+			const files = initialFiles;
+			queueMicrotask(() => {
+				footer?.handlePickedFiles(files);
+			});
+		}
+	});
 	let bodyEditor = $state<{ focusDefault(): void } | null>(null);
 	let footer = $state<{ handlePickedFiles(files: File[]): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
@@ -153,6 +166,11 @@
 		viewport?.addEventListener('scroll', onViewportChange);
 		window.addEventListener('resize', onViewportChange);
 		document.addEventListener('focusin', onFocusIn);
+		const onWindowPaste = (event: ClipboardEvent) => {
+			if (!isOpen || !note) return;
+			handlePaste(event);
+		};
+		window.addEventListener('paste', onWindowPaste, { capture: true });
 		if (noteId) {
 			lockPageScroll();
 			const id = noteId;
@@ -170,6 +188,7 @@
 			viewport?.removeEventListener('scroll', onViewportChange);
 			window.removeEventListener('resize', onViewportChange);
 			document.removeEventListener('focusin', onFocusIn);
+			window.removeEventListener('paste', onWindowPaste, { capture: true });
 			window.removeEventListener('scroll', onOuterScroll, { capture: true });
 			viewport?.removeEventListener('scroll', onOuterScroll);
 			if (revealTimer !== null) clearTimeout(revealTimer);
@@ -330,6 +349,23 @@
 		if (files.length > 0) footer?.handlePickedFiles(files);
 	}
 
+	function handlePaste(event: ClipboardEvent) {
+		if (!isOpen || !note) return;
+		const target = event.target;
+		if (target instanceof Element && target.closest('.canvas-editor-shell')) return;
+		const files = getClipboardFiles(event.clipboardData);
+		if (files.length === 0) return;
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		if (footer) {
+			footer.handlePickedFiles(files);
+		} else {
+			queueMicrotask(() => {
+				footer?.handlePickedFiles(files);
+			});
+		}
+	}
+
 	let backdropPressOutside = false;
 
 	function handleBackdropPointerDown(event: PointerEvent) {
@@ -431,6 +467,7 @@
 		ondragovercapture={handleFileDragOver}
 		ondragleave={handleFileDragLeave}
 		ondropcapture={handleFileDrop}
+		onpastecapture={handlePaste}
 	>
 		<div
 			class="absolute inset-0 flex items-start justify-center px-4 pb-[var(--app-sheet-pad-bottom)] md:items-center"

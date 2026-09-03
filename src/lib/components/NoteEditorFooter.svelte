@@ -10,7 +10,8 @@
 		fileIconLabel,
 		formatBytes,
 		dataUrlByteLength,
-		openAttachment
+		openAttachment,
+		looksLikePhoto
 	} from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import type { ImageQuality } from '$lib/imageOptimize';
@@ -154,13 +155,6 @@
 		document.addEventListener('visibilitychange', onVis);
 
 		input.click();
-	}
-
-	function looksLikePhoto(file: File): boolean {
-		return (
-			file.type.toLowerCase().startsWith('image/') ||
-			/\.(?:avif|dng|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(file.name)
-		);
 	}
 
 	export function handlePickedFiles(picked: File[]) {

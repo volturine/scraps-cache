@@ -12,6 +12,7 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
+	import { getClipboardFiles } from '$lib/noteImages';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -662,7 +663,13 @@
 		const range = editorRange();
 		if (!range || !event.clipboardData) return;
 		const text = event.clipboardData.getData('text/plain');
-		if (!text) return;
+		if (!text) {
+			const files = getClipboardFiles(event.clipboardData);
+			if (files.length > 0) {
+				event.preventDefault();
+			}
+			return;
+		}
 		event.preventDefault();
 		rememberEdit(range);
 		const caret = replaceRangeWithText(range, text);

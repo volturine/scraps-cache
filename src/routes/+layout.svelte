@@ -19,9 +19,11 @@
 	import { attachAppViewport } from '$lib/appViewport';
 	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
+	import { getClipboardFiles, looksLikePhoto } from '$lib/noteImages';
 
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
+	let pendingEditorFiles = $state<File[] | null>(null);
 	let closeOpenNote: (() => void) | null = null;
 
 	function applyEditorOpen(open: boolean) {
@@ -80,16 +82,31 @@
 					.catch(() => undefined);
 			}
 		}
+		const onGlobalPaste = (event: ClipboardEvent) => {
+			if (editingId !== null) return;
+			const target = event.target;
+			const el = target instanceof Element ? target : (target as Node | null)?.parentElement;
+			if (el?.closest('input, textarea, [contenteditable], [role="dialog"]')) {
+				return;
+			}
+			const files = getClipboardFiles(event.clipboardData);
+			if (files.length === 0 || !files.some(looksLikePhoto)) return;
+			event.preventDefault();
+			startNewNote(files);
+		};
+		window.addEventListener('paste', onGlobalPaste);
+
 		return () => {
 			uiStore.viewChangeHandler = null;
 			stopViewport();
 			applyEditorOpen(false);
 			document.removeEventListener('visibilitychange', onForeground);
+			window.removeEventListener('paste', onGlobalPaste);
 			stopReminders();
 		};
 	});
 
-	function startNewNote() {
+	function startNewNote(initialFiles?: File[]) {
 		const labels =
 			uiStore.view === 'label' &&
 			uiStore.activeLabelId &&
@@ -105,6 +122,7 @@
 					? reminderTimeForDay(uiStore.reminderFilter?.from ?? dayKey(Date.now()))
 					: null
 		});
+		pendingEditorFiles = initialFiles && initialFiles.length > 0 ? initialFiles : null;
 		editingId = n.id;
 		applyEditorOpen(true);
 	}
@@ -144,6 +162,7 @@
 
 	function closeEditor() {
 		editingId = null;
+		pendingEditorFiles = null;
 		applyEditorOpen(false);
 	}
 
@@ -217,6 +236,7 @@
 					{#key editingId}
 						<NoteEditor
 							noteId={editingId}
+							initialFiles={pendingEditorFiles}
 							onClose={closeEditor}
 							registerClose={(fn) => {
 								closeOpenNote = fn;
