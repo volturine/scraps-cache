@@ -199,7 +199,7 @@ export class SyncStore {
 		).join(',');
 		const row = (
 			await execute(this.db, {
-				sql: `SELECT COUNT(*) accounts,COALESCE(SUM(envelope_count),0) envelopeCount,COALESCE(SUM(ciphertext_bytes),0) ciphertextBytes,(SELECT COUNT(*) FROM deleted_envelopes) retainedCount,(SELECT COALESCE(SUM(ciphertext_bytes),0) FROM deleted_envelopes) retainedBytes,${selects},COALESCE(SUM(CASE WHEN last_seen_at < ? THEN 1 ELSE 0 END),0) staleAccounts FROM accounts`,
+				sql: `SELECT COUNT(*) accounts,COALESCE(SUM(envelope_count),0) envelopeCount,COALESCE(SUM(ciphertext_bytes),0) ciphertextBytes,${selects},COALESCE(SUM(CASE WHEN last_seen_at < ? THEN 1 ELSE 0 END),0) staleAccounts FROM accounts`,
 				args: [...ACTIVITY_WINDOWS_DAYS.map((d) => now - d * 86_400_000), stale ?? 0]
 			})
 		).rows[0]!;
@@ -207,17 +207,12 @@ export class SyncStore {
 			ACTIVITY_WINDOWS_DAYS.map((d, i) => [String(d), Number(row[`active_${i}`])])
 		);
 		const envelopeCount = Number(row.envelopeCount),
-			ciphertextBytes = Number(row.ciphertextBytes),
-			retainedCount = Number(row.retainedCount),
-			retainedBytes = Number(row.retainedBytes);
+			ciphertextBytes = Number(row.ciphertextBytes);
 		return {
 			accounts: Number(row.accounts),
 			envelopeCount,
 			ciphertextBytes,
-			storageBytes:
-				ciphertextBytes +
-				retainedBytes +
-				(envelopeCount + retainedCount) * ENVELOPE_STORAGE_OVERHEAD_BYTES,
+			storageBytes: ciphertextBytes + envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
 			activeByWindowDays,
 			staleAccounts: stale == null ? 0 : Number(row.staleAccounts)
 		};

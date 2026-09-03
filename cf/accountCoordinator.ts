@@ -114,22 +114,10 @@ export class AccountCoordinator {
 			})
 		).rows[0] as { maxBytes: number } | undefined;
 		const maxBytes = quota?.maxBytes ?? input.maxAccountBytes;
-		const retained = (
-			await execute(db, {
-				sql: `SELECT COUNT(*) AS envelopeCount,
-					COALESCE(SUM(ciphertext_bytes), 0) AS ciphertextBytes
-				 FROM deleted_envelopes WHERE account_id = ?`,
-				args: [input.accountId]
-			})
-		).rows[0] as { envelopeCount: number; ciphertextBytes: number };
 		let envelopeCount = account.envelopeCount;
 		let ciphertextBytes = account.ciphertextBytes;
-		let retainedEnvelopeCount = retained.envelopeCount;
-		let retainedCiphertextBytes = retained.ciphertextBytes;
-		const storageBytes = () =>
-			ciphertextBytes +
-			retainedCiphertextBytes +
-			(envelopeCount + retainedEnvelopeCount) * STORAGE_OVERHEAD_BYTES;
+		const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes) =>
+			activeBytes + activeCount * STORAGE_OVERHEAD_BYTES;
 		const usage = () => ({
 			envelopeCount,
 			ciphertextBytes,
@@ -232,17 +220,6 @@ export class AccountCoordinator {
 			knownIds.add(id);
 			return true;
 		});
-		const retainedBySlot = new Map(
-			input.deletions.length
-				? (
-						await execute(db, {
-							sql: `SELECT slot, ciphertext_bytes AS ciphertextBytes FROM deleted_envelopes
-								WHERE account_id = ? AND slot IN (${input.deletions.map(() => '?').join(', ')})`,
-							args: [input.accountId, ...input.deletions.map(({ slot }) => slot)]
-						})
-					).rows.map((row) => [String(row.slot), Number(row.ciphertextBytes)] as const)
-				: []
-		);
 		const prefix = await accountPrefix(input.accountId);
 		const objectKeys = new Map(
 			acceptedUploads.map(({ id }) => [id, `v1/${prefix}/${crypto.randomUUID()}`] as const)
@@ -289,10 +266,6 @@ export class AccountCoordinator {
 			);
 			envelopeCount -= 1;
 			ciphertextBytes -= removed.ciphertextBytes;
-			const previousBytes = retainedBySlot.get(deletion.slot);
-			if (previousBytes === undefined) retainedEnvelopeCount += 1;
-			retainedCiphertextBytes += removed.ciphertextBytes - (previousBytes ?? 0);
-			retainedBySlot.set(deletion.slot, removed.ciphertextBytes);
 			currentBySlot.delete(deletion.slot);
 		}
 
@@ -302,11 +275,8 @@ export class AccountCoordinator {
 			const projectedCount = envelopeCount + (prior ? 0 : 1);
 			const projectedBytes =
 				ciphertextBytes + upload.ciphertext.length - (prior?.ciphertextBytes ?? 0);
-			const projectedStorage =
-				projectedBytes +
-				retainedCiphertextBytes +
-				(projectedCount + retainedEnvelopeCount) * STORAGE_OVERHEAD_BYTES;
-			if (projectedStorage > maxBytes) {
+			const projectedStorage = storageBytes(projectedCount, projectedBytes);
+			if (projectedStorage > maxBytes && projectedStorage >= storageBytes()) {
 				await batch(
 					db,
 					acceptedUploads.map(({ id }) => ({

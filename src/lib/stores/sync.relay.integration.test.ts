@@ -7,6 +7,7 @@ import {
 	DEVICE_DB_NAME,
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
+	markSyncOutbox,
 	putNote
 } from '$lib/db/idb';
 import { SyncStore, type SyncSnapshot } from './sync.svelte';
@@ -251,5 +252,43 @@ describe('client sync against the sqlite relay', () => {
 		);
 		expect(afterReplace.success, afterReplace.error).toBe(true);
 		expect(replacementStored).toBe(true);
+	});
+
+	it('drops reported storage after a photo note is deleted from trash', async () => {
+		const relay = new RelayStore(testDb());
+		const identity = createSyncIdentity();
+		await relay.createAccount(identity.accountId, 'credential');
+		const image = photo('pic', `data:image/png;base64,${'A'.repeat(800)}`);
+		const local = noteWithPhoto(image);
+		const client = new SyncStore();
+		client.account = identity;
+		const requests: Array<{
+			envelopes: unknown[];
+			deleteSlots: Array<{ id: string; slot: string }>;
+		}> = [];
+		wire(client, relay, requests);
+		await putNote(local, [`note:${local.id}`, `attachment:${image.id}`]);
+
+		const uploaded = await client.sync([local], [], {}, {}, [], {}, false, false, applyToDevice);
+		expect(uploaded.success, uploaded.error).toBe(true);
+		const afterAdd = client.usage?.storageBytes ?? 0;
+		expect(afterAdd).toBeGreaterThan(1_000);
+
+		await markSyncOutbox([`note-tombstone:${local.id}`]);
+		const deleted = await client.sync(
+			[],
+			[],
+			{ [local.id]: Date.now() },
+			{},
+			[],
+			{},
+			false,
+			false,
+			applyToDevice
+		);
+		expect(deleted.success, deleted.error).toBe(true);
+		expect(requests.some((request) => request.deleteSlots.length > 0)).toBe(true);
+		expect(client.usage?.storageBytes ?? afterAdd).toBeLessThan(afterAdd);
+		expect(client.usage?.envelopeCount).toBe(1);
 	});
 });
