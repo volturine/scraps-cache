@@ -21,7 +21,11 @@ const config = {
 				'img-src': ['self', 'data:', 'blob:'],
 				'media-src': ['self', 'data:', 'blob:'],
 				'font-src': ['self'],
-				'object-src': ['none'],
+				// Chrome's PDF viewer treats an iframe PDF as a plugin, so blob
+				// frames need both frame-src and object-src. Third-party frames
+				// stay blocked.
+				'frame-src': ['self', 'blob:'],
+				'object-src': ['self', 'blob:'],
 				'base-uri': ['none'],
 				'form-action': ['self'],
 				'frame-ancestors': ['none']

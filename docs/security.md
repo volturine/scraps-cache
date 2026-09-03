@@ -71,6 +71,7 @@ the long-term attachment format.
 
 - **CSP** (nonce mode) in `svelte.config.js`: default `self`, no third-party
   scripts/frames; `data:`/`blob:` only where attachments need them
+  (`img-src`, `media-src`, and PDF `frame-src`/`object-src`)
 - **Headers** in `hooks.server.ts`: `Referrer-Policy: no-referrer`,
   `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, restrictive
   `Permissions-Policy`
