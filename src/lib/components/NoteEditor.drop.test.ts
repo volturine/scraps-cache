@@ -161,6 +161,81 @@ describe('NoteEditor file drop', () => {
 		expect(container.querySelector('#photo-quality-title')?.textContent).toBe('Photo quality');
 	});
 
+	it('attaches a dropped excalidraw file as a canvas without prompting for photo quality', async () => {
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const overlay = editorOverlay(container);
+
+		const excalidrawContent = JSON.stringify({
+			type: 'excalidraw',
+			version: 2,
+			elements: [
+				{
+					id: 'node-1',
+					type: 'rectangle',
+					x: 20,
+					y: 30,
+					width: 120,
+					height: 80
+				}
+			]
+		});
+		const file = new File([excalidrawContent], 'Wireframe.excalidraw', {
+			type: 'application/octet-stream'
+		});
+
+		const drop = fileDragEvent('drop', [file]);
+		overlay.dispatchEvent(drop);
+		expect(drop.defaultPrevented).toBe(true);
+		await tick();
+
+		// Should NOT open photo quality modal
+		expect(container.querySelector('#photo-quality-title')).toBeNull();
+
+		// Should appear under Canvases as an editable canvas
+		await vi.waitFor(() => {
+			expect(container.querySelector('[aria-label="Edit Wireframe"]')).not.toBeNull();
+		});
+
+		// Should NOT appear in the generic files list
+		expect(container.querySelector('[aria-label="Open Wireframe.excalidraw"]')).toBeNull();
+	});
+
+	it('attaches a dropped .excalidraw.png file as a canvas without prompting for photo quality', async () => {
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const overlay = editorOverlay(container);
+
+		const excalidrawContent = JSON.stringify({
+			type: 'excalidraw',
+			version: 2,
+			elements: [
+				{
+					id: 'node-2',
+					type: 'ellipse',
+					x: 10,
+					y: 10,
+					width: 50,
+					height: 50
+				}
+			]
+		});
+		const file = new File([excalidrawContent], 'flow.excalidraw.png', {
+			type: 'image/png'
+		});
+
+		const drop = fileDragEvent('drop', [file]);
+		overlay.dispatchEvent(drop);
+		await tick();
+
+		// Should NOT prompt for photo quality even though mime is image/png
+		expect(container.querySelector('#photo-quality-title')).toBeNull();
+	});
+
 	it('does not close the note after dropping onto the backdrop', async () => {
 		const onClose = vi.fn();
 		notesStore.notes = [note()];

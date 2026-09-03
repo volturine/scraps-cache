@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createCanvasAttachment, type CanvasScene } from './canvasAttachment';
 import {
+	CANVAS_MIME,
+	createCanvasAttachment,
+	decodeCanvasAttachment,
+	isCanvasAttachment,
+	type CanvasScene
+} from './canvasAttachment';
+import {
+	fileToNoteImage,
 	getClipboardFiles,
 	isInlinePreviewable,
 	looksLikePhoto,
@@ -55,6 +62,11 @@ describe('looksLikePhoto', () => {
 		expect(looksLikePhoto({ type: 'application/pdf', name: 'doc.pdf' })).toBe(false);
 		expect(looksLikePhoto({ type: 'text/plain', name: 'notes.txt' })).toBe(false);
 		expect(looksLikePhoto({ type: '', name: 'archive.zip' })).toBe(false);
+	});
+
+	it('rejects excalidraw files even with image extension', () => {
+		expect(looksLikePhoto({ type: 'image/png', name: 'diagram.excalidraw.png' })).toBe(false);
+		expect(looksLikePhoto({ type: '', name: 'diagram.excalidraw' })).toBe(false);
 	});
 });
 
@@ -118,5 +130,41 @@ describe('resident attachment previews', () => {
 		expect(compacted.thumbUrl).toBe(preview);
 		expect(compacted.dataUrl).toBe('');
 		expect(compacted.contentHash).toBeTruthy();
+	});
+});
+
+describe('excalidraw file transformation', () => {
+	it('transforms excalidraw files into native canvas attachments', async () => {
+		const excalidrawJson = JSON.stringify({
+			type: 'excalidraw',
+			version: 2,
+			elements: [
+				{
+					id: 'box-1',
+					type: 'rectangle',
+					x: 10,
+					y: 10,
+					width: 100,
+					height: 60
+				}
+			],
+			appState: { viewBackgroundColor: '#121212' },
+			files: {}
+		});
+		const file = new File([excalidrawJson], 'Architecture.excalidraw', {
+			type: 'application/octet-stream'
+		});
+
+		const attachment = await fileToNoteImage(file, 'compressed');
+
+		expect(isCanvasAttachment(attachment)).toBe(true);
+		expect(attachment.mime).toBe(CANVAS_MIME);
+		expect(attachment.name).toBe('Architecture');
+		expect(attachment.thumbUrl).toBeTruthy();
+
+		const decoded = await decodeCanvasAttachment(attachment);
+		expect(decoded.elements).toHaveLength(1);
+		expect(decoded.elements[0].id).toBe('box-1');
+		expect(decoded.appState.viewBackgroundColor).toBe('#121212');
 	});
 });

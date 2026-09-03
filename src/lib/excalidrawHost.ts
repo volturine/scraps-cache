@@ -6,7 +6,7 @@ import type { AppState, BinaryFiles, LibraryItems } from '@excalidraw/excalidraw
 import type { CanvasElement, CanvasFile, CanvasScene } from './canvasAttachment';
 import { loadCanvasLibrary, saveCanvasLibrary } from './canvasLibrary';
 
-const { Excalidraw, exportToCanvas } = ExcalidrawPackage;
+const { Excalidraw, exportToCanvas, loadFromBlob } = ExcalidrawPackage;
 
 const THUMBNAIL_WIDTH = 480;
 const THUMBNAIL_HEIGHT = 360;
@@ -60,31 +60,43 @@ function canvasToDataUrl(canvas: HTMLCanvasElement): Promise<string> {
 	});
 }
 
-function sceneElements(elements: CanvasElement[]): ExcalidrawElement[] {
-	return elements as unknown as ExcalidrawElement[];
+function sceneElements(elements?: CanvasElement[]): readonly ExcalidrawElement[] {
+	if (!elements) return [];
+	return elements.filter((element) =>
+		SAVED_ELEMENT_TYPES.has(element.type)
+	) as unknown as ExcalidrawElement[];
 }
 
-function sceneFiles(files: Record<string, CanvasFile> | undefined): BinaryFiles {
-	return (files ?? {}) as BinaryFiles;
+function sceneFiles(files?: Record<string, CanvasFile>): BinaryFiles {
+	if (!files) return {};
+	return files as unknown as BinaryFiles;
 }
 
 function snapshotFiles(
 	elements: readonly ExcalidrawElement[],
 	files: BinaryFiles
 ): Record<string, CanvasFile> {
-	const snapshot: Record<string, CanvasFile> = {};
-	for (const element of elements) {
-		if (element.type !== 'image' || !element.fileId) continue;
-		const file = files[element.fileId];
-		if (!file) continue;
-		snapshot[file.id] = {
+	const referenced = new Set(
+		elements
+			.filter(
+				(element) =>
+					element.type === 'image' &&
+					'fileId' in element &&
+					typeof (element as { fileId?: unknown }).fileId === 'string'
+			)
+			.map((element) => String((element as { fileId: string }).fileId))
+	);
+	const next: Record<string, CanvasFile> = {};
+	for (const [id, file] of Object.entries(files)) {
+		if (!referenced.has(id)) continue;
+		next[id] = {
 			id: file.id,
 			mimeType: file.mimeType,
 			dataURL: file.dataURL,
 			created: file.created
 		};
 	}
-	return snapshot;
+	return next;
 }
 
 function frameThumbnail(source: HTMLCanvasElement, background: string): HTMLCanvasElement {
@@ -106,6 +118,50 @@ function frameThumbnail(source: HTMLCanvasElement, background: string): HTMLCanv
 		height
 	);
 	return thumbnail;
+}
+
+export async function renderCanvasThumbnail(
+	scene: CanvasScene
+): Promise<{ dataUrl: string; width: number; height: number }> {
+	const elements = sceneElements(scene.elements);
+	const files = sceneFiles(scene.files);
+	const appState = (scene.appState ?? {}) as Partial<AppState>;
+	if (elements.length === 0) throw new Error('Cannot create thumbnail for empty canvas.');
+	const canvas = await exportToCanvas({
+		elements,
+		appState: {
+			...appState,
+			exportBackground: true,
+			exportWithDarkMode: false
+		},
+		files,
+		maxWidthOrHeight: 480,
+		exportPadding: 20
+	});
+	const thumbnail = frameThumbnail(
+		canvas,
+		typeof appState.viewBackgroundColor === 'string' ? appState.viewBackgroundColor : '#ffffff'
+	);
+	return {
+		dataUrl: await canvasToDataUrl(thumbnail),
+		width: THUMBNAIL_WIDTH,
+		height: THUMBNAIL_HEIGHT
+	};
+}
+
+export async function restoreSceneFromBlob(blob: Blob): Promise<CanvasScene> {
+	if (typeof loadFromBlob !== 'function') throw new Error('loadFromBlob is not available.');
+	const restored = await loadFromBlob(blob, null, null);
+	const rawElements = (restored.elements ?? []) as (CanvasElement & { isDeleted?: boolean })[];
+	const elements = rawElements.filter((el) => !el.isDeleted);
+	return {
+		elements: sceneElements(elements) as unknown as CanvasElement[],
+		appState: (restored.appState ?? {}) as Record<string, unknown>,
+		files: sceneFiles(restored.files as unknown as Record<string, CanvasFile>) as unknown as Record<
+			string,
+			CanvasFile
+		>
+	};
 }
 
 export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promise<ExcalidrawHost> {
@@ -131,28 +187,11 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 			},
 			async thumbnail() {
 				if (elements.length === 0) throw new Error('Draw something before saving the canvas.');
-				const canvas = await exportToCanvas({
-					elements,
-					appState: {
-						...appState,
-						exportBackground: true,
-						exportWithDarkMode: false
-					},
-					files,
-					maxWidthOrHeight: 480,
-					exportPadding: 20
+				return renderCanvasThumbnail({
+					elements: elements as unknown as CanvasElement[],
+					appState: appState as Record<string, unknown>,
+					files: snapshotFiles(elements, files)
 				});
-				const thumbnail = frameThumbnail(
-					canvas,
-					typeof appState.viewBackgroundColor === 'string'
-						? appState.viewBackgroundColor
-						: '#ffffff'
-				);
-				return {
-					dataUrl: await canvasToDataUrl(thumbnail),
-					width: THUMBNAIL_WIDTH,
-					height: THUMBNAIL_HEIGHT
-				};
 			}
 		});
 
