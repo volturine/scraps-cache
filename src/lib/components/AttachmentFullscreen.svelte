@@ -40,7 +40,11 @@
 	onMount(() => {
 		const dataUrl = attachment?.dataUrl;
 		const textFile = isText;
-		if (!dataUrl) return;
+		const previewMime = mime;
+		if (!dataUrl) {
+			failed = true;
+			return;
+		}
 		let current = true;
 		loading = true;
 		failed = false;
@@ -53,7 +57,8 @@
 					if (current) textContent = text;
 				} else if (current) {
 					revokePreview();
-					previewUrl = URL.createObjectURL(blob);
+					const typed = blob.type === previewMime ? blob : new Blob([blob], { type: previewMime });
+					previewUrl = URL.createObjectURL(typed);
 					sourceUrl = previewUrl;
 				}
 			})
@@ -130,7 +135,6 @@
 					class="h-full w-full flex-1 border-0 bg-white"
 					title={attachment.name || 'Attachment'}
 					src={sourceUrl}
-					sandbox="allow-same-origin"
 				></iframe>
 			{/if}
 		</div>

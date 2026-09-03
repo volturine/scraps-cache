@@ -82,11 +82,14 @@
 		await notesStore.flushNote(note.id);
 	}
 
-	function openFile(event: MouseEvent, id: string) {
+	async function openFile(event: MouseEvent, id: string) {
 		event.stopPropagation();
-		const file = files.find((f) => f.id === id);
+		await notesStore.ensureNoteAttachments(note.id);
+		const current = notesStore.notes.find((item) => item.id === note.id);
+		const file =
+			current?.images?.find((item) => item.id === id) ?? files.find((item) => item.id === id);
 		if (!file?.dataUrl) return;
-		if (isInlinePreviewable(file)) focusedAttachment = file;
+		if (isInlinePreviewable(file)) focusedAttachment = { ...file };
 		else void openAttachment(file);
 	}
 
@@ -225,11 +228,10 @@
 		{#each files as file (file.id)}
 			<button
 				type="button"
-				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left touch-manipulation disabled:opacity-60 dark:border-white/10 dark:bg-white/5"
+				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left touch-manipulation dark:border-white/10 dark:bg-white/5"
 				data-file
-				disabled={!file.dataUrl}
 				aria-busy={!file.dataUrl}
-				onclick={(event) => openFile(event, file.id)}
+				onclick={(event) => void openFile(event, file.id)}
 				aria-label={`Open ${file.name ?? 'file'}`}
 			>
 				<span
