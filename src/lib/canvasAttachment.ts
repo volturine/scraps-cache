@@ -10,7 +10,7 @@ const MAX_CANVAS_BYTES = 7 * 1024 * 1024;
 const MAX_CANVAS_ELEMENTS = 25_000;
 const MAX_PREVIEW_LENGTH = 1_500_000;
 const MAX_FILE_ID_LENGTH = 256;
-export const ALLOWED_ELEMENT_TYPES = new Set([
+const ALLOWED_ELEMENT_TYPES = new Set([
 	'rectangle',
 	'diamond',
 	'ellipse',

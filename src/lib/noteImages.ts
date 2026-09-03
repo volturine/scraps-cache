@@ -6,7 +6,11 @@ import { makeImageThumbDataUrl } from './imageThumb';
 import { optimizeImageBlob, optimizedImageName, type ImageQuality } from './imageOptimize';
 import { sha256 } from './syncHash';
 import { canvasThumbnailDataUrl, isCanvasAttachment } from './canvasAttachment';
-import { convertExcalidrawFileToCanvas, isExcalidrawFile, isExcalidrawFileName } from './excalidrawFile';
+import {
+	convertExcalidrawFileToCanvas,
+	isExcalidrawFile,
+	isExcalidrawFileName
+} from './excalidrawFile';
 
 /** Browser-renderable image (preview / fullscreen). Excludes raw DNG before convert. */
 export function isImageMime(mime: string): boolean {
