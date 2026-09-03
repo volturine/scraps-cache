@@ -36,11 +36,7 @@ export async function isExcalidrawFile(file: File | Blob, name?: string): Promis
 		try {
 			const slice = file.slice(0, 4096);
 			const text = await slice.text();
-			if (
-				text.includes('"type": "excalidraw"') ||
-				text.includes('"type":"excalidraw"') ||
-				text.includes('https://excalidraw.com')
-			) {
+			if (/"type"\s*:\s*"excalidraw"/i.test(text)) {
 				return true;
 			}
 			if (file.size < 512 * 1024) {
