@@ -19,6 +19,7 @@
 	import { formatStorageError } from '$lib/imageBlob';
 	import { isKeyboardField } from '$lib/appViewport';
 	import { isCanvasAttachment, mergeCanvasEdit } from '$lib/canvasAttachment';
+	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 	import {
 		Archive,
 		ArchiveRestore,
@@ -233,6 +234,25 @@
 		if (idx != null) focusedImageIndex = idx;
 	}
 
+	async function openFile(file: NoteImage) {
+		attachError = '';
+		let source = file;
+		if (!source.dataUrl && noteId) {
+			await notesStore.ensureNoteAttachments(noteId);
+			const hydratedNote = notesStore.notes.find((note) => note.id === noteId);
+			if (hydratedNote?.images) {
+				images = mergeHydratedImages(images, hydratedNote.images);
+				source = images.find((item) => item.id === file.id) ?? source;
+			}
+		}
+		if (!source.dataUrl) {
+			attachError = 'File is not available on this device.';
+			return;
+		}
+		if (isInlinePreviewable(source)) focusedAttachment = { ...source };
+		else void openAttachment(source);
+	}
+
 	async function openCanvas(attachment?: NoteImage) {
 		attachError = '';
 		if (!attachment) {
@@ -387,10 +407,7 @@
 				<button
 					type="button"
 					class="min-w-0 flex-1 text-left touch-manipulation"
-					onclick={() => {
-						if (isInlinePreviewable(file)) focusedAttachment = file;
-						else void openAttachment(file);
-					}}
+					onclick={() => void openFile(file)}
 					aria-label={`Open ${file.name ?? 'file'}`}
 				>
 					<div class="truncate text-sm text-[var(--scrapscache-text)]">
