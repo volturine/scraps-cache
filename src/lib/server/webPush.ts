@@ -1,16 +1,34 @@
 import { env } from '$env/dynamic/private';
-import webPushPkg from 'web-push';
+import { gcm } from '@noble/ciphers/aes.js';
+import { p256 } from '@noble/curves/nist.js';
+import { hkdf } from '@noble/hashes/hkdf.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { concatBytes } from '@noble/hashes/utils.js';
 import { getMeta, getDb, setMetaIfAbsent, type Db } from '$lib/server/db';
 import { getSyncStore, type DueWake } from '$lib/server/syncStore';
-
-const webpush = ('default' in webPushPkg ? webPushPkg.default : webPushPkg) as typeof webPushPkg;
 
 export const VAPID_KEY_PAIR_META_KEY = 'vapid-key-pair-v1';
 
 export type WakeSendResult = 'sent' | 'gone' | 'failed';
 
+const encoder = new TextEncoder();
+const RECORD_SIZE = 4096;
+const VAPID_TTL_SECONDS = 12 * 60 * 60;
+
 let warnedDefaultSubject = false;
 let warnedKeyRegeneration = false;
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+	let binary = '';
+	for (const byte of bytes) binary += String.fromCharCode(byte);
+	return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+
+function base64UrlToBytes(value: string): Uint8Array {
+	const padded =
+		value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4);
+	return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+}
 
 function vapidSubject(): string {
 	const subject = env.SCRAPSCACHE_VAPID_SUBJECT?.trim();
@@ -64,6 +82,14 @@ function parseVapidKeyPair(value: string): { publicKey: string; privateKey: stri
 	return parsed as { publicKey: string; privateKey: string };
 }
 
+function generateVapidKeyPair(): { publicKey: string; privateKey: string } {
+	const privateKey = p256.utils.randomSecretKey();
+	return {
+		publicKey: bytesToBase64Url(p256.getPublicKey(privateKey, false)),
+		privateKey: bytesToBase64Url(privateKey)
+	};
+}
+
 export async function getVapidKeys(
 	db: Db = getDb()
 ): Promise<{ publicKey: string; privateKey: string }> {
@@ -82,7 +108,7 @@ export async function getVapidKeys(
 	const stored = await getMeta(db, VAPID_KEY_PAIR_META_KEY);
 	if (stored) return parseVapidKeyPair(stored);
 
-	const generated = webpush.generateVAPIDKeys();
+	const generated = generateVapidKeyPair();
 	const candidate = JSON.stringify(generated);
 	const persisted = await setMetaIfAbsent(db, VAPID_KEY_PAIR_META_KEY, candidate);
 	if (persisted === candidate) {
@@ -91,35 +117,111 @@ export async function getVapidKeys(
 	return parseVapidKeyPair(persisted);
 }
 
-/** Web Push delivery via `generateRequestDetails` + `fetch`: the web-push crypto
- * pipeline runs on both Node and Workers, but its `https.request` transport does
- * not exist under workerd. */
+/** RFC 8291 aes128gcm body. `web-push` cannot run on Workers: it needs Node
+ * `createECDH` and `https.request`. */
+export function encryptWebPushPayload(input: {
+	plaintext: Uint8Array;
+	userPublicKey: Uint8Array;
+	authSecret: Uint8Array;
+	serverPrivateKey: Uint8Array;
+	salt: Uint8Array;
+}): Uint8Array {
+	const serverPublicKey = p256.getPublicKey(input.serverPrivateKey, false);
+	const ecdhSecret = p256
+		.getSharedSecret(input.serverPrivateKey, input.userPublicKey, true)
+		.subarray(1);
+	const ikm = hkdf(
+		sha256,
+		ecdhSecret,
+		input.authSecret,
+		concatBytes(
+			encoder.encode('WebPush: info'),
+			new Uint8Array([0]),
+			input.userPublicKey,
+			serverPublicKey
+		),
+		32
+	);
+	const cek = hkdf(
+		sha256,
+		ikm,
+		input.salt,
+		concatBytes(encoder.encode('Content-Encoding: aes128gcm'), new Uint8Array([0])),
+		16
+	);
+	const nonce = hkdf(
+		sha256,
+		ikm,
+		input.salt,
+		concatBytes(encoder.encode('Content-Encoding: nonce'), new Uint8Array([0])),
+		12
+	);
+	const ciphertext = gcm(cek, nonce).encrypt(concatBytes(input.plaintext, new Uint8Array([2])));
+	const rs = new Uint8Array(4);
+	new DataView(rs.buffer).setUint32(0, RECORD_SIZE);
+	return concatBytes(
+		input.salt,
+		rs,
+		new Uint8Array([serverPublicKey.length]),
+		serverPublicKey,
+		ciphertext
+	);
+}
+
+function vapidAuthorization(
+	audience: string,
+	subject: string,
+	keys: { publicKey: string; privateKey: string }
+): string {
+	const header = bytesToBase64Url(encoder.encode('{"typ":"JWT","alg":"ES256"}'));
+	const payload = bytesToBase64Url(
+		encoder.encode(
+			JSON.stringify({
+				aud: audience,
+				exp: Math.floor(Date.now() / 1000) + VAPID_TTL_SECONDS,
+				sub: subject
+			})
+		)
+	);
+	const signingInput = `${header}.${payload}`;
+	const signature = p256.sign(encoder.encode(signingInput), base64UrlToBytes(keys.privateKey), {
+		prehash: true,
+		format: 'compact'
+	});
+	return `vapid t=${signingInput}.${bytesToBase64Url(signature)}, k=${bytesToBase64Url(base64UrlToBytes(keys.publicKey))}`;
+}
+
 export async function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
 	try {
 		const keys = await getVapidKeys();
-		const details = webpush.generateRequestDetails(
-			{
-				endpoint: device.endpoint,
-				keys: { p256dh: device.p256dh, auth: device.auth }
-			},
-			JSON.stringify({ type: 'reminder-wake', id: device.wakeId, fireAt: device.fireAt }),
-			{
-				TTL: 86_400,
-				urgency: 'high',
-				vapidDetails: {
-					subject: vapidSubject(),
-					publicKey: keys.publicKey,
-					privateKey: keys.privateKey
-				}
-			}
+		const userPublicKey = base64UrlToBytes(device.p256dh);
+		const authSecret = base64UrlToBytes(device.auth);
+		if (userPublicKey.length !== 65 || authSecret.length < 16) {
+			throw new Error('Push subscription keys are invalid');
+		}
+		const salt = new Uint8Array(16);
+		crypto.getRandomValues(salt);
+		const body = new Uint8Array(
+			encryptWebPushPayload({
+				plaintext: encoder.encode(
+					JSON.stringify({ type: 'reminder-wake', id: device.wakeId, fireAt: device.fireAt })
+				),
+				userPublicKey,
+				authSecret,
+				serverPrivateKey: p256.utils.randomSecretKey(),
+				salt
+			})
 		);
-		const headers = { ...details.headers } as Record<string, string>;
-		delete headers['Content-Length'];
-		delete headers['content-length'];
-		const response = await fetch(details.endpoint, {
-			method: details.method,
-			headers,
-			body: details.body ? new Uint8Array(details.body) : undefined,
+		const response = await fetch(device.endpoint, {
+			method: 'POST',
+			headers: {
+				TTL: '86400',
+				Urgency: 'high',
+				Authorization: vapidAuthorization(new URL(device.endpoint).origin, vapidSubject(), keys),
+				'Content-Encoding': 'aes128gcm',
+				'Content-Type': 'application/octet-stream'
+			},
+			body,
 			signal: AbortSignal.timeout(10_000)
 		});
 		if (response.ok) return 'sent';

@@ -126,4 +126,138 @@ describe('getVapidKeys', () => {
 
 		expect(await getVapidKeys()).toEqual(winner);
 	});
+
+	it('generates uncompressed P-256 keys in web-push url-safe form', async () => {
+		const { getVapidKeys } = await importFreshWebPush();
+		const keys = await getVapidKeys();
+		const publicKey = base64UrlToBytes(keys.publicKey);
+		const privateKey = base64UrlToBytes(keys.privateKey);
+		expect(publicKey).toHaveLength(65);
+		expect(publicKey[0]).toBe(0x04);
+		expect(privateKey).toHaveLength(32);
+	});
+});
+
+function base64UrlToBytes(value: string): Uint8Array {
+	const compact = value.replace(/\s+/g, '');
+	const padded =
+		compact.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (compact.length % 4)) % 4);
+	return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+}
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+	let binary = '';
+	for (const byte of bytes) binary += String.fromCharCode(byte);
+	return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+
+describe('encryptWebPushPayload', () => {
+	it('matches the RFC 8291 example ciphertext', async () => {
+		const { encryptWebPushPayload } = await importFreshWebPush();
+		const body = encryptWebPushPayload({
+			plaintext: new TextEncoder().encode('When I grow up, I want to be a watermelon'),
+			userPublicKey: base64UrlToBytes(
+				'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4'
+			),
+			authSecret: base64UrlToBytes('BTBZMqHH6r4Tts7J_aSIgg'),
+			serverPrivateKey: base64UrlToBytes('yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw'),
+			salt: base64UrlToBytes('DGv6ra1nlYgDCS1FRnbzlw')
+		});
+		expect(bytesToBase64Url(body)).toBe(
+			'DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN'
+		);
+	});
+});
+
+describe('sendReminderTick', () => {
+	beforeEach(() => {
+		storeMock.getMeta.mockReset();
+		storeMock.getMeta.mockReturnValue(null);
+		storeMock.setMetaIfAbsent.mockReset();
+		storeMock.setMetaIfAbsent.mockImplementation((_key, value) => value);
+		storeMock.countPushDevices.mockReset();
+		storeMock.countPushDevices.mockReturnValue(0);
+		setEnv('SCRAPSCACHE_VAPID_PUBLIC_KEY', undefined);
+		setEnv('SCRAPSCACHE_VAPID_PRIVATE_KEY', undefined);
+		setEnv('SCRAPSCACHE_ORIGIN', 'https://scrapscache.com');
+	});
+
+	afterEach(() => {
+		setEnv('SCRAPSCACHE_VAPID_PUBLIC_KEY', undefined);
+		setEnv('SCRAPSCACHE_VAPID_PRIVATE_KEY', undefined);
+		setEnv('SCRAPSCACHE_ORIGIN', undefined);
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+	});
+
+	async function validDevice() {
+		const { p256 } = await import('@noble/curves/nist.js');
+		const userPrivate = p256.utils.randomSecretKey();
+		const auth = new Uint8Array(16);
+		crypto.getRandomValues(auth);
+		return {
+			accountId: 'account',
+			deviceId: 'device',
+			wakeId: 'A'.repeat(43),
+			fireAt: 1_700_000_000_000,
+			endpoint: 'https://fcm.googleapis.com/fcm/send/fake-token',
+			p256dh: bytesToBase64Url(p256.getPublicKey(userPrivate, false)),
+			auth: bytesToBase64Url(auth)
+		};
+	}
+
+	it('posts an aes128gcm body with string headers via fetch', async () => {
+		const fetchMock = vi.fn(async () => new Response(null, { status: 201 }));
+		vi.stubGlobal('fetch', fetchMock);
+		const { sendReminderTick } = await importFreshWebPush();
+
+		await expect(sendReminderTick(await validDevice())).resolves.toBe('sent');
+
+		expect(fetchMock).toHaveBeenCalledOnce();
+		const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+		expect(url).toBe('https://fcm.googleapis.com/fcm/send/fake-token');
+		expect(init.method).toBe('POST');
+		const headers = init.headers as Record<string, string>;
+		for (const value of Object.values(headers)) expect(typeof value).toBe('string');
+		expect(headers.TTL).toBe('86400');
+		expect(headers.Urgency).toBe('high');
+		expect(headers['Content-Encoding']).toBe('aes128gcm');
+		expect(headers.Authorization).toMatch(
+			/^vapid t=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+, k=[A-Za-z0-9_-]+$/
+		);
+		const jwtPayload = JSON.parse(
+			new TextDecoder().decode(base64UrlToBytes(headers.Authorization.split('.')[1]))
+		) as { aud: string; sub: string };
+		expect(jwtPayload.aud).toBe('https://fcm.googleapis.com');
+		expect(jwtPayload.sub).toBe('https://scrapscache.com');
+		expect(init.body).toBeInstanceOf(Uint8Array);
+		const body = init.body as Uint8Array;
+		expect(body.byteLength).toBeGreaterThan(86);
+		expect(new DataView(body.buffer, body.byteOffset + 16, 4).getUint32(0)).toBe(4096);
+		expect(body[20]).toBe(65);
+		expect(body[21]).toBe(0x04);
+	});
+
+	it('treats 404 and 410 as gone subscriptions', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response(null, { status: 410 }))
+		);
+		const { sendReminderTick } = await importFreshWebPush();
+		await expect(sendReminderTick(await validDevice())).resolves.toBe('gone');
+	});
+
+	it('returns failed when fetch throws', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				throw new Error('network');
+			})
+		);
+		const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+		const { sendReminderTick } = await importFreshWebPush();
+		await expect(sendReminderTick(await validDevice())).resolves.toBe('failed');
+		expect(info).toHaveBeenCalled();
+		expect(String(info.mock.calls[0]?.[0])).toContain('reminder_wake_failed');
+	});
 });
