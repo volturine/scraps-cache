@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import ExcalidrawPackage from '@excalidraw/excalidraw/dist/excalidraw.production.min.js';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/types';
 import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types/types';
-import type { CanvasElement, CanvasScene } from './canvasAttachment';
+import type { CanvasElement, CanvasFile, CanvasScene } from './canvasAttachment';
 
 const { Excalidraw, exportToCanvas } = ExcalidrawPackage;
 
@@ -29,7 +29,8 @@ const SAVED_ELEMENT_TYPES = new Set([
 	'line',
 	'arrow',
 	'freedraw',
-	'text'
+	'text',
+	'image'
 ]);
 
 function canvasToDataUrl(canvas: HTMLCanvasElement): Promise<string> {
@@ -62,6 +63,29 @@ function sceneElements(elements: CanvasElement[]): ExcalidrawElement[] {
 	return elements as unknown as ExcalidrawElement[];
 }
 
+function sceneFiles(files: Record<string, CanvasFile> | undefined): BinaryFiles {
+	return (files ?? {}) as BinaryFiles;
+}
+
+function snapshotFiles(
+	elements: readonly ExcalidrawElement[],
+	files: BinaryFiles
+): Record<string, CanvasFile> {
+	const snapshot: Record<string, CanvasFile> = {};
+	for (const element of elements) {
+		if (element.type !== 'image' || !element.fileId) continue;
+		const file = files[element.fileId];
+		if (!file) continue;
+		snapshot[file.id] = {
+			id: file.id,
+			mimeType: file.mimeType,
+			dataURL: file.dataURL,
+			created: file.created
+		};
+	}
+	return snapshot;
+}
+
 function frameThumbnail(source: HTMLCanvasElement, background: string): HTMLCanvasElement {
 	const thumbnail = document.createElement('canvas');
 	thumbnail.width = THUMBNAIL_WIDTH;
@@ -90,7 +114,7 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 			options.initialScene?.elements ?? []
 		);
 		let appState = (options.initialScene?.appState ?? {}) as Partial<AppState>;
-		let files: BinaryFiles = {};
+		let files: BinaryFiles = sceneFiles(options.initialScene?.files);
 
 		const buildHost = (): ExcalidrawHost => ({
 			destroy() {
@@ -100,7 +124,8 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 			snapshot() {
 				return {
 					elements: elements as unknown as CanvasElement[],
-					appState: appState as Record<string, unknown>
+					appState: appState as Record<string, unknown>,
+					files: snapshotFiles(elements, files)
 				};
 			},
 			async thumbnail() {
@@ -136,14 +161,14 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 					? {
 							elements: sceneElements(options.initialScene.elements),
 							appState: options.initialScene.appState as Partial<AppState>,
-							files: {}
+							files: sceneFiles(options.initialScene.files)
 						}
 					: undefined,
 				excalidrawAPI: () => resolve(buildHost()),
 				onChange: (nextElements, nextAppState, nextFiles) => {
 					elements = nextElements.filter((element) => SAVED_ELEMENT_TYPES.has(element.type));
 					appState = nextAppState;
-					files = Object.keys(nextFiles).length === 0 ? nextFiles : {};
+					files = nextFiles;
 				},
 				autoFocus: true,
 				detectScroll: false,
@@ -164,7 +189,7 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 						toggleTheme: false,
 						saveAsImage: false
 					},
-					tools: { image: false }
+					tools: { image: !options.readOnly }
 				}
 			})
 		);

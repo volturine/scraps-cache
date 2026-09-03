@@ -8,6 +8,7 @@ import {
 	mergeCanvasEdit,
 	type CanvasScene
 } from './canvasAttachment';
+import { blobToDataUrl } from './imageBlob';
 
 const PREVIEW = 'data:image/webp;base64,AA==';
 
@@ -74,6 +75,94 @@ describe('canvas attachments', () => {
 
 		await expect(createCanvasAttachment(unsupported, PREVIEW)).rejects.toThrow(
 			'Draw something before saving'
+		);
+	});
+
+	it('round-trips pasted images with their binary files', async () => {
+		const png =
+			'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+		const withImage: CanvasScene = {
+			elements: [
+				{
+					id: 'photo-1',
+					type: 'image',
+					x: 40,
+					y: 80,
+					width: 200,
+					height: 120,
+					fileId: 'file-1'
+				}
+			],
+			appState: {},
+			files: {
+				'file-1': {
+					id: 'file-1',
+					mimeType: 'image/png',
+					dataURL: png,
+					created: 1
+				}
+			}
+		};
+
+		const attachment = await createCanvasAttachment(withImage, PREVIEW);
+		const decoded = await decodeCanvasAttachment(attachment);
+
+		expect(decoded.elements).toEqual(withImage.elements);
+		expect(decoded.files).toEqual(withImage.files);
+	});
+
+	it('keeps drawings when a pasted image is missing its file', async () => {
+		const mixed: CanvasScene = {
+			elements: [
+				...scene().elements,
+				{
+					id: 'photo-1',
+					type: 'image',
+					x: 0,
+					y: 0,
+					width: 10,
+					height: 10,
+					fileId: 'missing'
+				}
+			],
+			appState: {}
+		};
+
+		const attachment = await createCanvasAttachment(mixed, PREVIEW);
+		const decoded = await decodeCanvasAttachment(attachment);
+
+		expect(decoded.elements).toEqual(scene().elements);
+		expect(decoded.files).toEqual({});
+	});
+
+	it('rejects stored canvases whose images have no file bytes', async () => {
+		const dataUrl = await blobToDataUrl(
+			new Blob(
+				[
+					JSON.stringify({
+						version: 1,
+						engine: 'excalidraw',
+						elements: [
+							{
+								id: 'photo-1',
+								type: 'image',
+								x: 0,
+								y: 0,
+								width: 10,
+								height: 10,
+								fileId: 'file-1'
+							}
+						],
+						appState: {},
+						previewDataUrl: PREVIEW
+					})
+				],
+				{ type: CANVAS_MIME }
+			)
+		);
+
+		await expect(decodeCanvasAttachment({ mime: CANVAS_MIME, dataUrl })).rejects.toThrow(
+			'unsupported content'
 		);
 	});
 

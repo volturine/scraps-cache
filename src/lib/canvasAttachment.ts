@@ -9,6 +9,7 @@ export const CANVAS_ENCODING_VERSION = 1;
 const MAX_CANVAS_BYTES = 7 * 1024 * 1024;
 const MAX_CANVAS_ELEMENTS = 25_000;
 const MAX_PREVIEW_LENGTH = 1_500_000;
+const MAX_FILE_ID_LENGTH = 256;
 const ALLOWED_ELEMENT_TYPES = new Set([
 	'rectangle',
 	'diamond',
@@ -16,14 +17,33 @@ const ALLOWED_ELEMENT_TYPES = new Set([
 	'line',
 	'arrow',
 	'freedraw',
-	'text'
+	'text',
+	'image'
+]);
+const ALLOWED_FILE_MIMES = new Set([
+	'image/png',
+	'image/jpeg',
+	'image/gif',
+	'image/webp',
+	'image/bmp',
+	'image/x-icon',
+	'image/svg+xml',
+	'image/avif'
 ]);
 
 export type CanvasElement = Record<string, unknown> & { type: string };
 
+export interface CanvasFile {
+	id: string;
+	mimeType: string;
+	dataURL: string;
+	created: number;
+}
+
 export interface CanvasScene {
 	elements: CanvasElement[];
 	appState: Record<string, unknown>;
+	files?: Record<string, CanvasFile>;
 }
 
 interface StoredCanvasDocument {
@@ -31,6 +51,7 @@ interface StoredCanvasDocument {
 	engine: 'excalidraw';
 	elements: CanvasElement[];
 	appState: Record<string, unknown>;
+	files: Record<string, CanvasFile>;
 	previewDataUrl: string;
 }
 
@@ -46,15 +67,55 @@ function boundedNumber(value: unknown, minimum: number, maximum: number): value 
 	return finiteNumber(value) && value >= minimum && value <= maximum;
 }
 
+function validFileId(value: unknown): value is string {
+	return typeof value === 'string' && value.length > 0 && value.length <= MAX_FILE_ID_LENGTH;
+}
+
 function validElement(value: unknown): value is CanvasElement {
 	if (!isRecord(value) || typeof value.type !== 'string') return false;
 	if (!ALLOWED_ELEMENT_TYPES.has(value.type)) return false;
+	if (value.type === 'image' && !validFileId(value.fileId)) return false;
 	return (
 		typeof value.id === 'string' &&
 		boundedNumber(value.x, -1_000_000_000, 1_000_000_000) &&
 		boundedNumber(value.y, -1_000_000_000, 1_000_000_000) &&
 		boundedNumber(value.width, 0, 1_000_000_000) &&
 		boundedNumber(value.height, 0, 1_000_000_000)
+	);
+}
+
+function validFile(value: unknown): value is CanvasFile {
+	if (!isRecord(value) || !validFileId(value.id)) return false;
+	if (typeof value.mimeType !== 'string') return false;
+	const mimeType = value.mimeType.toLowerCase();
+	if (!ALLOWED_FILE_MIMES.has(mimeType)) return false;
+	if (typeof value.dataURL !== 'string' || value.dataURL.length > MAX_CANVAS_BYTES) return false;
+	if (!value.dataURL.toLowerCase().startsWith(`data:${mimeType};base64,`)) return false;
+	return boundedNumber(value.created, 0, 1e15);
+}
+
+function sceneFiles(value: unknown, elements: CanvasElement[]): Record<string, CanvasFile> {
+	if (!isRecord(value)) return {};
+	const files: Record<string, CanvasFile> = {};
+	for (const element of elements) {
+		if (element.type !== 'image' || !validFileId(element.fileId)) continue;
+		const file = value[element.fileId];
+		if (!validFile(file) || file.id !== element.fileId) continue;
+		files[file.id] = {
+			id: file.id,
+			mimeType: file.mimeType,
+			dataURL: file.dataURL,
+			created: file.created
+		};
+	}
+	return files;
+}
+
+function persistableElements(elements: unknown[], files: unknown): CanvasElement[] {
+	const candidates = elements.filter(validElement);
+	const fileMap = sceneFiles(files, candidates);
+	return candidates.filter(
+		(element) => element.type !== 'image' || fileMap[String(element.fileId)]
 	);
 }
 
@@ -96,11 +157,17 @@ function parseDocument(value: unknown): StoredCanvasDocument {
 	if (!value.elements.every(validElement) || !validPreview(value.previewDataUrl)) {
 		throw new Error('This canvas contains unsupported content.');
 	}
+	const elements = value.elements;
+	const files = sceneFiles(value.files, elements);
+	if (elements.some((element) => element.type === 'image' && !files[String(element.fileId)])) {
+		throw new Error('This canvas contains unsupported content.');
+	}
 	return {
 		version: 1,
 		engine: 'excalidraw',
-		elements: value.elements,
+		elements,
 		appState: normalizeAppState(value.appState),
+		files,
 		previewDataUrl: value.previewDataUrl
 	};
 }
@@ -121,6 +188,7 @@ export async function decodeCanvasAttachment(
 	return {
 		elements: document.elements,
 		appState: document.appState,
+		files: document.files,
 		previewDataUrl: document.previewDataUrl
 	};
 }
@@ -141,7 +209,8 @@ export async function createCanvasAttachment(
 	previewDataUrl: string,
 	existing?: NoteImage
 ): Promise<NoteImage> {
-	const elements = scene.elements.filter(validElement);
+	const elements = persistableElements(scene.elements, scene.files);
+	const files = sceneFiles(scene.files, elements);
 	if (elements.length === 0) throw new Error('Draw something before saving the canvas.');
 	if (elements.length > MAX_CANVAS_ELEMENTS)
 		throw new Error('This canvas contains too many objects.');
@@ -152,6 +221,7 @@ export async function createCanvasAttachment(
 		engine: 'excalidraw',
 		elements,
 		appState: normalizeAppState(scene.appState),
+		files,
 		previewDataUrl
 	};
 	const json = JSON.stringify(document);

@@ -111,6 +111,8 @@
 	use:portal
 	onpointerdown={markCanvasInteraction}
 	onkeydown={markCanvasInteraction}
+	onpaste={markCanvasInteraction}
+	ondrop={markCanvasInteraction}
 	onwheel={markCanvasInteraction}
 	class="canvas-editor-shell fixed z-[90] flex flex-col bg-white text-slate-900 dark:bg-[#121212] dark:text-slate-100"
 	role="dialog"
