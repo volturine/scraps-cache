@@ -380,7 +380,7 @@ describe('SQLite sync store', () => {
 		});
 	});
 
-	it('charges record overhead and purges retained ciphertext only when space is needed', async () => {
+	it('charges record overhead and frees quota as soon as a slot is deleted', async () => {
 		const maxAccountBytes = ENVELOPE_STORAGE_OVERHEAD_BYTES + 5;
 		const { store, db } = createStore({ maxAccountBytes });
 		await store.createAccount('account', 'credential');
@@ -415,7 +415,7 @@ describe('SQLite sync store', () => {
 		);
 		expect(replacement.usage.storageBytes).toBe(maxAccountBytes);
 		const raw = await db.relay.execute('SELECT COUNT(*) AS count FROM deleted_envelopes');
-		expect((raw.rows[0] as unknown as { count: number }).count).toBe(0);
+		expect((raw.rows[0] as unknown as { count: number }).count).toBe(1);
 	});
 
 	it('purges staged slot deletions only after the grace window', async () => {

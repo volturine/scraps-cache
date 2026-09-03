@@ -114,28 +114,14 @@ export class AccountCoordinator {
 			})
 		).rows[0] as { maxBytes: number } | undefined;
 		const maxBytes = quota?.maxBytes ?? input.maxAccountBytes;
-		const retained = (
-			await execute(db, {
-				sql: `SELECT COUNT(*) AS envelopeCount,
-					COALESCE(SUM(ciphertext_bytes), 0) AS ciphertextBytes
-				 FROM deleted_envelopes WHERE account_id = ?`,
-				args: [input.accountId]
-			})
-		).rows[0] as { envelopeCount: number; ciphertextBytes: number };
 		let envelopeCount = account.envelopeCount;
 		let ciphertextBytes = account.ciphertextBytes;
-		let retainedEnvelopeCount = retained.envelopeCount;
-		let retainedCiphertextBytes = retained.ciphertextBytes;
-		const liveStorageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes) =>
+		const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes) =>
 			activeBytes + activeCount * STORAGE_OVERHEAD_BYTES;
-		const chargedStorageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes) =>
-			liveStorageBytes(activeCount, activeBytes) +
-			retainedCiphertextBytes +
-			retainedEnvelopeCount * STORAGE_OVERHEAD_BYTES;
 		const usage = () => ({
 			envelopeCount,
 			ciphertextBytes,
-			storageBytes: liveStorageBytes(),
+			storageBytes: storageBytes(),
 			maxBytes
 		});
 		const now = Date.now();
@@ -234,17 +220,6 @@ export class AccountCoordinator {
 			knownIds.add(id);
 			return true;
 		});
-		const retainedBySlot = new Map(
-			input.deletions.length
-				? (
-						await execute(db, {
-							sql: `SELECT slot, ciphertext_bytes AS ciphertextBytes FROM deleted_envelopes
-								WHERE account_id = ? AND slot IN (${input.deletions.map(() => '?').join(', ')})`,
-							args: [input.accountId, ...input.deletions.map(({ slot }) => slot)]
-						})
-					).rows.map((row) => [String(row.slot), Number(row.ciphertextBytes)] as const)
-				: []
-		);
 		const prefix = await accountPrefix(input.accountId);
 		const objectKeys = new Map(
 			acceptedUploads.map(({ id }) => [id, `v1/${prefix}/${crypto.randomUUID()}`] as const)
@@ -291,44 +266,17 @@ export class AccountCoordinator {
 			);
 			envelopeCount -= 1;
 			ciphertextBytes -= removed.ciphertextBytes;
-			const previousBytes = retainedBySlot.get(deletion.slot);
-			if (previousBytes === undefined) retainedEnvelopeCount += 1;
-			retainedCiphertextBytes += removed.ciphertextBytes - (previousBytes ?? 0);
-			retainedBySlot.set(deletion.slot, removed.ciphertextBytes);
 			currentBySlot.delete(deletion.slot);
 		}
 
 		let sequence = account.nextSeq;
-		let retainedRows: Array<{ slot: string; r2Key: string; ciphertextBytes: number }> | undefined;
-		let retainedOffset = 0;
 		for (const upload of acceptedUploads) {
 			const prior = currentBySlot.get(upload.slot);
 			const projectedCount = envelopeCount + (prior ? 0 : 1);
 			const projectedBytes =
 				ciphertextBytes + upload.ciphertext.length - (prior?.ciphertextBytes ?? 0);
-			let projectedStorage = chargedStorageBytes(projectedCount, projectedBytes);
-			if (projectedStorage > maxBytes && retainedEnvelopeCount > 0) {
-				retainedRows ??= (
-					await execute(db, {
-						sql: `SELECT slot, r2_key AS r2Key, ciphertext_bytes AS ciphertextBytes
-						 FROM deleted_envelopes WHERE account_id = ? ORDER BY deleted_at ASC, slot ASC`,
-						args: [input.accountId]
-					})
-				).rows as Array<{ slot: string; r2Key: string; ciphertextBytes: number }>;
-				while (retainedOffset < retainedRows.length) {
-					const row = retainedRows[retainedOffset++]!;
-					statements.push({
-						sql: 'DELETE FROM deleted_envelopes WHERE account_id = ? AND slot = ?',
-						args: [input.accountId, row.slot]
-					});
-					obsoleteObjects.push(row.r2Key);
-					retainedEnvelopeCount -= 1;
-					retainedCiphertextBytes -= row.ciphertextBytes;
-					projectedStorage = chargedStorageBytes(projectedCount, projectedBytes);
-					if (projectedStorage <= maxBytes) break;
-				}
-			}
-			if (projectedStorage > maxBytes && projectedStorage >= chargedStorageBytes()) {
+			const projectedStorage = storageBytes(projectedCount, projectedBytes);
+			if (projectedStorage > maxBytes && projectedStorage >= storageBytes()) {
 				await batch(
 					db,
 					acceptedUploads.map(({ id }) => ({

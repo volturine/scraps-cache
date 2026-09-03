@@ -244,31 +244,12 @@ export class SyncStore {
 
 			let envelopeCount = account.envelopeCount;
 			let ciphertextBytes = account.ciphertextBytes;
-			const retained = (
-				await tx.execute({
-					sql: `SELECT COUNT(*) AS envelopeCount,
-						COALESCE(SUM(length(ciphertext)), 0) AS ciphertextBytes
-					 FROM deleted_envelopes WHERE account_id = ?`,
-					args: [accountId]
-				})
-			).rows[0] as unknown as { envelopeCount: number; ciphertextBytes: number };
-			let retainedEnvelopeCount = retained.envelopeCount;
-			let retainedCiphertextBytes = retained.ciphertextBytes;
-			const liveStorageBytes = (
-				activeCount = envelopeCount,
-				activeBytes = ciphertextBytes
-			): number => activeBytes + activeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES;
-			const chargedStorageBytes = (
-				activeCount = envelopeCount,
-				activeBytes = ciphertextBytes
-			): number =>
-				liveStorageBytes(activeCount, activeBytes) +
-				retainedCiphertextBytes +
-				retainedEnvelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES;
+			const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes): number =>
+				activeBytes + activeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES;
 			const usage = (): UsageRow & { maxBytes: number } => ({
 				envelopeCount,
 				ciphertextBytes,
-				storageBytes: liveStorageBytes(),
+				storageBytes: storageBytes(),
 				maxBytes: maxAccountBytes
 			});
 			if (cursor > account.nextSeq) {
@@ -348,19 +329,6 @@ export class SyncStore {
 				};
 			}
 
-			const retainedBySlot = new Map<string, number>();
-			for (const slotBatch of chunk([...new Set(deletions.map(({ slot }) => slot))])) {
-				const placeholders = slotBatch.map(() => '?').join(', ');
-				const rows = (
-					await tx.execute({
-						sql: `SELECT slot, length(ciphertext) AS ciphertextBytes
-						 FROM deleted_envelopes WHERE account_id = ? AND slot IN (${placeholders})`,
-						args: [accountId, ...slotBatch]
-					})
-				).rows as unknown as Array<{ slot: string; ciphertextBytes: number }>;
-				for (const row of rows) retainedBySlot.set(row.slot, row.ciphertextBytes);
-			}
-
 			const knownIds = new Set<string>();
 			for (const idBatch of chunk([...new Set(uploads.map(({ id }) => id))])) {
 				const placeholders = idBatch.map(() => '?').join(', ');
@@ -378,7 +346,6 @@ export class SyncStore {
 			for (const deletion of deletions) {
 				const removed = currentBySlot.get(deletion.slot);
 				if (!removed || removed.id !== deletion.id) continue;
-				const previousBytes = retainedBySlot.get(deletion.slot);
 				deletionStatements.push(
 					{
 						sql: `INSERT OR REPLACE INTO deleted_envelopes(account_id, slot, id, ciphertext, deleted_at)
@@ -392,9 +359,6 @@ export class SyncStore {
 				);
 				envelopeCount -= 1;
 				ciphertextBytes -= removed.ciphertext.length;
-				if (previousBytes === undefined) retainedEnvelopeCount += 1;
-				retainedCiphertextBytes += removed.ciphertext.length - (previousBytes ?? 0);
-				retainedBySlot.set(deletion.slot, removed.ciphertext.length);
 				currentBySlot.delete(deletion.slot);
 				knownIds.delete(removed.id);
 			}
@@ -402,9 +366,6 @@ export class SyncStore {
 
 			let sequence = account.nextSeq;
 			let added = false;
-			let retainedRows: Array<{ slot: string; ciphertextBytes: number }> | undefined;
-			let retainedOffset = 0;
-			const retainedDeleteStatements: InStatement[] = [];
 			const uploadStatements: InStatement[] = [];
 
 			for (const upload of uploads) {
@@ -416,31 +377,8 @@ export class SyncStore {
 				const projectedCount = envelopeCount + (prior ? 0 : 1);
 				const projectedBytes =
 					ciphertextBytes + upload.ciphertext.length - (prior?.ciphertext.length ?? 0);
-				let projectedStorageBytes = chargedStorageBytes(projectedCount, projectedBytes);
-				if (projectedStorageBytes > maxAccountBytes && retainedEnvelopeCount > 0) {
-					retainedRows ??= (
-						await tx.execute({
-							sql: `SELECT slot, length(ciphertext) AS ciphertextBytes
-							 FROM deleted_envelopes WHERE account_id = ? ORDER BY deleted_at ASC, slot ASC`,
-							args: [accountId]
-						})
-					).rows as unknown as Array<{ slot: string; ciphertextBytes: number }>;
-					while (retainedOffset < retainedRows.length) {
-						const row = retainedRows[retainedOffset++]!;
-						retainedDeleteStatements.push({
-							sql: 'DELETE FROM deleted_envelopes WHERE account_id = ? AND slot = ?',
-							args: [accountId, row.slot]
-						});
-						retainedEnvelopeCount -= 1;
-						retainedCiphertextBytes -= row.ciphertextBytes;
-						projectedStorageBytes = chargedStorageBytes(projectedCount, projectedBytes);
-						if (projectedStorageBytes <= maxAccountBytes) break;
-					}
-				}
-				if (
-					projectedStorageBytes > maxAccountBytes &&
-					projectedStorageBytes >= chargedStorageBytes()
-				) {
+				const projectedStorageBytes = storageBytes(projectedCount, projectedBytes);
+				if (projectedStorageBytes > maxAccountBytes && projectedStorageBytes >= storageBytes()) {
 					throw new SyncQuotaExceededError();
 				}
 				sequence += 1;
@@ -460,7 +398,6 @@ export class SyncStore {
 				ciphertextBytes = projectedBytes;
 				added = true;
 			}
-			await executeInBatches(tx, retainedDeleteStatements);
 			await executeInBatches(tx, uploadStatements);
 
 			const seenAt = Date.now();
@@ -615,9 +552,6 @@ export class SyncStore {
 				COUNT(*) AS accounts,
 				COALESCE(SUM(envelope_count), 0) AS envelopeCount,
 				COALESCE(SUM(ciphertext_bytes), 0) AS ciphertextBytes,
-				(SELECT COUNT(*) FROM deleted_envelopes) AS retainedEnvelopeCount,
-				(SELECT COALESCE(SUM(length(ciphertext)), 0) FROM deleted_envelopes)
-					AS retainedCiphertextBytes,
 				${activeSelects ? `${activeSelects},` : ''}
 				COALESCE(SUM(CASE WHEN last_seen_at < ? THEN 1 ELSE 0 END), 0) AS staleAccounts
 			FROM accounts
@@ -636,10 +570,7 @@ export class SyncStore {
 			accounts: row.accounts,
 			envelopeCount: row.envelopeCount,
 			ciphertextBytes: row.ciphertextBytes,
-			storageBytes:
-				row.ciphertextBytes +
-				row.retainedCiphertextBytes +
-				(row.envelopeCount + row.retainedEnvelopeCount) * ENVELOPE_STORAGE_OVERHEAD_BYTES,
+			storageBytes: row.ciphertextBytes + row.envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
 			activeByWindowDays,
 			staleAccounts: staleBefore == null ? 0 : row.staleAccounts
 		};
