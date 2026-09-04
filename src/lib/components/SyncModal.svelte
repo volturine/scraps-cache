@@ -81,6 +81,7 @@
 		}
 		mode = SyncModalMode.Linked;
 		syncing = true;
+		// First device of a new account: keep local notes and upload them.
 		const ok = await notesStore.syncWithCloudManual();
 		syncing = false;
 		if (!ok)
@@ -131,6 +132,7 @@
 				error = '';
 				info = '';
 				syncing = true;
+				// Joining an existing key: replace this device with the account.
 				const ok = await notesStore.replaceWithCloudManual();
 				syncing = false;
 				if (!ok) {
@@ -453,8 +455,8 @@
 		{:else if mode === SyncModalMode.Register}
 			<div class="space-y-3">
 				<p class="text-sm text-[var(--scrapscache-text-muted)]">
-					Creates a private account on this device. Other devices join with a one-time code, not a
-					lifetime password.
+					Creates a private account on this device. Notes already here stay and upload. Other
+					devices join with a one-time code, not a lifetime password.
 				</p>
 				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
 					type="button"
@@ -473,7 +475,7 @@
 			<div class="space-y-3">
 				<p class="text-sm text-[var(--scrapscache-text-muted)]">
 					On your other device open Sync and choose Connect another device. Enter the one-time code
-					shown there.
+					shown there. Notes on this device will be replaced by the synced account.
 				</p>
 				<input
 					value={code}

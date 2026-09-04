@@ -26,6 +26,8 @@ import { openDB } from 'idb';
 import { loadBoardsFromDevice } from '$lib/syncTombstones';
 import * as syncTombstones from '$lib/syncTombstones';
 import { writeNotesMirror } from '$lib/noteStorage';
+import { testDb, cleanupTestDbs } from '$lib/server/testDb';
+import { SyncStore as RelayStore } from '$lib/server/syncStore';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
 import type { Note } from '$lib/types';
@@ -79,6 +81,7 @@ describe('notes store sync apply', () => {
 		syncStore.account = null;
 		notesStore.notes = [];
 		notesStore.labels = [];
+		cleanupTestDbs();
 	});
 
 	it('persists pulled notes and boards to IndexedDB before committing the cursor', async () => {
@@ -468,6 +471,132 @@ describe('notes store sync apply', () => {
 		expect(await notesStore.replaceWithCloudManual()).toBe(true);
 		expect(notesStore.notes.map((item) => item.id)).toEqual(['cloud-1']);
 		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['cloud-1']);
+	});
+
+	it('keeps local notes when the first sync after creating a sync key hits an empty account', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		const local = remoteNote('local-keep');
+		local.title = 'keep me';
+		await putNote(local);
+		notesStore.notes = [local];
+		const uploaded: unknown[] = [];
+
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(
+					path: string,
+					payload: string
+				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async (_path, payload) => {
+			const request = JSON.parse(payload) as { envelopes: unknown[] };
+			uploaded.push(...request.envelopes);
+			return {
+				success: true,
+				data: {
+					cursor: uploaded.length,
+					envelopes: [],
+					conflicts: [],
+					hasMore: false,
+					reset: false,
+					writesAccepted: true,
+					usage: {
+						ciphertextBytes: 0,
+						storageBytes: 0,
+						envelopeCount: uploaded.length,
+						maxBytes: 1000
+					}
+				}
+			};
+		});
+
+		expect(await notesStore.syncWithCloudManual()).toBe(true);
+		expect(notesStore.notes.map((item) => item.id)).toEqual(['local-keep']);
+		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['local-keep']);
+		expect(uploaded.length).toBeGreaterThan(0);
+	});
+
+	it('keeps local notes when creating a new account against the sqlite relay', async () => {
+		const relay = new RelayStore(testDb());
+		const identity = createSyncIdentity();
+		await relay.createAccount(identity.accountId, identity.authPublicKey);
+		syncStore.account = identity;
+		const local = remoteNote('local-keep');
+		local.title = 'keep me';
+		await putNote(local);
+		notesStore.notes = [local];
+
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(
+					path: string,
+					payload: string
+				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async (_path, payload) => {
+			const body = JSON.parse(payload) as {
+				cursor: number;
+				envelopes: never[];
+				deleteSlots: never[];
+				limit?: number;
+			};
+			return {
+				success: true,
+				data: await relay.sync(
+					identity.accountId,
+					body.cursor,
+					body.envelopes,
+					body.deleteSlots,
+					body.limit ?? 12
+				)
+			};
+		});
+
+		expect(await notesStore.syncWithCloudManual()).toBe(true);
+		expect(notesStore.notes.map((item) => item.id)).toEqual(['local-keep']);
+		expect((await getAllNotesMetadata()).map(({ id }) => id)).toEqual(['local-keep']);
+	});
+
+	it('replace-with-cloud on an empty account wipes local notes during device onboarding', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		const local = remoteNote('local-only');
+		local.title = 'should be discarded';
+		await putNote(local);
+		notesStore.notes = [local];
+
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(
+					path: string,
+					payload: string
+				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockResolvedValue({
+			success: true,
+			data: {
+				cursor: 0,
+				envelopes: [],
+				conflicts: [],
+				hasMore: false,
+				reset: false,
+				writesAccepted: true,
+				usage: {
+					ciphertextBytes: 0,
+					storageBytes: 0,
+					envelopeCount: 0,
+					maxBytes: 1000
+				}
+			}
+		});
+
+		expect(await notesStore.replaceWithCloudManual()).toBe(true);
+		expect(notesStore.notes).toEqual([]);
+		expect(await getAllNotesMetadata()).toEqual([]);
 	});
 
 	it('serializes replacement with normal sync before local notes can upload', async () => {
