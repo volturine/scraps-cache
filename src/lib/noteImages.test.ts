@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createCanvasAttachment, type CanvasScene } from './canvasAttachment';
-import { isInlinePreviewable, prepareAttachmentForMemory } from './noteImages';
+import {
+	getClipboardFiles,
+	isInlinePreviewable,
+	looksLikePhoto,
+	prepareAttachmentForMemory
+} from './noteImages';
 
 describe('attachment preview routing', () => {
 	it('keeps browser-viewable files in the app viewer', () => {
@@ -24,6 +29,77 @@ describe('attachment preview routing', () => {
 		]) {
 			expect(isInlinePreviewable({ mime })).toBe(false);
 		}
+	});
+});
+
+describe('looksLikePhoto', () => {
+	it('identifies image mime types as photos', () => {
+		expect(looksLikePhoto({ type: 'image/png', name: 'screenshot' })).toBe(true);
+		expect(looksLikePhoto({ type: 'image/jpeg', name: 'photo' })).toBe(true);
+		expect(looksLikePhoto({ type: 'image/webp', name: 'pic' })).toBe(true);
+		expect(looksLikePhoto({ type: 'image/heic', name: 'camera' })).toBe(true);
+	});
+
+	it('identifies image file extensions even without mime type', () => {
+		expect(looksLikePhoto({ type: '', name: 'photo.jpg' })).toBe(true);
+		expect(looksLikePhoto({ type: '', name: 'photo.JPEG' })).toBe(true);
+		expect(looksLikePhoto({ type: '', name: 'photo.png' })).toBe(true);
+		expect(looksLikePhoto({ type: '', name: 'photo.webp' })).toBe(true);
+		expect(looksLikePhoto({ type: '', name: 'photo.avif' })).toBe(true);
+		expect(looksLikePhoto({ type: '', name: 'photo.gif' })).toBe(true);
+		expect(looksLikePhoto({ type: '', name: 'photo.heic' })).toBe(true);
+		expect(looksLikePhoto({ type: '', name: 'photo.dng' })).toBe(true);
+	});
+
+	it('rejects non-image files', () => {
+		expect(looksLikePhoto({ type: 'application/pdf', name: 'doc.pdf' })).toBe(false);
+		expect(looksLikePhoto({ type: 'text/plain', name: 'notes.txt' })).toBe(false);
+		expect(looksLikePhoto({ type: '', name: 'archive.zip' })).toBe(false);
+	});
+});
+
+describe('getClipboardFiles', () => {
+	it('extracts files from clipboardData.files', () => {
+		const photo = new File(['data'], 'shot.png', { type: 'image/png' });
+		const dataTransfer = {
+			files: [photo]
+		} as unknown as DataTransfer;
+		expect(getClipboardFiles(dataTransfer)).toEqual([photo]);
+	});
+
+	it('extracts files from clipboardData.items when files is empty', () => {
+		const photo = new File(['data'], 'shot.png', { type: 'image/png' });
+		const dataTransfer = {
+			files: [],
+			items: [
+				{
+					kind: 'file',
+					type: 'image/png',
+					getAsFile: () => photo
+				},
+				{
+					kind: 'string',
+					type: 'text/plain',
+					getAsFile: () => null
+				}
+			]
+		} as unknown as DataTransfer;
+		expect(getClipboardFiles(dataTransfer)).toEqual([photo]);
+	});
+
+	it('returns empty array when no files are present', () => {
+		expect(getClipboardFiles(null)).toEqual([]);
+		const dataTransfer = {
+			files: [],
+			items: [
+				{
+					kind: 'string',
+					type: 'text/plain',
+					getAsFile: () => null
+				}
+			]
+		} as unknown as DataTransfer;
+		expect(getClipboardFiles(dataTransfer)).toEqual([]);
 	});
 });
 
