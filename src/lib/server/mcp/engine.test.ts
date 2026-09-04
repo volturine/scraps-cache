@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { McpSession, type McpStorage } from './engine';
-import { handleJsonRpcMessage } from './protocol';
+import { handleJsonRpcMessage, type JsonRpcResponse } from './protocol';
 import { createSyncIdentity, encryptSyncPayload } from '$lib/syncPairing';
 import { sha256 } from '$lib/syncHash';
 
@@ -141,38 +141,38 @@ describe('mcp session & engine', () => {
 		const session = new McpSession(identity.accountId, identity.syncKey, storage);
 
 		// initialize
-		const initResp = await handleJsonRpcMessage(session, {
+		const initResp = (await handleJsonRpcMessage(session, {
 			jsonrpc: '2.0',
 			id: 1,
 			method: 'initialize',
 			params: { protocolVersion: '2024-11-05' }
-		});
+		})) as JsonRpcResponse;
 		expect(initResp?.id).toBe(1);
 		expect(initResp?.result).toHaveProperty('protocolVersion', '2024-11-05');
 		expect(initResp?.result).toHaveProperty('capabilities');
 
 		// ping
-		const pingResp = await handleJsonRpcMessage(session, {
+		const pingResp = (await handleJsonRpcMessage(session, {
 			jsonrpc: '2.0',
 			id: 2,
 			method: 'ping'
-		});
+		})) as JsonRpcResponse;
 		expect(pingResp?.id).toBe(2);
 		expect(pingResp?.result).toEqual({});
 
 		// tools/list
-		const toolsResp = await handleJsonRpcMessage(session, {
+		const toolsResp = (await handleJsonRpcMessage(session, {
 			jsonrpc: '2.0',
 			id: 3,
 			method: 'tools/list'
-		});
+		})) as JsonRpcResponse;
 		expect(toolsResp?.id).toBe(3);
 		const toolsResult = toolsResp?.result as { tools: Array<{ name: string }> };
 		expect(toolsResult.tools.map((t) => t.name)).toContain('search_notes');
 		expect(toolsResult.tools.map((t) => t.name)).toContain('create_note');
 
 		// tools/call create_note
-		const callResp = await handleJsonRpcMessage(session, {
+		const callResp = (await handleJsonRpcMessage(session, {
 			jsonrpc: '2.0',
 			id: 4,
 			method: 'tools/call',
@@ -183,7 +183,7 @@ describe('mcp session & engine', () => {
 					body: 'Call body'
 				}
 			}
-		});
+		})) as JsonRpcResponse;
 		expect(callResp?.id).toBe(4);
 		const callContent = (callResp?.result as { content: Array<{ text: string }> }).content;
 		expect(callContent[0].text).toContain('Testing Call');

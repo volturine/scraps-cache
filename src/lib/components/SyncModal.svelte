@@ -9,7 +9,7 @@
 	import { portalToAppFloat } from '$lib/appViewport';
 	import { PairingRole } from '$lib/pairingProtocol';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
-	import { createMcpToken } from '$lib/mcp/token';
+	import { createMcpToken, verifyMcpToken } from '$lib/mcp/token';
 
 	const SyncModalMode = {
 		Menu: 'menu',
@@ -45,12 +45,34 @@
 	let syncError = $derived(syncStore.lastError ?? '');
 	let quotaStatus = $derived(resolveSyncStatus(syncError, syncStore.usage));
 
+	const LS_MCP_TOKEN_PREFIX = 'scrapscache_mcp_token_';
 	let mcpOpen = $state(false);
 	let mcpToken = $state('');
 	let mcpCopiedUrl = $state(false);
 	let mcpCopiedToken = $state(false);
 	let mcpCopiedFullUrl = $state(false);
 	let mcpRevoking = $state(false);
+
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		const accountId = syncStore.account?.accountId;
+		if (!accountId) {
+			mcpToken = '';
+			return;
+		}
+		if (!mcpToken) {
+			const saved = localStorage.getItem(`${LS_MCP_TOKEN_PREFIX}${accountId}`);
+			if (saved) {
+				const verified = verifyMcpToken(saved);
+				if (verified.valid && verified.accountId === accountId) {
+					mcpToken = saved;
+					mcpOpen = true;
+				} else {
+					localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${accountId}`);
+				}
+			}
+		}
+	});
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -89,10 +111,13 @@
 		}
 		mode = SyncModalMode.Linked;
 		syncing = true;
-		const ok = await notesStore.syncWithCloudManual();
+		const ok = await notesStore.replaceWithCloudManual();
 		syncing = false;
 		if (!ok)
-			error = friendlyError(syncStore.lastError, 'Created, but the first sync did not finish');
+			error = friendlyError(
+				syncStore.lastError || notesStore.lastPersistError,
+				'Created, but the first sync did not finish'
+			);
 	}
 
 	async function beginLink() {
@@ -181,20 +206,6 @@
 		void pollLink();
 	}
 
-	function formatBytes(bytes: number): string {
-		if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} KB`;
-		const megabytes = bytes / 1_000_000;
-		return `${Number.isInteger(megabytes) ? megabytes : megabytes.toFixed(1)} MB`;
-	}
-
-	function formatLimit(bytes: number): string {
-		return formatBytes(bytes);
-	}
-
-	function progressPercent(loaded: number, total: number | null): number {
-		return total && total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
-	}
-
 	async function syncNow() {
 		if (syncing) return;
 		syncing = true;
@@ -207,6 +218,11 @@
 
 	function unlinkDevice() {
 		const account = syncStore.account;
+		if (account?.accountId && typeof localStorage !== 'undefined') {
+			localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${account.accountId}`);
+		}
+		mcpToken = '';
+		mcpOpen = false;
 		syncStore.logout();
 		mode = SyncModalMode.Menu;
 		error = '';
@@ -254,6 +270,7 @@
 
 	async function deleteCloudData() {
 		if (!deleteConfirm || loading) return;
+		const account = syncStore.account;
 		loading = true;
 		error = '';
 		const result = await syncStore.deleteCloudAccount();
@@ -262,15 +279,23 @@
 			error = friendlyError(result.error, 'Could not delete synced data');
 			return;
 		}
+		if (account?.accountId && typeof localStorage !== 'undefined') {
+			localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${account.accountId}`);
+		}
+		mcpToken = '';
+		mcpOpen = false;
 		deleteConfirm = false;
 		mode = SyncModalMode.Menu;
 		info = 'Cloud data deleted. Notes on this device were kept.';
 	}
 
 	function generateMcpToken() {
-		if (!syncStore.account?.syncKey) return;
+		if (!syncStore.account?.syncKey || !syncStore.account?.accountId) return;
 		mcpToken = createMcpToken(syncStore.account.syncKey);
 		mcpOpen = true;
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem(`${LS_MCP_TOKEN_PREFIX}${syncStore.account.accountId}`, mcpToken);
+		}
 	}
 
 	async function copyMcpText(text: string, which: 'url' | 'token' | 'full') {
@@ -318,7 +343,11 @@
 				body: JSON.stringify({ token: mcpToken || undefined })
 			});
 			if (!res.ok) throw new Error('Revoke failed');
+			if (typeof localStorage !== 'undefined' && syncStore.account?.accountId) {
+				localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${syncStore.account.accountId}`);
+			}
 			mcpToken = '';
+			mcpOpen = false;
 			info = 'Mobile AI (MCP) access revoked successfully.';
 		} catch {
 			error = 'Failed to revoke Mobile AI access.';
@@ -345,7 +374,27 @@
 		stopWaiting();
 		onClose();
 	}
+	function progressPercent(loaded: number, total: number | null) {
+		if (!total || total <= 0) return 100;
+		return Math.min(100, Math.max(0, Math.round((loaded / total) * 100)));
+	}
+	function formatBytes(bytes: number): string {
+		if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} KB`;
+		const megabytes = bytes / 1_000_000;
+		return `${Number.isInteger(megabytes) ? megabytes : megabytes.toFixed(1)} MB`;
+	}
+	function formatLimit(bytes: number): string {
+		return formatBytes(bytes);
+	}
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			event.stopPropagation();
+			close();
+		}
+	}
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div
 	{@attach portalToAppFloat}
@@ -456,6 +505,14 @@
 						<div class="flex items-center gap-1.5 font-medium text-[var(--scrapscache-text)]">
 							<Sparkles class="h-3.5 w-3.5 text-amber-500" />
 							<span>Mobile & AI Access (MCP)</span>
+							{#if mcpToken}
+								<span
+									class="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded"
+								>
+									<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+									Enabled
+								</span>
+							{/if}
 						</div>
 						{#if mcpToken}
 							<button
@@ -469,7 +526,7 @@
 					</div>
 
 					<p class="text-[var(--scrapscache-text-muted)] leading-relaxed">
-						Connect mobile LLMs (Claude, Cursor, phone apps) to your notes via Model Context
+						Connect AI assistants (Grok, Perplexity, Claude, Cursor) to your notes via Model Context
 						Protocol. Notes are decrypted in ephemeral memory only when connected.
 					</p>
 
@@ -488,7 +545,7 @@
 									class="flex items-center justify-between text-[11px] text-[var(--scrapscache-text-muted)] mb-1"
 								>
 									<span class="font-medium text-[var(--scrapscache-text)]"
-										>Connector URL (Grok / Mobile)</span
+										>Connector URL (Grok / Perplexity)</span
 									>
 									<button
 										type="button"
@@ -502,7 +559,7 @@
 										{#if mcpCopiedFullUrl}
 											<Check class="h-3 w-3" /> Copied
 										{:else}
-											<Copy class="h-3 w-3" /> Copy Full URL
+											<Copy class="h-3 w-3" /> Copy Connector URL
 										{/if}
 									</button>
 								</div>
@@ -514,7 +571,7 @@
 										: `/api/mcp/sse?token=${mcpToken}`}
 								</div>
 								<p class="text-[10px] text-[var(--scrapscache-text-muted)] mt-1">
-									Paste into Grok's <b>Server URL</b> field. No OAuth setup needed.
+									Paste into Grok or Perplexity <b>Server URL</b> field. No OAuth setup needed.
 								</p>
 							</div>
 
@@ -573,10 +630,16 @@
 								</div>
 							</details>
 
-							<div class="flex items-center justify-between pt-1">
-								<span class="text-[10px] text-[var(--scrapscache-text-muted)]"
-									>Ephemeral RAM session</span
+							<div
+								class="flex items-center justify-between pt-1 border-t border-[var(--scrapscache-border)]/50"
+							>
+								<button
+									type="button"
+									onclick={generateMcpToken}
+									class="text-[10px] text-[var(--scrapscache-text-muted)] hover:text-[var(--scrapscache-text)] underline"
 								>
+									Regenerate token
+								</button>
 								<button
 									type="button"
 									onclick={() => void revokeMcpAccess()}

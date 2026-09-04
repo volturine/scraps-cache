@@ -21,6 +21,27 @@ export type JsonRpcResponse = {
 export async function handleJsonRpcMessage(
 	session: McpSession,
 	message: unknown
+): Promise<JsonRpcResponse | JsonRpcResponse[] | null> {
+	if (Array.isArray(message)) {
+		if (message.length === 0) {
+			return {
+				jsonrpc: '2.0',
+				id: null,
+				error: { code: -32600, message: 'Invalid Request: empty batch' }
+			};
+		}
+		const responses = await Promise.all(
+			message.map((msg) => handleSingleJsonRpcMessage(session, msg))
+		);
+		const nonNull = responses.filter((r): r is JsonRpcResponse => r !== null);
+		return nonNull.length > 0 ? nonNull : null;
+	}
+	return handleSingleJsonRpcMessage(session, message);
+}
+
+async function handleSingleJsonRpcMessage(
+	session: McpSession,
+	message: unknown
 ): Promise<JsonRpcResponse | null> {
 	if (!message || typeof message !== 'object') {
 		return {
@@ -39,23 +60,25 @@ export async function handleJsonRpcMessage(
 		};
 	}
 
-	const id = req.id ?? null;
-
-	// Notifications have no id and expect no response
-	if (req.method === 'notifications/initialized') {
+	// Notifications in JSON-RPC 2.0 have no 'id' member and MUST NOT receive a response
+	if (req.id === undefined) {
+		session.touch();
 		return null;
 	}
+
+	const id = req.id;
 
 	session.touch();
 
 	try {
 		switch (req.method) {
 			case 'initialize': {
+				const reqProto = (req.params as { protocolVersion?: string } | undefined)?.protocolVersion;
 				return {
 					jsonrpc: '2.0',
 					id,
 					result: {
-						protocolVersion: '2024-11-05',
+						protocolVersion: reqProto || '2024-11-05',
 						capabilities: {
 							tools: {},
 							resources: {}
@@ -63,7 +86,9 @@ export async function handleJsonRpcMessage(
 						serverInfo: {
 							name: 'scrapscache-mcp',
 							version: '1.0.0'
-						}
+						},
+						instructions:
+							'Scrapscache personal encrypted notes vault. Use search_notes to find notes by keyword or label, list_notes to see recent notes, open_note to view full note details and checklists, and create_note/update_note to manage notes.'
 					}
 				};
 			}
@@ -151,28 +176,45 @@ export async function handleJsonRpcMessage(
 						error: { code: -32602, message: 'Invalid params: missing resource uri' }
 					};
 				}
-				const resourceContent = await session.readResource(params.uri);
-				return {
-					jsonrpc: '2.0',
-					id,
-					result: resourceContent
-				};
+
+				try {
+					const content = await session.readResource(params.uri);
+					return {
+						jsonrpc: '2.0',
+						id,
+						result: {
+							contents: [
+								{
+									uri: params.uri,
+									mimeType: 'text/markdown',
+									text: content
+								}
+							]
+						}
+					};
+				} catch (err: unknown) {
+					const errorMessage = err instanceof Error ? err.message : String(err);
+					return {
+						jsonrpc: '2.0',
+						id,
+						error: { code: -32603, message: errorMessage }
+					};
+				}
 			}
 
-			default: {
+			default:
 				return {
 					jsonrpc: '2.0',
 					id,
-					error: { code: -32601, message: `Method "${req.method}" not found` }
+					error: { code: -32601, message: `Method not found: ${req.method}` }
 				};
-			}
 		}
-	} catch (error: unknown) {
-		const message = error instanceof Error ? error.message : 'Internal error';
+	} catch (err: unknown) {
+		const errorMessage = err instanceof Error ? err.message : String(err);
 		return {
 			jsonrpc: '2.0',
 			id,
-			error: { code: -32603, message }
+			error: { code: -32603, message: `Internal error: ${errorMessage}` }
 		};
 	}
 }

@@ -7,7 +7,7 @@ import { verifyMcpToken } from '../src/lib/mcp/token';
 
 const CORS_HEADERS = {
 	'Access-Control-Allow-Origin': '*',
-	'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+	'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, HEAD',
 	'Access-Control-Allow-Headers': '*'
 };
 
@@ -92,13 +92,22 @@ export class AccountMcpSession {
 
 		const url = new URL(request.url);
 
-		if (url.pathname.endsWith('/sse')) {
-			const authHeader = request.headers.get('Authorization') || '';
-			let token = authHeader.replace(/^Bearer\s+/i, '').trim();
-			if (!token) {
-				token = url.searchParams.get('token') || '';
-			}
+		const authHeader = request.headers.get('Authorization') || '';
+		let token =
+			url.searchParams.get('token') ||
+			authHeader.replace(/^Bearer\s+/i, '').trim() ||
+			this.activeToken ||
+			'';
 
+		if (!token && this.state?.storage) {
+			try {
+				token = (await this.state.storage.get<string>('mcp_token')) || '';
+			} catch {
+				// ignore
+			}
+		}
+
+		if (request.method === 'GET' || request.method === 'HEAD') {
 			const verified = verifyMcpToken(token);
 			if (!verified.valid || !verified.accountId || !verified.syncKey || !verified.createdAt) {
 				return Response.json(
@@ -182,31 +191,7 @@ export class AccountMcpSession {
 			});
 		}
 
-		if (url.pathname.endsWith('/messages')) {
-			if (request.method !== 'POST') {
-				return Response.json(
-					{ error: 'Method not allowed' },
-					{ status: 405, headers: CORS_HEADERS }
-				);
-			}
-
-			let token =
-				url.searchParams.get('token') ||
-				request.headers
-					.get('Authorization')
-					?.replace(/^Bearer\s+/i, '')
-					.trim() ||
-				this.activeToken ||
-				'';
-
-			if (!token && this.state?.storage) {
-				try {
-					token = (await this.state.storage.get<string>('mcp_token')) || '';
-				} catch {
-					// ignore
-				}
-			}
-
+		if (request.method === 'POST') {
 			// If in-memory session was lost or DO woke up, rehydrate from token
 			if (!this.session && token) {
 				const verified = verifyMcpToken(token);
@@ -247,13 +232,29 @@ export class AccountMcpSession {
 			}
 
 			const response = await handleJsonRpcMessage(this.session, body);
-			if (response) {
-				this.session.broadcast('message', response);
-				return Response.json(response, { status: 200, headers: CORS_HEADERS });
+			const headers = new Headers(CORS_HEADERS);
+			headers.set('Content-Type', 'application/json');
+			const sessionId =
+				url.searchParams.get('sessionId') ||
+				request.headers.get('Mcp-Session-Id') ||
+				`${this.session.accountId}.${crypto.randomUUID()}`;
+			headers.set('Mcp-Session-Id', sessionId);
+
+			if (response === null) {
+				return new Response(null, { status: 204, headers });
 			}
-			return new Response(null, { status: 202, headers: CORS_HEADERS });
+
+			if (Array.isArray(response)) {
+				for (const r of response) {
+					this.session.broadcast('message', r);
+				}
+			} else {
+				this.session.broadcast('message', response);
+			}
+
+			return new Response(JSON.stringify(response), { status: 200, headers });
 		}
 
-		return Response.json({ error: 'Not found' }, { status: 404, headers: CORS_HEADERS });
+		return Response.json({ error: 'Method not allowed' }, { status: 405, headers: CORS_HEADERS });
 	}
 }
