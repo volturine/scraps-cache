@@ -26,7 +26,7 @@ class DropSqlTests(unittest.TestCase):
         )
         self.assertEqual(
             sql,
-            'PRAGMA foreign_keys = OFF; DROP VIEW IF EXISTS "active_accounts"; '
+            'PRAGMA defer_foreign_keys = ON; DROP VIEW IF EXISTS "active_accounts"; '
             'DROP TABLE IF EXISTS "accounts""v1"; DROP TABLE IF EXISTS "d1_migrations"',
         )
 

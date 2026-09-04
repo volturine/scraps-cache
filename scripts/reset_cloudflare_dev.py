@@ -55,7 +55,7 @@ def drop_sql(objects: Sequence[Mapping[str, object]]) -> str | None:
     statements = views + tables
     if not statements:
         return None
-    return "; ".join(["PRAGMA foreign_keys = OFF", *statements])
+    return "; ".join(["PRAGMA defer_foreign_keys = ON", *statements])
 
 
 def is_missing_worker(output: str) -> bool:
