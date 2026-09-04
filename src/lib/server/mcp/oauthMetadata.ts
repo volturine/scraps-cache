@@ -3,7 +3,8 @@ import { MCP_OAUTH_SCOPE, mcpResource } from '$lib/mcp/oauth';
 
 const METADATA_HEADERS = {
 	'Access-Control-Allow-Origin': '*',
-	'Cache-Control': 'public, max-age=3600'
+	'Cache-Control': 'no-store',
+	Pragma: 'no-cache'
 };
 
 export function authorizationServerMetadata(origin: string): Response {
@@ -12,6 +13,7 @@ export function authorizationServerMetadata(origin: string): Response {
 			issuer: origin,
 			authorization_endpoint: new URL('/mcp/oauth/authorize', origin).href,
 			token_endpoint: new URL('/api/mcp/oauth/token', origin).href,
+			registration_endpoint: new URL('/api/mcp/oauth/register', origin).href,
 			scopes_supported: [MCP_OAUTH_SCOPE],
 			response_types_supported: ['code'],
 			grant_types_supported: ['authorization_code'],

@@ -24,6 +24,7 @@ import {
 	protectedResourceMetadata
 } from '$lib/server/mcp/oauthMetadata';
 import { POST as authorizeHandler } from './authorize/+server';
+import { POST as registerHandler } from './register/+server';
 import { POST as tokenHandler } from './token/+server';
 
 describe('MCP OAuth routes', () => {
@@ -129,21 +130,71 @@ describe('MCP OAuth routes', () => {
 	});
 
 	it('publishes OAuth and MCP protected-resource discovery metadata', async () => {
-		const authorization = await authorizationServerMetadata('https://scrapscache.com').json();
+		const authorizationResponse = authorizationServerMetadata('https://scrapscache.com');
+		expect(authorizationResponse.headers.get('cache-control')).toBe('no-store');
+		const authorization = await authorizationResponse.json();
 		expect(authorization).toMatchObject({
 			issuer: 'https://scrapscache.com',
 			authorization_endpoint: 'https://scrapscache.com/mcp/oauth/authorize',
 			token_endpoint: 'https://scrapscache.com/api/mcp/oauth/token',
+			registration_endpoint: 'https://scrapscache.com/api/mcp/oauth/register',
 			code_challenge_methods_supported: ['S256'],
 			token_endpoint_auth_methods_supported: ['none'],
 			authorization_response_iss_parameter_supported: true
 		});
-		const resource = await protectedResourceMetadata('https://scrapscache.com').json();
+		const resourceResponse = protectedResourceMetadata('https://scrapscache.com');
+		expect(resourceResponse.headers.get('cache-control')).toBe('no-store');
+		const resource = await resourceResponse.json();
 		expect(resource).toMatchObject({
 			resource: 'https://scrapscache.com/api/mcp',
 			authorization_servers: ['https://scrapscache.com'],
 			bearer_methods_supported: ['header']
 		});
+	});
+
+	it('registers only the Grok public client and exact callback', async () => {
+		const registrationRequest = new Request('https://scrapscache.com/api/mcp/oauth/register', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				client_name: 'Grok',
+				redirect_uris: [GROK_OAUTH_REDIRECT_URI],
+				grant_types: ['authorization_code'],
+				response_types: ['code'],
+				scope: 'mcp',
+				application_type: 'web'
+			})
+		});
+		const registrationResponse = await (registerHandler as any)({
+			request: registrationRequest,
+			getClientAddress: () => '127.0.0.1'
+		});
+		expect(registrationResponse.status).toBe(201);
+		expect(registrationResponse.headers.get('cache-control')).toBe('no-store');
+		expect(await registrationResponse.json()).toMatchObject({
+			client_id: MCP_OAUTH_CLIENT_ID,
+			redirect_uris: [GROK_OAUTH_REDIRECT_URI],
+			token_endpoint_auth_method: 'none',
+			grant_types: ['authorization_code'],
+			response_types: ['code'],
+			scope: 'mcp',
+			application_type: 'web'
+		});
+
+		const maliciousRequest = new Request(registrationRequest.url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				redirect_uris: ['https://attacker.example/callback'],
+				token_endpoint_auth_method: 'none'
+			})
+		});
+		const maliciousResponse = await (registerHandler as any)({
+			request: maliciousRequest,
+			getClientAddress: () => '127.0.0.1'
+		});
+		expect(maliciousResponse.status).toBe(400);
+		expect(await maliciousResponse.json()).toMatchObject({ error: 'invalid_redirect_uri' });
 	});
 
 	it('rejects redirect substitution before storing an authorization code', async () => {
