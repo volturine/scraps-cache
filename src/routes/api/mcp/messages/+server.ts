@@ -2,39 +2,13 @@ import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { getMcpSessionManager } from '$lib/server/mcp/sessionManager';
 import { handleJsonRpcMessage } from '$lib/server/mcp/protocol';
-import { verifyMcpToken } from '$lib/mcp/token';
+import { extractAccountIdFromSessionId } from '$lib/server/mcp/engine';
 
 const CORS_HEADERS = {
 	'Access-Control-Allow-Origin': '*',
 	'Access-Control-Allow-Methods': 'POST, OPTIONS',
 	'Access-Control-Allow-Headers': '*'
 };
-
-export function extractAccountIdFromSessionId(
-	sessionId: string,
-	token?: string | null
-): string | null {
-	if (token) {
-		const verified = verifyMcpToken(token);
-		if (verified.valid && verified.accountId) {
-			return verified.accountId;
-		}
-	}
-	if (!sessionId) return null;
-	const dotIndex = sessionId.indexOf('.');
-	if (dotIndex > 0) {
-		return sessionId.slice(0, dotIndex);
-	}
-	const tildeIndex = sessionId.indexOf('~');
-	if (tildeIndex > 0) {
-		return sessionId.slice(0, tildeIndex);
-	}
-	const lastUnderscore = sessionId.lastIndexOf('_');
-	if (lastUnderscore > 0) {
-		return sessionId.slice(0, lastUnderscore);
-	}
-	return sessionId;
-}
 
 export const OPTIONS: RequestHandler = async () => {
 	return new Response(null, {

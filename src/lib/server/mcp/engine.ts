@@ -1,3 +1,4 @@
+import { verifyMcpToken } from '$lib/mcp/token';
 import {
 	encryptSyncPayload,
 	decryptSyncPayload,
@@ -739,4 +740,30 @@ export class McpSession {
 				throw new Error(`Unknown tool: ${name}`);
 		}
 	}
+}
+
+export function extractAccountIdFromSessionId(
+	sessionId: string,
+	token?: string | null
+): string | null {
+	if (token) {
+		const verified = verifyMcpToken(token);
+		if (verified.valid && verified.accountId) {
+			return verified.accountId;
+		}
+	}
+	if (!sessionId) return null;
+	const dotIndex = sessionId.indexOf('.');
+	if (dotIndex > 0) {
+		return sessionId.slice(0, dotIndex);
+	}
+	const tildeIndex = sessionId.indexOf('~');
+	if (tildeIndex > 0) {
+		return sessionId.slice(0, tildeIndex);
+	}
+	const lastUnderscore = sessionId.lastIndexOf('_');
+	if (lastUnderscore > 0) {
+		return sessionId.slice(0, lastUnderscore);
+	}
+	return sessionId;
 }

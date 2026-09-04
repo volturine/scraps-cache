@@ -18,7 +18,8 @@ vi.mock('$lib/server/db', async (importOriginal) => {
 });
 
 import { GET as sseHandler } from './sse/+server';
-import { POST as messagesHandler, extractAccountIdFromSessionId } from './messages/+server';
+import { POST as messagesHandler } from './messages/+server';
+import { extractAccountIdFromSessionId } from '$lib/server/mcp/engine';
 import { POST as revokeHandler } from './revoke/+server';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { createMcpToken } from '$lib/mcp/token';
