@@ -64,7 +64,9 @@ npx wrangler r2 bucket create scrapscache-envelopes-dev
 
 Copy the two returned D1 UUIDs into the matching `database_id` entries in
 `wrangler.jsonc`. Deployment applies `cf/migrations/` before publishing the app
-Worker.
+Worker. `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES` in `wrangler.jsonc` `vars` must
+match the self-host default (`DEFAULT_MAX_ACCOUNT_BYTES` in
+`src/lib/server/operatorConfig.ts` and the Docker Compose fallback).
 
 The app and scheduled worker are deliberately separate. Use
 `npm run cf:cron:dev` to exercise the Cron Trigger through the private `APP`

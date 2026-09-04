@@ -1,4 +1,4 @@
-import { ACTIVITY_WINDOWS_DAYS } from '$lib/server/operatorConfig';
+import { ACTIVITY_WINDOWS_DAYS, parseMaxAccountBytes } from '$lib/server/operatorConfig';
 import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
 
@@ -41,7 +41,6 @@ export const WAKE_CLAIM_LEASE_MS = 60_000;
 export const DELETED_SLOT_GRACE_MS = 14 * 86_400_000;
 /** Keeps D1 parameters and R2 subrequests safely inside Workers limits. */
 export const MAX_SYNC_MUTATIONS_PER_REQUEST = 8;
-const DEFAULT_MAX_ACCOUNT_BYTES = 1_000_000_000;
 
 export class SyncQuotaExceededError extends Error {
 	constructor() {
@@ -50,16 +49,10 @@ export class SyncQuotaExceededError extends Error {
 	}
 }
 
-function positiveInteger(value: string | undefined, fallback: number): number {
-	const parsed = Number(value);
-	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 export class SyncStore {
 	private readonly bindings = cloudflareBindings();
-	private readonly maxAccountBytes = positiveInteger(
-		this.bindings.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES,
-		DEFAULT_MAX_ACCOUNT_BYTES
+	private readonly maxAccountBytes = parseMaxAccountBytes(
+		this.bindings.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES
 	);
 	private get db() {
 		return this.bindings.SCRAPSCACHE_DB;

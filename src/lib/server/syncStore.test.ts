@@ -6,6 +6,7 @@ import {
 	ENVELOPE_STORAGE_OVERHEAD_BYTES,
 	WAKE_CLAIM_LEASE_MS
 } from './syncStore';
+import { DEFAULT_MAX_ACCOUNT_BYTES } from './operatorConfig';
 import { testDb, cleanupTestDbs } from './testDb';
 import type { Db } from './db';
 import type { Client, Transaction, TransactionMode } from '@libsql/client/node';
@@ -41,10 +42,12 @@ describe('SQLite sync store', () => {
 		expect(await store.getAuthCredential('account')).toBe('public-key');
 	});
 
-	it('defaults each account to 1000 MB of estimated relay storage', async () => {
+	it('defaults each account to 100 MB of estimated relay storage', async () => {
 		const { store } = createStore();
 		await store.createAccount('account', 'credential');
-		expect((await store.sync('account', 0, [], [], 1)).usage.maxBytes).toBe(1_000_000_000);
+		expect((await store.sync('account', 0, [], [], 1)).usage.maxBytes).toBe(
+			DEFAULT_MAX_ACCOUNT_BYTES
+		);
 	});
 
 	it('enforces a durable per-account byte quota and can restore the default', async () => {
