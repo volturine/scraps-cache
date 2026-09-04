@@ -12,7 +12,8 @@
 		}
 	],
 	"vars": {
-		"SCRAPSCACHE_ORIGIN": "https://scrapscache.com"
+		"SCRAPSCACHE_ORIGIN": "https://scrapscache.com",
+		"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000"
 	},
 	"assets": {
 		"binding": "ASSETS",
@@ -89,7 +90,8 @@
 				}
 			],
 			"vars": {
-				"SCRAPSCACHE_ORIGIN": "https://dev.scrapscache.com"
+				"SCRAPSCACHE_ORIGIN": "https://dev.scrapscache.com",
+				"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000"
 			}
 		}
 	}

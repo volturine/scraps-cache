@@ -65,8 +65,8 @@ describe('SyncModal storage usage', () => {
 		expect(screen.getByRole('alert').textContent).toMatch(/quota/);
 	});
 
-	it('displays the enforced decimal-billion-byte limit as 1000 MB', () => {
-		const usage = renderUsage(5_000, 1_000_000_000);
-		expect(usage.textContent?.replace(/\s+/g, ' ')).toContain('5 KB of 1000 MB');
+	it('displays the default 100 MB decimal-byte limit', () => {
+		const usage = renderUsage(5_000, 100_000_000);
+		expect(usage.textContent?.replace(/\s+/g, ' ')).toContain('5 KB of 100 MB');
 	});
 });

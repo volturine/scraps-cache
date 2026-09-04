@@ -6,6 +6,11 @@ import { makeImageThumbDataUrl } from './imageThumb';
 import { optimizeImageBlob, optimizedImageName, type ImageQuality } from './imageOptimize';
 import { sha256 } from './syncHash';
 import { canvasThumbnailDataUrl, isCanvasAttachment } from './canvasAttachment';
+import {
+	convertExcalidrawFileToCanvas,
+	isExcalidrawFile,
+	isExcalidrawFileName
+} from './excalidrawFile';
 
 /** Browser-renderable image (preview / fullscreen). Excludes raw DNG before convert. */
 export function isImageMime(mime: string): boolean {
@@ -21,6 +26,7 @@ export function isImageAttachment(att: Pick<NoteImage, 'mime'>): boolean {
 
 /** Matches files that should be treated as photos/images. */
 export function looksLikePhoto(file: Pick<File, 'type' | 'name'>): boolean {
+	if (isExcalidrawFileName(file.name)) return false;
 	return (
 		file.type.toLowerCase().startsWith('image/') ||
 		/\.(?:avif|dng|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(file.name)
@@ -52,6 +58,7 @@ export function formatBytes(bytes: number): string {
 export function fileIconLabel(mime: string, name?: string): string {
 	const m = (mime || '').toLowerCase();
 	const ext = (name?.split('.').pop() || '').toLowerCase();
+	if (ext === 'excalidraw') return 'DRAW';
 	if (mime.includes('pdf') || ext === 'pdf') return 'PDF';
 	if (m.includes('zip') || m.includes('compressed') || ext === 'zip' || ext === 'rar') return 'ZIP';
 	if (m.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'aac'].includes(ext)) return 'AUD';
@@ -69,6 +76,9 @@ export function fileIconLabel(mime: string, name?: string): string {
  * No size cap (same as photos).
  */
 export async function fileToNoteImage(file: File, imageQuality: ImageQuality): Promise<NoteImage> {
+	if (await isExcalidrawFile(file)) {
+		return convertExcalidrawFileToCanvas(file);
+	}
 	let image: Blob = file;
 	let mime = file.type || 'application/octet-stream';
 	let name = file.name;
