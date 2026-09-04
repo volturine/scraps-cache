@@ -13,11 +13,24 @@ const CORS_HEADERS = {
 
 export class AccountMcpSession {
 	private session?: McpSession;
+	private activeToken?: string;
 
 	constructor(
 		private readonly state: DurableObjectState,
 		private readonly env?: CloudflareBindings
 	) {}
+
+	async alarm(): Promise<void> {
+		this.session = undefined;
+		this.activeToken = undefined;
+		try {
+			if (this.state?.storage) {
+				await this.state.storage.deleteAll();
+			}
+		} catch {
+			// ignore
+		}
+	}
 
 	private createStorage(): McpStorage {
 		return {
@@ -81,7 +94,7 @@ export class AccountMcpSession {
 
 		if (url.pathname.endsWith('/sse')) {
 			const authHeader = request.headers.get('Authorization') || '';
-			let token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+			let token = authHeader.replace(/^Bearer\s+/i, '').trim();
 			if (!token) {
 				token = url.searchParams.get('token') || '';
 			}
@@ -98,8 +111,18 @@ export class AccountMcpSession {
 				return Response.json({ error: 'Token revoked' }, { status: 401, headers: CORS_HEADERS });
 			}
 
+			this.activeToken = token;
 			this.session = new McpSession(verified.accountId, verified.syncKey, this.createStorage());
-			const sessionId = `${verified.accountId}_${crypto.randomUUID()}`;
+			const sessionId = `${verified.accountId}.${crypto.randomUUID()}`;
+
+			try {
+				if (this.state?.storage) {
+					await this.state.storage.put('mcp_token', token);
+					await this.state.storage.setAlarm(Date.now() + 60 * 60 * 1000);
+				}
+			} catch {
+				// storage error non-fatal
+			}
 
 			let interval: ReturnType<typeof setInterval> | undefined;
 
@@ -114,8 +137,11 @@ export class AccountMcpSession {
 						}
 					};
 
-					// Initial endpoint event - absolute URL for MCP clients
-					send('endpoint', `${url.origin}/api/mcp/messages?sessionId=${sessionId}`);
+					// Send endpoint URL containing both sessionId and token parameter for persistence
+					send(
+						'endpoint',
+						`${url.origin}/api/mcp/messages?sessionId=${sessionId}&token=${encodeURIComponent(token)}`
+					);
 
 					// Keep-alive every 15s
 					interval = setInterval(() => {
@@ -162,6 +188,45 @@ export class AccountMcpSession {
 					{ error: 'Method not allowed' },
 					{ status: 405, headers: CORS_HEADERS }
 				);
+			}
+
+			let token =
+				url.searchParams.get('token') ||
+				request.headers
+					.get('Authorization')
+					?.replace(/^Bearer\s+/i, '')
+					.trim() ||
+				this.activeToken ||
+				'';
+
+			if (!token && this.state?.storage) {
+				try {
+					token = (await this.state.storage.get<string>('mcp_token')) || '';
+				} catch {
+					// ignore
+				}
+			}
+
+			// If in-memory session was lost or DO woke up, rehydrate from token
+			if (!this.session && token) {
+				const verified = verifyMcpToken(token);
+				if (
+					verified.valid &&
+					verified.accountId &&
+					verified.syncKey &&
+					verified.createdAt &&
+					!(await this.isTokenRevoked(verified.accountId, verified.createdAt))
+				) {
+					this.activeToken = token;
+					this.session = new McpSession(verified.accountId, verified.syncKey, this.createStorage());
+					try {
+						if (this.state?.storage) {
+							await this.state.storage.setAlarm(Date.now() + 60 * 60 * 1000);
+						}
+					} catch {
+						// ignore
+					}
+				}
 			}
 
 			if (!this.session) {

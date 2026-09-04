@@ -59,6 +59,20 @@ export const MCP_TOOLS: McpToolDefinition[] = [
 		}
 	},
 	{
+		name: 'list_notes',
+		description:
+			'List notes in Scraps Cache, ordered by last updated date (alias for list_recent_notes).',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				limit: {
+					type: 'number',
+					description: 'Maximum number of notes to return (default 10, max 50).'
+				}
+			}
+		}
+	},
+	{
 		name: 'list_recent_notes',
 		description: 'List the most recently updated notes.',
 		inputSchema: {
@@ -75,6 +89,20 @@ export const MCP_TOOLS: McpToolDefinition[] = [
 		name: 'read_note',
 		description:
 			'Retrieve the full content of a note by its ID, including full text, parsed checklist items, labels, and timestamps.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				id: {
+					type: 'string',
+					description: 'The unique ID of the note to read.'
+				}
+			},
+			required: ['id']
+		}
+	},
+	{
+		name: 'open_note',
+		description: 'Open and retrieve the full content of a note by its ID (alias for read_note).',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -676,8 +704,10 @@ export class McpSession {
 				return this.searchNotes(
 					args as { query?: string; label?: string; pinnedOnly?: boolean; limit?: number }
 				);
+			case 'list_notes':
 			case 'list_recent_notes':
 				return this.listRecentNotes(args as { limit?: number });
+			case 'open_note':
 			case 'read_note':
 				return this.readNote(args as { id: string });
 			case 'create_note':

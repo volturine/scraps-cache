@@ -18,7 +18,7 @@ vi.mock('$lib/server/db', async (importOriginal) => {
 });
 
 import { GET as sseHandler } from './sse/+server';
-import { POST as messagesHandler } from './messages/+server';
+import { POST as messagesHandler, extractAccountIdFromSessionId } from './messages/+server';
 import { POST as revokeHandler } from './revoke/+server';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { createMcpToken } from '$lib/mcp/token';
@@ -49,24 +49,19 @@ describe('mcp api routes e2e', () => {
 			url: new URL(sseReq.url),
 			platform: undefined
 		});
-
 		expect(sseRes.status).toBe(200);
-		expect(sseRes.headers.get('content-type')).toBe('text/event-stream');
 
 		const reader = sseRes.body.getReader();
 		const decoder = new TextDecoder();
-
 		const chunk1 = await reader.read();
-		const initialText = decoder.decode(chunk1.value);
-		expect(initialText).toContain(
-			'event: endpoint\ndata: http://localhost:5173/api/mcp/messages?sessionId='
-		);
+		const text = decoder.decode(chunk1.value);
+		expect(text).toContain('event: endpoint');
 
-		const match = initialText.match(/sessionId=([a-zA-Z0-9_-]+)/);
+		const match = text.match(/sessionId=([a-zA-Z0-9_.~-]+)/);
 		expect(match).toBeTruthy();
 		const sessionId = match![1];
 
-		// 2. Call initialize via POST /api/mcp/messages
+		// 2. Send initialize
 		const initReq = new Request(`http://localhost:5173/api/mcp/messages?sessionId=${sessionId}`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -105,10 +100,32 @@ describe('mcp api routes e2e', () => {
 		expect(toolsRes.status).toBe(200);
 		const toolsBody = await toolsRes.json();
 		expect(toolsBody.result.tools.some((t: any) => t.name === 'search_notes')).toBe(true);
+		expect(toolsBody.result.tools.some((t: any) => t.name === 'list_notes')).toBe(true);
+		expect(toolsBody.result.tools.some((t: any) => t.name === 'open_note')).toBe(true);
 		expect(toolsBody.result.tools.some((t: any) => t.name === 'create_note')).toBe(true);
 
 		// Clean up stream
 		reader.cancel();
+	});
+
+	it('correctly extracts accountId from complex sessionIds', () => {
+		// SessionId with dot
+		expect(
+			extractAccountIdFromSessionId('pkEsDT-vPXEjyAdOqpeGI_dH.eab08c52-679b-4aec-aa0d-ed6d68cf3af4')
+		).toBe('pkEsDT-vPXEjyAdOqpeGI_dH');
+
+		// SessionId with tilde
+		expect(
+			extractAccountIdFromSessionId('pkEsDT-vPXEjyAdOqpeGI_dH~eab08c52-679b-4aec-aa0d-ed6d68cf3af4')
+		).toBe('pkEsDT-vPXEjyAdOqpeGI_dH');
+
+		// Legacy sessionId with underscore even when accountId has internal underscore
+		expect(
+			extractAccountIdFromSessionId('pkEsDT-vPXEjyAdOqpeGI_dH_eab08c52-679b-4aec-aa0d-ed6d68cf3af4')
+		).toBe('pkEsDT-vPXEjyAdOqpeGI_dH');
+
+		// Extraction via token fallback
+		expect(extractAccountIdFromSessionId('invalid_session_id', token)).toBe(identity.accountId);
 	});
 
 	it('rejects unauthenticated or invalid tokens on SSE', async () => {

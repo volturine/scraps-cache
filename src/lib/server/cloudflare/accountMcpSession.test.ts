@@ -51,7 +51,7 @@ describe('AccountMcpSession Durable Object', () => {
 		const text = decoder.decode(chunk1.value);
 		expect(text).toContain('event: endpoint');
 
-		const match = text.match(/sessionId=([a-zA-Z0-9_-]+)/);
+		const match = text.match(/sessionId=([a-zA-Z0-9_.-]+)/);
 		expect(match).toBeTruthy();
 		const sessionId = match![1];
 
@@ -71,5 +71,29 @@ describe('AccountMcpSession Durable Object', () => {
 		expect(pingJson).toEqual({ jsonrpc: '2.0', id: 10, result: {} });
 
 		reader.cancel();
+	});
+
+	it('auto-rehydrates session from token on messages endpoint when memory is empty', async () => {
+		const doSession = new AccountMcpSession({} as any);
+
+		// Do not connect SSE first; directly call messages with token param
+		const toolsReq = new Request(
+			`https://scrapscache.com/messages?sessionId=${identity.accountId}.test&token=${encodeURIComponent(token)}`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 20,
+					method: 'tools/list'
+				})
+			}
+		);
+		const toolsRes = await doSession.fetch(toolsReq);
+		expect(toolsRes.status).toBe(200);
+		const toolsJson = (await toolsRes.json()) as any;
+		expect(toolsJson.result.tools).toBeDefined();
+		expect(toolsJson.result.tools.some((t: any) => t.name === 'list_notes')).toBe(true);
+		expect(toolsJson.result.tools.some((t: any) => t.name === 'search_notes')).toBe(true);
 	});
 });
