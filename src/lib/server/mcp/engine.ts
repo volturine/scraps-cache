@@ -6,7 +6,6 @@ import {
 } from '$lib/syncPairing';
 import { parseBody, parseCheckLine, formatCheckLine } from '$lib/checklistBody';
 import { sha256 } from '$lib/syncHash';
-import { getSyncStore } from '$lib/server/syncStore';
 import type { Note, Label, NoteColor } from '$lib/types';
 import type { SyncRecordPayload } from '$lib/syncRecords';
 
@@ -190,10 +189,10 @@ export class McpSession {
 
 	private sseListeners = new Set<(event: string, data: unknown) => void>();
 
-	constructor(accountId: string, syncKey: string, storage?: McpStorage) {
+	constructor(accountId: string, syncKey: string, storage: McpStorage) {
 		this.accountId = accountId;
 		this.syncKey = syncKey;
-		this.storage = storage ?? (getSyncStore() as unknown as McpStorage);
+		this.storage = storage;
 	}
 
 	touch(): void {

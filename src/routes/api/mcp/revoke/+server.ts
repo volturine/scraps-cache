@@ -36,7 +36,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	await revocationStore.revoke(accountId);
 
 	const manager = getMcpSessionManager();
-	manager.pruneIdleSessions(Date.now() + 1000 * 60 * 60 * 24);
+	manager.removeAccountSessions(accountId);
 
 	return json({ success: true, revokedAt: Date.now() });
 };

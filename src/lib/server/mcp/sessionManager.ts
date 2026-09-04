@@ -1,18 +1,46 @@
-import { McpSession } from './engine';
+import { McpSession, type McpStorage } from './engine';
 import { verifyMcpToken } from '$lib/mcp/token';
 import { getMcpRevocationStore } from './revocation';
+import { getSyncStore } from '$lib/server/syncStore';
 
-const SESSION_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 export class McpSessionManager {
 	private sessions = new Map<string, McpSession>();
-	private cleanupInterval?: ReturnType<typeof setInterval>;
+	private reapTimer?: ReturnType<typeof setInterval>;
 
-	constructor(private readonly idleTimeoutMs = SESSION_IDLE_TIMEOUT_MS) {
-		if (typeof setInterval !== 'undefined') {
-			this.cleanupInterval = setInterval(() => this.pruneIdleSessions(), 60_000);
-			if (this.cleanupInterval && typeof this.cleanupInterval.unref === 'function') {
-				this.cleanupInterval.unref();
+	constructor(private readonly idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS) {
+		this.startReaper();
+	}
+
+	private startReaper(): void {
+		this.reapTimer = setInterval(() => {
+			this.reapIdleSessions();
+		}, 60 * 1000);
+	}
+
+	reapIdleSessions(): void {
+		const now = Date.now();
+		for (const [id, session] of this.sessions.entries()) {
+			if (now - session.lastActiveAt > this.idleTimeoutMs) {
+				this.sessions.delete(id);
+			}
+		}
+	}
+
+	pruneIdleSessions(olderThanMs = this.idleTimeoutMs): void {
+		const now = Date.now();
+		for (const [id, session] of this.sessions.entries()) {
+			if (now - session.lastActiveAt > olderThanMs) {
+				this.sessions.delete(id);
+			}
+		}
+	}
+
+	removeAccountSessions(accountId: string): void {
+		for (const [id, session] of this.sessions.entries()) {
+			if (session.accountId === accountId) {
+				this.sessions.delete(id);
 			}
 		}
 	}
@@ -30,7 +58,11 @@ export class McpSessionManager {
 		}
 
 		const sessionId = crypto.randomUUID();
-		const session = new McpSession(verified.accountId, verified.syncKey);
+		const session = new McpSession(
+			verified.accountId,
+			verified.syncKey,
+			getSyncStore() as unknown as McpStorage
+		);
 		this.sessions.set(sessionId, session);
 		return { sessionId, session };
 	}
@@ -48,22 +80,14 @@ export class McpSessionManager {
 		return session;
 	}
 
-	removeSession(sessionId: string): void {
-		this.sessions.delete(sessionId);
+	removeSession(sessionId: string): boolean {
+		return this.sessions.delete(sessionId);
 	}
 
-	pruneIdleSessions(now = Date.now()): void {
-		for (const [id, session] of this.sessions.entries()) {
-			if (now - session.lastActiveAt > this.idleTimeoutMs) {
-				this.sessions.delete(id);
-			}
-		}
-	}
-
-	destroy(): void {
-		if (this.cleanupInterval) {
-			clearInterval(this.cleanupInterval);
-			this.cleanupInterval = undefined;
+	close(): void {
+		if (this.reapTimer) {
+			clearInterval(this.reapTimer);
+			this.reapTimer = undefined;
 		}
 		this.sessions.clear();
 	}
@@ -76,6 +100,6 @@ export function getMcpSessionManager(): McpSessionManager {
 }
 
 export function closeMcpSessionManager(): void {
-	singleton?.destroy();
+	singleton?.close();
 	singleton = undefined;
 }

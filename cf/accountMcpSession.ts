@@ -1,13 +1,67 @@
 import type { DurableObjectState } from '@cloudflare/workers-types';
-import { McpSession } from '../src/lib/server/mcp/engine';
+import type { CloudflareBindings } from '../src/lib/server/cloudflare/env';
+import { execute } from '../src/lib/server/cloudflare/d1';
+import { McpSession, type McpStorage } from '../src/lib/server/mcp/engine';
 import { handleJsonRpcMessage } from '../src/lib/server/mcp/protocol';
 import { verifyMcpToken } from '../src/lib/mcp/token';
-import { getMcpRevocationStore } from '../src/lib/server/mcp/revocation';
 
 export class AccountMcpSession {
 	private session?: McpSession;
 
-	constructor(private readonly state: DurableObjectState) {}
+	constructor(
+		private readonly state: DurableObjectState,
+		private readonly env?: CloudflareBindings
+	) {}
+
+	private createStorage(): McpStorage {
+		return {
+			sync: async (accountId, cursor, uploads, deletions, downloadLimit) => {
+				if (!this.env?.ACCOUNT_COORDINATOR) {
+					return {
+						cursor: 0,
+						envelopes: [],
+						conflicts: [],
+						hasMore: false,
+						reset: false,
+						writesAccepted: true
+					};
+				}
+				const stub = this.env.ACCOUNT_COORDINATOR.get(
+					this.env.ACCOUNT_COORDINATOR.idFromName(accountId)
+				);
+				const res = await stub.fetch('https://coordinator/sync', {
+					method: 'POST',
+					body: JSON.stringify({
+						accountId,
+						cursor,
+						uploads,
+						deletions,
+						downloadLimit,
+						maxAccountBytes: 1_000_000_000
+					})
+				});
+				if (!res.ok) {
+					throw new Error(`Account coordinator sync failed with status ${res.status}`);
+				}
+				return res.json();
+			}
+		};
+	}
+
+	private async isTokenRevoked(accountId: string, tokenCreatedAt: number): Promise<boolean> {
+		if (!this.env?.SCRAPSCACHE_DB) return false;
+		try {
+			const result = await execute(this.env.SCRAPSCACHE_DB, {
+				sql: 'SELECT revoked_before AS revokedBefore FROM mcp_revocations WHERE account_id = ?',
+				args: [accountId]
+			});
+			const row = result.rows[0] as { revokedBefore?: number } | undefined;
+			if (!row || row.revokedBefore == null) return false;
+			return tokenCreatedAt <= Number(row.revokedBefore);
+		} catch {
+			return false;
+		}
+	}
 
 	async fetch(request: Request): Promise<Response> {
 		const url = new URL(request.url);
@@ -24,12 +78,11 @@ export class AccountMcpSession {
 				return Response.json({ error: verified.error || 'Unauthorized' }, { status: 401 });
 			}
 
-			const revocationStore = getMcpRevocationStore();
-			if (await revocationStore.isRevoked(verified.accountId, verified.createdAt)) {
+			if (await this.isTokenRevoked(verified.accountId, verified.createdAt)) {
 				return Response.json({ error: 'Token revoked' }, { status: 401 });
 			}
 
-			this.session = new McpSession(verified.accountId, verified.syncKey);
+			this.session = new McpSession(verified.accountId, verified.syncKey, this.createStorage());
 			const sessionId = `${verified.accountId}_${crypto.randomUUID()}`;
 
 			let interval: ReturnType<typeof setInterval> | undefined;
