@@ -140,8 +140,10 @@
 					<div class="space-y-3 text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
 						<p>Grok will be able to search, read, create, update, and delete your notes.</p>
 						<p>
-							Your sync key is encrypted in this browser. The server only decrypts note data in
-							ephemeral memory while handling authenticated requests.
+							Your normal device sync remains end-to-end encrypted. MCP is a separate access path
+							and is not end-to-end encrypted: while access is enabled, this server decrypts
+							requested note data in ephemeral memory, and Grok/xAI can see the note contents
+							returned. Revoke access at any time in Sync.
 						</p>
 					</div>
 				{/if}

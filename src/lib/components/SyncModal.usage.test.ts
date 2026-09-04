@@ -34,6 +34,14 @@ afterEach(() => {
 });
 
 describe('SyncModal storage usage', () => {
+	it('discloses the separate MCP trust path', () => {
+		renderUsage(5 * MB);
+
+		expect(screen.getByText(/MCP opens a separate access path/).textContent).toMatch(
+			/this server can decrypt notes.*AI provider can see any note contents returned/s
+		);
+	});
+
 	it('shows current storage usage without warning below 80 percent', () => {
 		const usage = renderUsage(7 * MB);
 		const text = usage.textContent?.replace(/\s+/g, ' ');

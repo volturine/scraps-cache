@@ -527,7 +527,9 @@
 
 					<p class="text-[var(--scrapscache-text-muted)] leading-relaxed">
 						Connect AI assistants (Grok, Perplexity, Claude, Cursor) to your notes via Model Context
-						Protocol. Notes are decrypted in ephemeral memory only when connected.
+						Protocol. Device sync remains end-to-end encrypted, but MCP opens a separate access
+						path. Until you revoke access, this server can decrypt notes in ephemeral memory for
+						authenticated AI requests, and your AI provider can see any note contents returned.
 					</p>
 
 					{#if !mcpToken}
