@@ -7,6 +7,7 @@
 		type CanvasScene
 	} from '$lib/canvasAttachment';
 	import type { ExcalidrawHost } from '$lib/excalidrawHost';
+	import { isMissingModuleError, reloadOnceForMissingModule } from '$lib/staleModuleReload';
 	import type { NoteImage } from '$lib/types';
 	import { uiStore } from '$lib/stores/ui.svelte';
 
@@ -28,6 +29,7 @@
 	let saving = $state(false);
 	let dirty = $state(false);
 	let error = $state('');
+	let staleModule = $state(false);
 	let sourceHash: string | undefined;
 
 	onMount(() => {
@@ -52,7 +54,13 @@
 				}
 				host = mounted;
 			} catch (cause) {
-				error = cause instanceof Error ? cause.message : 'Could not open this canvas.';
+				if (reloadOnceForMissingModule(cause)) return;
+				staleModule = isMissingModuleError(cause);
+				error = staleModule
+					? 'Could not load the canvas editor. Reload the page and try again.'
+					: cause instanceof Error
+						? cause.message
+						: 'Could not open this canvas.';
 			} finally {
 				if (!cancelled) loading = false;
 			}
@@ -147,9 +155,18 @@
 
 	{#if error}
 		<div
-			class="relative z-10 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+			class="relative z-10 flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
 		>
-			{error}
+			<span>{error}</span>
+			{#if staleModule}
+				<button
+					type="button"
+					class="shrink-0 font-semibold underline decoration-red-700/50 underline-offset-2 dark:decoration-red-200/50"
+					onclick={() => location.reload()}
+				>
+					Reload
+				</button>
+			{/if}
 		</div>
 	{/if}
 
