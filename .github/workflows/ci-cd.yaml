@@ -48,8 +48,8 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Test SQLite to Cloudflare migration
-        run: python3 -m unittest scripts/migrate_sqlite_to_cloudflare_test.py
+      - name: Test Cloudflare helper scripts
+        run: python3 -m unittest scripts/migrate_sqlite_to_cloudflare_test.py scripts/reset_cloudflare_dev_test.py
 
       - name: Production build
         run: npm run build
@@ -110,6 +110,7 @@ jobs:
         run: |
           test -n "$SCRAPSCACHE_TICK_SECRET"
           npm run build:cloudflare
+          python3 scripts/reset_cloudflare_dev.py
           npx wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env dev
           npx wrangler deploy --env dev
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env dev

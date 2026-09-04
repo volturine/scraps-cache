@@ -88,9 +88,12 @@ installs it on both Workers during every deployment.
 The sole open pull request labeled `deploy-dev` deploys the development Workers
 to `dev.scrapscache.com` after validation succeeds. Move the label to switch the
 shared development environment to another pull request. Deployment fails if
-more than one open pull request has the label. Pushes to `master` deploy the
-production Workers to `scrapscache.com`. Both use Worker routes on the existing
-proxied DNS records, so the records must remain in place during the cutover.
+more than one open pull request has the label. Each development deploy deletes
+those Workers and wipes D1, then recreates them from the pull request, so
+Durable Object and D1 migrations from another PR cannot block it. R2 object
+bytes are left in place. Pushes to `master` deploy the production Workers to
+`scrapscache.com`. Both use Worker routes on the existing proxied DNS records,
+so the records must remain in place during the cutover.
 
 ### Migrating an existing SQLite relay to Cloudflare
 
