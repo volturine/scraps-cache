@@ -15,7 +15,8 @@ export class McpTokenStore {
 	async issue(
 		accountId: string,
 		token: string,
-		wrappedSyncKey: string
+		wrappedSyncKey: string,
+		rotateExisting = true
 	): Promise<{ createdAt: number; replacedTokenHashes: string[] }> {
 		if (!isMcpToken(token) || wrappedSyncKey.length > 512)
 			throw new Error('Invalid MCP token grant');
@@ -26,25 +27,27 @@ export class McpTokenStore {
 
 		const createdAt = Date.now();
 		await this.db.ready;
-		const results = await this.db.ops.batch(
-			[
-				{
-					sql: 'DELETE FROM mcp_tokens WHERE account_id = ? RETURNING token_hash AS tokenHash',
-					args: [accountId]
-				},
-				{
-					sql: `INSERT INTO mcp_tokens(token_hash, account_id, wrapped_sync_key, created_at)
+		const statements = [
+			...(rotateExisting
+				? [
+						{
+							sql: 'DELETE FROM mcp_tokens WHERE account_id = ? RETURNING token_hash AS tokenHash',
+							args: [accountId]
+						}
+					]
+				: []),
+			{
+				sql: `INSERT INTO mcp_tokens(token_hash, account_id, wrapped_sync_key, created_at)
 						VALUES (?, ?, ?, ?)`,
-					args: [hashMcpToken(token), accountId, wrappedSyncKey, createdAt]
-				}
-			],
-			'write'
-		);
+				args: [hashMcpToken(token), accountId, wrappedSyncKey, createdAt]
+			}
+		];
+		const results = await this.db.ops.batch(statements, 'write');
 		return {
 			createdAt,
-			replacedTokenHashes: results[0].rows.map((row) =>
-				String((row as unknown as { tokenHash: string }).tokenHash)
-			)
+			replacedTokenHashes: rotateExisting
+				? results[0].rows.map((row) => String((row as unknown as { tokenHash: string }).tokenHash))
+				: []
 		};
 	}
 

@@ -9,7 +9,7 @@
 	import { portalToAppFloat } from '$lib/appViewport';
 	import { PairingRole } from '$lib/pairingProtocol';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
-	import { createMcpTokenGrant, isMcpToken } from '$lib/mcp/token';
+	import { createMcpTokenGrant, isMcpToken, MCP_TOKEN_STORAGE_PREFIX } from '$lib/mcp/token';
 
 	const SyncModalMode = {
 		Menu: 'menu',
@@ -45,7 +45,6 @@
 	let syncError = $derived(syncStore.lastError ?? '');
 	let quotaStatus = $derived(resolveSyncStatus(syncError, syncStore.usage));
 
-	const LS_MCP_TOKEN_PREFIX = 'scrapscache_mcp_token_';
 	let mcpOpen = $state(false);
 	let mcpToken = $state('');
 	let mcpCopiedUrl = $state(false);
@@ -57,12 +56,12 @@
 		if (typeof localStorage === 'undefined') return;
 		const accountId = syncStore.account?.accountId;
 		if (!accountId) return;
-		const saved = localStorage.getItem(`${LS_MCP_TOKEN_PREFIX}${accountId}`);
+		const saved = localStorage.getItem(`${MCP_TOKEN_STORAGE_PREFIX}${accountId}`);
 		if (saved && isMcpToken(saved)) {
 			mcpToken = saved;
 			mcpOpen = true;
 		} else if (saved) {
-			localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${accountId}`);
+			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${accountId}`);
 		}
 	});
 
@@ -211,7 +210,7 @@
 	function unlinkDevice() {
 		const account = syncStore.account;
 		if (account?.accountId && typeof localStorage !== 'undefined') {
-			localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${account.accountId}`);
+			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`);
 		}
 		mcpToken = '';
 		mcpOpen = false;
@@ -272,7 +271,7 @@
 			return;
 		}
 		if (account?.accountId && typeof localStorage !== 'undefined') {
-			localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${account.accountId}`);
+			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`);
 		}
 		mcpToken = '';
 		mcpOpen = false;
@@ -297,7 +296,7 @@
 			mcpToken = grant.token;
 			mcpOpen = true;
 			if (typeof localStorage !== 'undefined') {
-				localStorage.setItem(`${LS_MCP_TOKEN_PREFIX}${account.accountId}`, mcpToken);
+				localStorage.setItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`, mcpToken);
 			}
 		} catch {
 			error = 'Failed to enable Mobile AI access.';
@@ -345,7 +344,7 @@
 			const res = await syncStore.authorizedFetch('/api/mcp/revoke', { method: 'POST' });
 			if (!res.ok) throw new Error('Revoke failed');
 			if (typeof localStorage !== 'undefined' && syncStore.account?.accountId) {
-				localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${syncStore.account.accountId}`);
+				localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${syncStore.account.accountId}`);
 			}
 			mcpToken = '';
 			mcpOpen = false;

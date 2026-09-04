@@ -3,6 +3,7 @@ import { cleanupTestDbs, testDb } from '$lib/server/testDb';
 import type { Db } from '$lib/server/db';
 import { closeMcpSessionManager } from '$lib/server/mcp/sessionManager';
 import { closeMcpTokenStore, McpTokenStore } from '$lib/server/mcp/tokenStore';
+import { closeMcpOAuthStore } from '$lib/server/mcp/oauthStore';
 import { closeSyncAuth, getSyncAuth } from '$lib/server/syncAuth';
 import { closePublicApiLimiter } from '$lib/server/rateLimit';
 import { createSyncIdentity } from '$lib/syncPairing';
@@ -38,6 +39,7 @@ describe('mcp api routes', () => {
 	afterEach(() => {
 		closeMcpSessionManager();
 		closeMcpTokenStore();
+		closeMcpOAuthStore();
 		closeSyncAuth();
 		closePublicApiLimiter();
 		cleanupTestDbs();
@@ -111,6 +113,9 @@ describe('mcp api routes', () => {
 				platform: undefined
 			});
 			expect(response.status).toBe(401);
+			expect(response.headers.get('www-authenticate')).toContain(
+				'resource_metadata="http://localhost:5173/.well-known/oauth-protected-resource"'
+			);
 		}
 	});
 
@@ -131,6 +136,23 @@ describe('mcp api routes', () => {
 		expect(response.status).toBe(204);
 		expect(idFromName).toHaveBeenCalledWith(hashMcpToken(token));
 		expect(idFromName).not.toHaveBeenCalledWith(identity.accountId);
+
+		fetch.mockResolvedValueOnce(new Response(null, { status: 401 }));
+		const revokedRequest = new Request('https://scrapscache.com/api/mcp', {
+			method: 'POST',
+			headers: { Authorization: `Bearer ${token}` },
+			body: '{}'
+		});
+		const revokedResponse = await (messagesHandler as any)({
+			request: revokedRequest,
+			url: new URL(revokedRequest.url),
+			getClientAddress: () => '127.0.0.1',
+			platform: { env: { ACCOUNT_MCP_SESSION: { idFromName, get: () => ({ fetch }) } } }
+		});
+		expect(revokedResponse.status).toBe(401);
+		expect(revokedResponse.headers.get('www-authenticate')).toContain(
+			'resource_metadata="https://scrapscache.com/.well-known/oauth-protected-resource"'
+		);
 
 		const foreignOrigin = new Request('https://scrapscache.com/api/mcp', {
 			method: 'POST',

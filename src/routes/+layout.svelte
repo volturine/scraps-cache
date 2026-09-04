@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import { page } from '$app/state';
 	import type { LayoutProps } from './$types';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -22,6 +23,7 @@
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
 
 	let { children }: LayoutProps = $props();
+	let oauthAuthorization = $derived(page.url.pathname === '/mcp/oauth/authorize');
 
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
@@ -48,6 +50,7 @@
 	}
 
 	onMount(() => {
+		if (oauthAuthorization) return;
 		applyEditorOpen(editingId !== null);
 		const stopViewport = attachAppViewport(document.documentElement);
 		uiStore.viewChangeHandler = restoreFeedScroll;
@@ -160,76 +163,80 @@
 	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
-<div class="app-viewport">
-	<div
-		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
-		{@attach mobile.current &&
-			attachSidebarSwipe({
-				getOpen: () => uiStore.sidebarOpen,
-				open: () => {
-					uiStore.sidebarOpen = true;
-				},
-				close: () => {
-					uiStore.sidebarOpen = false;
-				}
-			})}
-	>
-		{#if mobile.current}
-			{#if uiStore.sidebarOpen}
-				<button
-					type="button"
-					aria-label="Close sidebar"
-					data-sidebar-backdrop
-					class="fixed inset-0 z-20 bg-black/30"
-					onclick={() => {
+{#if oauthAuthorization}
+	{@render children()}
+{:else}
+	<div class="app-viewport">
+		<div
+			class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
+			{@attach mobile.current &&
+				attachSidebarSwipe({
+					getOpen: () => uiStore.sidebarOpen,
+					open: () => {
+						uiStore.sidebarOpen = true;
+					},
+					close: () => {
 						uiStore.sidebarOpen = false;
-					}}
-					transition:fade={{ duration: 150 }}
-				></button>
-				<div
-					class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
-					transition:fly={{ x: -288, duration: 200 }}
-					role="navigation"
-					aria-label="Sidebar"
-					data-sidebar-drawer
-				>
-					<Sidebar onNavigate={closeMobileSidebar} />
-				</div>
+					}
+				})}
+		>
+			{#if mobile.current}
+				{#if uiStore.sidebarOpen}
+					<button
+						type="button"
+						aria-label="Close sidebar"
+						data-sidebar-backdrop
+						class="fixed inset-0 z-20 bg-black/30"
+						onclick={() => {
+							uiStore.sidebarOpen = false;
+						}}
+						transition:fade={{ duration: 150 }}
+					></button>
+					<div
+						class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
+						transition:fly={{ x: -288, duration: 200 }}
+						role="navigation"
+						aria-label="Sidebar"
+						data-sidebar-drawer
+					>
+						<Sidebar onNavigate={closeMobileSidebar} />
+					</div>
+				{/if}
+			{:else}
+				{#if uiStore.sidebarOpen}
+					<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">
+						<Sidebar />
+					</div>
+				{/if}
 			{/if}
-		{:else}
-			{#if uiStore.sidebarOpen}
-				<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">
-					<Sidebar />
-				</div>
-			{/if}
-		{/if}
 
-		<div class="flex min-h-0 min-w-0 flex-1 flex-col">
-			<Topbar />
-			<div class="app-canvas relative min-h-0 min-w-0 flex-1">
-				<main
-					bind:this={feedEl}
-					class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
-					onscroll={rememberFeedScroll}
-				>
-					{@render children()}
-					<AppViews />
-				</main>
-				<div class="app-float" data-app-float>
-					<BottomNav />
-					<ReminderAlert />
-					{#key editingId}
-						<NoteEditor
-							noteId={editingId}
-							onClose={closeEditor}
-							registerClose={(fn) => {
-								closeOpenNote = fn;
-							}}
-						/>
-					{/key}
+			<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+				<Topbar />
+				<div class="app-canvas relative min-h-0 min-w-0 flex-1">
+					<main
+						bind:this={feedEl}
+						class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+						onscroll={rememberFeedScroll}
+					>
+						{@render children()}
+						<AppViews />
+					</main>
+					<div class="app-float" data-app-float>
+						<BottomNav />
+						<ReminderAlert />
+						{#key editingId}
+							<NoteEditor
+								noteId={editingId}
+								onClose={closeEditor}
+								registerClose={(fn) => {
+									closeOpenNote = fn;
+								}}
+							/>
+						{/key}
+					</div>
 				</div>
 			</div>
 		</div>
 	</div>
-</div>
-<div class="app-overlay" data-app-overlay></div>
+	<div class="app-overlay" data-app-overlay></div>
+{/if}

@@ -1,5 +1,6 @@
 import { getDb } from '$lib/server/db';
 import { getSyncAuth } from '$lib/server/syncAuth';
+import { getMcpOAuthStore } from '$lib/server/mcp/oauthStore';
 import { getPairingSessions } from '$lib/server/pairingSessions';
 import { pruneRateBuckets } from '$lib/server/rateLimit';
 import { dispatchDueWakes, type WakeDispatchResult } from '$lib/server/wakeDispatch';
@@ -25,6 +26,7 @@ export async function runCronTick(now = Date.now()): Promise<CronTickResult> {
 	const retention = await runRetentionSweep({ now: () => now });
 	await pruneRateBuckets(db, now);
 	await getSyncAuth().pruneExpired(now);
+	await getMcpOAuthStore().pruneExpired(now);
 	await getPairingSessions().prune(now);
 	return {
 		wakes,

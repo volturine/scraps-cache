@@ -48,4 +48,21 @@ describe('McpTokenStore', () => {
 			accountId: identity.accountId
 		});
 	});
+
+	it('can issue an additional client token without invalidating existing clients', async () => {
+		const store = new McpTokenStore(testDb());
+		const identity = createSyncIdentity();
+		const first = createMcpTokenGrant(identity.syncKey);
+		const second = createMcpTokenGrant(identity.syncKey);
+		await store.issue(identity.accountId, first.token, first.wrappedSyncKey);
+		await expect(
+			store.issue(identity.accountId, second.token, second.wrappedSyncKey, false)
+		).resolves.toMatchObject({ replacedTokenHashes: [] });
+		await expect(store.resolve(first.token)).resolves.toMatchObject({
+			accountId: identity.accountId
+		});
+		await expect(store.resolve(second.token)).resolves.toMatchObject({
+			accountId: identity.accountId
+		});
+	});
 });

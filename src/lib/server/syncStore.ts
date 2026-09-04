@@ -472,6 +472,10 @@ export class SyncStore {
 					{
 						sql: `DELETE FROM mcp_tokens WHERE account_id IN (${placeholders})`,
 						args: ids
+					},
+					{
+						sql: `DELETE FROM mcp_oauth_codes WHERE account_id IN (${placeholders})`,
+						args: ids
 					}
 				],
 				'write'

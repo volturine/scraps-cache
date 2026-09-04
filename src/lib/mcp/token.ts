@@ -9,6 +9,8 @@ const TOKEN_PREFIX = 'sc_mcp_v2_';
 const TOKEN_PATTERN = /^sc_mcp_v2_[A-Za-z0-9_-]{43}$/;
 const NONCE_BYTES = 24;
 
+export const MCP_TOKEN_STORAGE_PREFIX = 'scrapscache_mcp_token_';
+
 export type McpTokenGrant = {
 	token: string;
 	accountId: string;

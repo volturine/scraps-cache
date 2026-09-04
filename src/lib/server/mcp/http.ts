@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { hashMcpToken, isMcpToken } from '$lib/mcp/token';
+import { mcpResource } from '$lib/mcp/oauth';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 import { getMcpSessionManager } from './sessionManager';
 import { handleJsonRpcMessage } from './protocol';
@@ -31,8 +32,35 @@ function acceptsOrigin(request: Request): boolean {
 	return !origin || origin === new URL(request.url).origin;
 }
 
-function unauthorized(message = 'Missing or invalid MCP bearer token'): Response {
-	return json({ error: message }, { status: 401, headers: RESPONSE_HEADERS });
+function resourceMetadataUrl(request: Request): string {
+	return new URL('/.well-known/oauth-protected-resource', request.url).href;
+}
+
+function unauthorized(request: Request, message = 'Missing or invalid MCP bearer token'): Response {
+	return json(
+		{ error: message },
+		{
+			status: 401,
+			headers: {
+				...RESPONSE_HEADERS,
+				'WWW-Authenticate': `Bearer resource_metadata="${resourceMetadataUrl(request)}", resource="${mcpResource(new URL(request.url).origin)}"`
+			}
+		}
+	);
+}
+
+function withAuthorizationChallenge(request: Request, response: Response): Response {
+	if (response.status !== 401 || response.headers.has('WWW-Authenticate')) return response;
+	const headers = new Headers(response.headers);
+	headers.set(
+		'WWW-Authenticate',
+		`Bearer resource_metadata="${resourceMetadataUrl(request)}", resource="${mcpResource(new URL(request.url).origin)}"`
+	);
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers
+	});
 }
 
 async function enforceRateLimit(getClientAddress: () => string): Promise<Response | null> {
@@ -76,16 +104,16 @@ export const handleMcpGet: RequestHandler = async ({
 	const limited = await enforceRateLimit(getClientAddress);
 	if (limited) return limited;
 	const token = bearerToken(request);
-	if (!token) return unauthorized();
+	if (!token) return unauthorized(request);
 
 	const proxied = await proxyToDurableObject(request, platform, token);
-	if (proxied) return proxied;
+	if (proxied) return withAuthorizationChallenge(request, proxied);
 
 	let session;
 	try {
 		session = await getMcpSessionManager().getSessionFromToken(token);
 	} catch {
-		return unauthorized('Invalid or revoked MCP token');
+		return unauthorized(request, 'Invalid or revoked MCP token');
 	}
 
 	let interval: ReturnType<typeof setInterval> | undefined;
@@ -150,7 +178,7 @@ export const handleMcpPost: RequestHandler = async ({
 	const limited = await enforceRateLimit(getClientAddress);
 	if (limited) return limited;
 	const token = bearerToken(request);
-	if (!token) return unauthorized();
+	if (!token) return unauthorized(request);
 
 	const contentLength = Number(request.headers.get('content-length') ?? 0);
 	if (contentLength > MAX_REQUEST_BYTES) {
@@ -161,13 +189,13 @@ export const handleMcpPost: RequestHandler = async ({
 	}
 
 	const proxied = await proxyToDurableObject(request, platform, token);
-	if (proxied) return proxied;
+	if (proxied) return withAuthorizationChallenge(request, proxied);
 
 	let session;
 	try {
 		session = await getMcpSessionManager().getSessionFromToken(token);
 	} catch {
-		return unauthorized('Invalid or revoked MCP token');
+		return unauthorized(request, 'Invalid or revoked MCP token');
 	}
 
 	let rawBody: string;
