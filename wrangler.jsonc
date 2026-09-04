@@ -51,7 +51,7 @@
 		},
 		{
 			"tag": "v2",
-			"new_classes": ["AccountMcpSession"]
+			"new_sqlite_classes": ["AccountMcpSession"]
 		}
 	],
 	"env": {
