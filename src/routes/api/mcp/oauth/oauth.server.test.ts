@@ -25,7 +25,7 @@ import {
 } from '$lib/server/mcp/oauthMetadata';
 import { POST as authorizeHandler } from './authorize/+server';
 import { POST as registerHandler } from './register/+server';
-import { POST as tokenHandler } from './token/+server';
+import { OPTIONS as tokenOptionsHandler, POST as tokenHandler } from './token/+server';
 
 describe('MCP OAuth routes', () => {
 	beforeEach(() => {
@@ -104,6 +104,7 @@ describe('MCP OAuth routes', () => {
 			getClientAddress: () => '127.0.0.1'
 		});
 		expect(tokenResponse.status).toBe(200);
+		expect(tokenResponse.headers.get('access-control-allow-origin')).toBe('https://grok.com');
 		const token = await tokenResponse.json();
 		expect(token).toMatchObject({ token_type: 'Bearer', scope: 'mcp' });
 		expect(isMcpToken(token.access_token)).toBe(true);
@@ -150,6 +151,13 @@ describe('MCP OAuth routes', () => {
 			authorization_servers: ['https://scrapscache.com'],
 			bearer_methods_supported: ['header']
 		});
+	});
+
+	it('allows Grok to read browser token-exchange responses', async () => {
+		const response = await (tokenOptionsHandler as any)();
+		expect(response.status).toBe(204);
+		expect(response.headers.get('access-control-allow-origin')).toBe('https://grok.com');
+		expect(response.headers.get('access-control-allow-methods')).toBe('POST');
 	});
 
 	it('registers only the Grok public client and exact callback', async () => {

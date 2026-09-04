@@ -13,7 +13,23 @@ import { endMcpSessions } from '$lib/server/mcp/liveSessions';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
 const MAX_BODY_BYTES = 8192;
-const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
+const NO_STORE_HEADERS = {
+	'Access-Control-Allow-Origin': 'https://grok.com',
+	'Cache-Control': 'no-store',
+	Pragma: 'no-cache',
+	Vary: 'Origin'
+};
+
+export const OPTIONS: RequestHandler = () =>
+	new Response(null, {
+		status: 204,
+		headers: {
+			'Access-Control-Allow-Headers': 'Content-Type',
+			'Access-Control-Allow-Methods': 'POST',
+			'Access-Control-Allow-Origin': 'https://grok.com',
+			Vary: 'Origin'
+		}
+	});
 
 function oauthError(error: string, description: string, status = 400): Response {
 	return json({ error, error_description: description }, { status, headers: NO_STORE_HEADERS });

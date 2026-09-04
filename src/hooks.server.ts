@@ -8,6 +8,23 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['x-frame-options', 'DENY'],
 	['permissions-policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()']
 ];
+const GROK_ORIGIN = 'https://grok.com';
+const OAUTH_TOKEN_PATH = '/api/mcp/oauth/token';
+const FORM_CONTENT_TYPES = new Set([
+	'application/x-www-form-urlencoded',
+	'multipart/form-data',
+	'text/plain'
+]);
+
+export function rejectsCrossSiteForm(request: Request, url: URL): boolean {
+	if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return false;
+	const contentType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+	if (!contentType || !FORM_CONTENT_TYPES.has(contentType)) return false;
+
+	const origin = request.headers.get('origin');
+	if (origin === url.origin) return false;
+	return url.pathname !== OAUTH_TOKEN_PATH || (origin !== null && origin !== GROK_ORIGIN);
+}
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const startedAt = performance.now();
@@ -15,7 +32,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const requestId = /^[A-Za-z0-9._-]{1,128}$/.test(suppliedRequestId)
 		? suppliedRequestId
 		: crypto.randomUUID();
-	const response = await resolve(event);
+	const response = rejectsCrossSiteForm(event.request, event.url)
+		? new Response('Cross-site form submissions are forbidden', { status: 403 })
+		: await resolve(event);
 	let finalResponse = response;
 	try {
 		for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);

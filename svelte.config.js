@@ -6,7 +6,7 @@ function nodeAdapter() {
 	const adapter = adapterNode();
 	return {
 		...adapter,
-		async adapt(builder) {
+		async adapt(/** @type {import('@sveltejs/kit').Builder} */ builder) {
 			const warn = console.warn;
 			console.warn = (...args) => {
 				// adapter-node reports SvelteKit's tree-shaken no-op virtual env chunk as empty when SSR
@@ -32,6 +32,11 @@ const config = {
 			process.env.DEPLOY_TARGET === 'cloudflare'
 				? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
 				: nodeAdapter(),
+		csrf: {
+			// The route-aware check in hooks.server.ts preserves the default protection while
+			// allowing originless OAuth clients to call only the token endpoint.
+			trustedOrigins: ['*']
+		},
 		csp: {
 			mode: 'nonce',
 			directives: {
