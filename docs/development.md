@@ -71,14 +71,12 @@ The app and scheduled worker are deliberately separate. Use
 service binding. For local multi-worker testing, put the app variables in
 `.dev.vars` and the scheduler's matching `SCRAPSCACHE_TICK_SECRET` in
 `cf/.dev.vars`; both files are ignored by Git. Configure the secret for both
-Workers before deployment; `npm run cf:deploy` deploys the app first and then
-the scheduler.
+production Workers before deployment; `npm run cf:deploy` deploys the app first
+and then the scheduler.
 
 ```sh
 npx wrangler secret put SCRAPSCACHE_TICK_SECRET
 npx wrangler secret put SCRAPSCACHE_TICK_SECRET --config cf/wrangler.cron.jsonc
-npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env dev
-npx wrangler secret put SCRAPSCACHE_TICK_SECRET --config cf/wrangler.cron.jsonc --env dev
 ```
 
 GitHub Actions reads this value from the `SCRAPSCACHE_TICK_SECRET` environment
@@ -88,9 +86,14 @@ installs it on both Workers during every deployment.
 The sole open pull request labeled `deploy-dev` deploys the development Workers
 to `dev.scrapscache.com` after validation succeeds. Move the label to switch the
 shared development environment to another pull request. Deployment fails if
-more than one open pull request has the label. Pushes to `master` deploy the
-production Workers to `scrapscache.com`. Both use Worker routes on the existing
-proxied DNS records, so the records must remain in place during the cutover.
+more than one open pull request has the label. Each development deploy deletes
+those Workers and wipes D1, then recreates them from the pull request, so
+Durable Object and D1 migrations from another PR cannot block it. R2 object
+bytes are left in place. Deleting the Workers also drops their secrets, so CI
+and `npm run cf:deploy:dev` put `SCRAPSCACHE_TICK_SECRET` back after deploy.
+Pushes to `master` deploy the production Workers to `scrapscache.com`. Both use
+Worker routes on the existing proxied DNS records, so the records must remain
+in place during the cutover.
 
 ### Migrating an existing SQLite relay to Cloudflare
 

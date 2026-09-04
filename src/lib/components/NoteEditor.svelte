@@ -19,6 +19,7 @@
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Bell, ChevronLeft, Paperclip, Pin } from '@lucide/svelte';
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
+	import { getClipboardFiles } from '$lib/noteImages';
 
 	let {
 		noteId = $bindable(),
@@ -330,6 +331,16 @@
 		if (files.length > 0) footer?.handlePickedFiles(files);
 	}
 
+	function handlePaste(event: ClipboardEvent) {
+		if (!isOpen || !note) return;
+		if (event.target instanceof Element && event.target.closest('.canvas-editor-shell')) return;
+		const files = getClipboardFiles(event.clipboardData);
+		if (files.length === 0) return;
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		footer?.handlePickedFiles(files);
+	}
+
 	let backdropPressOutside = false;
 
 	function handleBackdropPointerDown(event: PointerEvent) {
@@ -419,6 +430,7 @@
 	onkeydown={(e) => {
 		if (isOpen && e.key === 'Escape') void close();
 	}}
+	onpastecapture={handlePaste}
 />
 
 {#if isOpen && note}

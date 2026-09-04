@@ -28,3 +28,7 @@ sync-data
 # Playwright
 test-results/
 :memory:*
+
+# Python
+__pycache__/
+*.py[cod]

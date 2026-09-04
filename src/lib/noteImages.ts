@@ -19,6 +19,23 @@ export function isImageAttachment(att: Pick<NoteImage, 'mime'>): boolean {
 	return isImageMime(att.mime);
 }
 
+/** Matches files that should be treated as photos/images. */
+export function looksLikePhoto(file: Pick<File, 'type' | 'name'>): boolean {
+	return (
+		file.type.toLowerCase().startsWith('image/') ||
+		/\.(?:avif|dng|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(file.name)
+	);
+}
+
+/** Extract File objects from clipboardData (supports both files and items). */
+export function getClipboardFiles(clipboardData: DataTransfer | null): File[] {
+	if (!clipboardData) return [];
+	if (clipboardData.files?.length) return Array.from(clipboardData.files);
+	return Array.from(clipboardData.items ?? [])
+		.map((item) => item.getAsFile())
+		.filter((file): file is File => file !== null);
+}
+
 /** Approximate byte size from a data URL (for UI only). */
 export function dataUrlByteLength(dataUrl: string): number {
 	const i = dataUrl.indexOf(',');
@@ -35,7 +52,7 @@ export function formatBytes(bytes: number): string {
 export function fileIconLabel(mime: string, name?: string): string {
 	const m = (mime || '').toLowerCase();
 	const ext = (name?.split('.').pop() || '').toLowerCase();
-	if (m.includes('pdf') || ext === 'pdf') return 'PDF';
+	if (mime.includes('pdf') || ext === 'pdf') return 'PDF';
 	if (m.includes('zip') || m.includes('compressed') || ext === 'zip' || ext === 'rar') return 'ZIP';
 	if (m.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'aac'].includes(ext)) return 'AUD';
 	if (m.startsWith('video/') || ['mp4', 'mov', 'webm'].includes(ext)) return 'VID';
