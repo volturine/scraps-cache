@@ -87,5 +87,6 @@ export const POST: RequestHandler = async ({ request, url, getClientAddress }) =
 	const redirect = new URL(GROK_OAUTH_REDIRECT_URI);
 	redirect.searchParams.set('code', body.code);
 	if (typeof body.state === 'string') redirect.searchParams.set('state', body.state);
+	redirect.searchParams.set('iss', url.origin);
 	return json({ redirectTo: redirect.href }, { headers: NO_STORE_HEADERS });
 };

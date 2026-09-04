@@ -77,6 +77,7 @@ describe('MCP OAuth routes', () => {
 		expect(`${redirect.origin}${redirect.pathname}`).toBe(GROK_OAUTH_REDIRECT_URI);
 		expect(redirect.searchParams.get('code')).toBe(codeGrant.token);
 		expect(redirect.searchParams.get('state')).toBe('opaque-state');
+		expect(redirect.searchParams.get('iss')).toBe('https://scrapscache.com');
 
 		const storedCode = await mockDb.ops.execute('SELECT * FROM mcp_oauth_codes');
 		expect(JSON.stringify(storedCode.rows)).not.toContain(codeGrant.token);
@@ -134,7 +135,8 @@ describe('MCP OAuth routes', () => {
 			authorization_endpoint: 'https://scrapscache.com/mcp/oauth/authorize',
 			token_endpoint: 'https://scrapscache.com/api/mcp/oauth/token',
 			code_challenge_methods_supported: ['S256'],
-			token_endpoint_auth_methods_supported: ['none']
+			token_endpoint_auth_methods_supported: ['none'],
+			authorization_response_iss_parameter_supported: true
 		});
 		const resource = await protectedResourceMetadata('https://scrapscache.com').json();
 		expect(resource).toMatchObject({

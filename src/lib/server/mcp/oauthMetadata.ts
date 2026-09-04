@@ -16,7 +16,8 @@ export function authorizationServerMetadata(origin: string): Response {
 			response_types_supported: ['code'],
 			grant_types_supported: ['authorization_code'],
 			code_challenge_methods_supported: ['S256'],
-			token_endpoint_auth_methods_supported: ['none']
+			token_endpoint_auth_methods_supported: ['none'],
+			authorization_response_iss_parameter_supported: true
 		},
 		{ headers: METADATA_HEADERS }
 	);
