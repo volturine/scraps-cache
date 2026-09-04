@@ -1,0 +1,51 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { createMcpTokenGrant } from '$lib/mcp/token';
+import { createSyncIdentity } from '$lib/syncPairing';
+import { cleanupTestDbs, testDb } from '$lib/server/testDb';
+import { McpTokenStore } from './tokenStore';
+
+afterEach(cleanupTestDbs);
+
+describe('McpTokenStore', () => {
+	it('resolves an issued token and rejects it after revocation', async () => {
+		const db = testDb();
+		const store = new McpTokenStore(db);
+		const identity = createSyncIdentity();
+		const grant = createMcpTokenGrant(identity.syncKey);
+		await store.issue(identity.accountId, grant.token, grant.wrappedSyncKey);
+		const stored = await db.ops.execute('SELECT * FROM mcp_tokens');
+		expect(JSON.stringify(stored.rows)).not.toContain(grant.token);
+		expect(JSON.stringify(stored.rows)).not.toContain(identity.syncKey);
+
+		await expect(store.resolve(grant.token)).resolves.toMatchObject({
+			accountId: identity.accountId,
+			syncKey: identity.syncKey
+		});
+		await expect(store.revokeAccount(identity.accountId)).resolves.toEqual([
+			expect.stringMatching(/^[0-9a-f]{64}$/)
+		]);
+		await expect(store.resolve(grant.token)).resolves.toBeNull();
+	});
+
+	it('rejects a grant for a different authenticated account', async () => {
+		const store = new McpTokenStore(testDb());
+		const identity = createSyncIdentity();
+		const grant = createMcpTokenGrant(identity.syncKey);
+		await expect(
+			store.issue('different-account', grant.token, grant.wrappedSyncKey)
+		).rejects.toThrow('does not belong');
+	});
+
+	it('rotates the previous account token', async () => {
+		const store = new McpTokenStore(testDb());
+		const identity = createSyncIdentity();
+		const first = createMcpTokenGrant(identity.syncKey);
+		const second = createMcpTokenGrant(identity.syncKey);
+		await store.issue(identity.accountId, first.token, first.wrappedSyncKey);
+		await store.issue(identity.accountId, second.token, second.wrappedSyncKey);
+		await expect(store.resolve(first.token)).resolves.toBeNull();
+		await expect(store.resolve(second.token)).resolves.toMatchObject({
+			accountId: identity.accountId
+		});
+	});
+});

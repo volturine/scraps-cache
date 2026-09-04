@@ -1,115 +1,132 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
+import { hashMcpToken, isMcpToken } from '$lib/mcp/token';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 import { getMcpSessionManager } from './sessionManager';
 import { handleJsonRpcMessage } from './protocol';
-import { extractAccountIdFromSessionId } from './engine';
-import { verifyMcpToken } from '$lib/mcp/token';
 
-export const CORS_HEADERS = {
-	'Access-Control-Allow-Origin': '*',
-	'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, HEAD',
-	'Access-Control-Allow-Headers': '*'
+const MAX_REQUEST_BYTES = 1024 * 1024;
+const RESPONSE_HEADERS = { 'Cache-Control': 'no-store' };
+
+type McpNamespace = {
+	idFromName: (name: string) => unknown;
+	get: (id: unknown) => { fetch: (request: Request) => Promise<Response> };
 };
 
-export const handleMcpOptions: RequestHandler = async () => {
+function namespace(platform: unknown): McpNamespace | undefined {
+	return (platform as { env?: { ACCOUNT_MCP_SESSION?: McpNamespace } } | undefined)?.env
+		?.ACCOUNT_MCP_SESSION;
+}
+
+function bearerToken(request: Request): string | null {
+	const authorization = request.headers.get('authorization');
+	const match = authorization?.match(/^Bearer\s+(\S+)\s*$/i);
+	if (!match) return null;
+	const token = match[1];
+	return isMcpToken(token) ? token : null;
+}
+
+function acceptsOrigin(request: Request): boolean {
+	const origin = request.headers.get('origin');
+	return !origin || origin === new URL(request.url).origin;
+}
+
+function unauthorized(message = 'Missing or invalid MCP bearer token'): Response {
+	return json({ error: message }, { status: 401, headers: RESPONSE_HEADERS });
+}
+
+async function enforceRateLimit(getClientAddress: () => string): Promise<Response | null> {
+	const result = await getPublicApiLimiter().check(`mcp:${clientAddress(getClientAddress)}`, {
+		capacity: 120,
+		refillWindowMs: 60_000
+	});
+	return result.allowed ? null : rateLimitResponse(result);
+}
+
+async function proxyToDurableObject(
+	request: Request,
+	platform: unknown,
+	token: string
+): Promise<Response | null> {
+	const binding = namespace(platform);
+	if (!binding) return null;
+	const stub = binding.get(binding.idFromName(hashMcpToken(token)));
+	return stub.fetch(request);
+}
+
+export const handleMcpOptions: RequestHandler = async ({ request }) => {
+	if (!acceptsOrigin(request)) return new Response(null, { status: 403 });
 	return new Response(null, {
 		status: 204,
-		headers: CORS_HEADERS
+		headers: {
+			'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+			'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, Mcp-Protocol-Version',
+			'Access-Control-Max-Age': '86400'
+		}
 	});
 };
 
-export const handleMcpGet: RequestHandler = async ({ request, url, platform }) => {
-	const authHeader = request.headers.get('Authorization') || '';
-	let token = authHeader.replace(/^Bearer\s+/i, '').trim();
-	if (!token) {
-		token = url.searchParams.get('token') || '';
-	}
+export const handleMcpGet: RequestHandler = async ({
+	request,
+	url,
+	platform,
+	getClientAddress
+}) => {
+	if (!acceptsOrigin(request)) return new Response(null, { status: 403 });
+	const limited = await enforceRateLimit(getClientAddress);
+	if (limited) return limited;
+	const token = bearerToken(request);
+	if (!token) return unauthorized();
 
-	if (!token) {
-		return json(
-			{ error: 'Missing MCP authorization token' },
-			{ status: 401, headers: CORS_HEADERS }
-		);
-	}
+	const proxied = await proxyToDurableObject(request, platform, token);
+	if (proxied) return proxied;
 
-	const env = (
-		platform as
-			| {
-					env?: {
-						ACCOUNT_MCP_SESSION?: {
-							idFromName: (name: string) => unknown;
-							get: (id: unknown) => { fetch: (req: Request) => Promise<Response> };
-						};
-					};
-			  }
-			| undefined
-	)?.env;
-
-	if (env?.ACCOUNT_MCP_SESSION) {
-		const verified = verifyMcpToken(token);
-		if (!verified.valid || !verified.accountId) {
-			return json(
-				{ error: verified.error || 'Invalid token' },
-				{ status: 401, headers: CORS_HEADERS }
-			);
-		}
-		const doId = env.ACCOUNT_MCP_SESSION.idFromName(verified.accountId);
-		const stub = env.ACCOUNT_MCP_SESSION.get(doId);
-		return stub.fetch(request);
-	}
-
-	const manager = getMcpSessionManager();
-	let sessionInfo: { sessionId: string; session: import('./engine').McpSession };
+	let session;
 	try {
-		sessionInfo = await manager.createSessionFromToken(token);
-	} catch (err: unknown) {
-		const msg = err instanceof Error ? err.message : 'Invalid token';
-		return json({ error: msg }, { status: 401, headers: CORS_HEADERS });
+		session = await getMcpSessionManager().getSessionFromToken(token);
+	} catch {
+		return unauthorized('Invalid or revoked MCP token');
 	}
 
-	const { sessionId, session } = sessionInfo;
 	let interval: ReturnType<typeof setInterval> | undefined;
-
+	let unsubscribe: (() => void) | undefined;
 	const stream = new ReadableStream({
-		start: (controller) => {
+		start(controller) {
 			const encoder = new TextEncoder();
 			const send = (event: string, data: string) => {
 				try {
 					controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
 				} catch {
-					// stream closed
+					// The abort handler performs cleanup.
 				}
 			};
-
-			send(
-				'endpoint',
-				`${url.origin}/api/mcp/messages?sessionId=${sessionId}&token=${encodeURIComponent(token)}`
-			);
-
-			interval = setInterval(() => {
-				try {
-					controller.enqueue(encoder.encode(': ping\n\n'));
-				} catch {
-					if (interval) clearInterval(interval);
-				}
-			}, 15000);
-
-			const unsubscribe = session.addSseListener((event, data) => {
+			send('endpoint', `${url.origin}/api/mcp/messages`);
+			interval = setInterval(() => send('ping', '{}'), 15_000);
+			unsubscribe = session.addSseListener((event, data) => {
 				send(event, typeof data === 'string' ? data : JSON.stringify(data));
-			});
-
-			request.signal.addEventListener('abort', () => {
-				if (interval) clearInterval(interval);
-				unsubscribe();
-				try {
+				if (event === 'close') {
+					if (interval) clearInterval(interval);
+					unsubscribe?.();
 					controller.close();
-				} catch {
-					// ignore
 				}
 			});
+			request.signal.addEventListener(
+				'abort',
+				() => {
+					if (interval) clearInterval(interval);
+					unsubscribe?.();
+					try {
+						controller.close();
+					} catch {
+						// The stream may already be closed.
+					}
+				},
+				{ once: true }
+			);
 		},
-		cancel: () => {
+		cancel() {
 			if (interval) clearInterval(interval);
+			unsubscribe?.();
 		}
 	});
 
@@ -118,95 +135,80 @@ export const handleMcpGet: RequestHandler = async ({ request, url, platform }) =
 			'Content-Type': 'text/event-stream',
 			'Cache-Control': 'no-cache, no-transform',
 			Connection: 'keep-alive',
-			'X-Accel-Buffering': 'no',
-			...CORS_HEADERS
+			'X-Accel-Buffering': 'no'
 		}
 	});
 };
 
-export const handleMcpPost: RequestHandler = async ({ request, url, platform }) => {
-	const sessionId =
-		url.searchParams.get('sessionId') || request.headers.get('Mcp-Session-Id') || '';
-	const token =
-		url.searchParams.get('token') ||
-		request.headers
-			.get('Authorization')
-			?.replace(/^Bearer\s+/i, '')
-			.trim() ||
-		null;
+export const handleMcpPost: RequestHandler = async ({
+	request,
+	url,
+	platform,
+	getClientAddress
+}) => {
+	if (!acceptsOrigin(request)) return new Response(null, { status: 403 });
+	const limited = await enforceRateLimit(getClientAddress);
+	if (limited) return limited;
+	const token = bearerToken(request);
+	if (!token) return unauthorized();
 
-	if (!sessionId && !token) {
+	const contentLength = Number(request.headers.get('content-length') ?? 0);
+	if (contentLength > MAX_REQUEST_BYTES) {
 		return json(
-			{ error: 'Missing sessionId query parameter or authorization token' },
-			{ status: 400, headers: CORS_HEADERS }
+			{ error: 'MCP request body is too large' },
+			{ status: 413, headers: RESPONSE_HEADERS }
 		);
 	}
 
-	const env = (
-		platform as
-			| {
-					env?: {
-						ACCOUNT_MCP_SESSION?: {
-							idFromName: (name: string) => unknown;
-							get: (id: unknown) => { fetch: (req: Request) => Promise<Response> };
-						};
-					};
-			  }
-			| undefined
-	)?.env;
+	const proxied = await proxyToDurableObject(request, platform, token);
+	if (proxied) return proxied;
 
-	if (env?.ACCOUNT_MCP_SESSION) {
-		const accountId = extractAccountIdFromSessionId(sessionId, token);
-		if (!accountId) {
-			return json({ error: 'Invalid sessionId or token' }, { status: 400, headers: CORS_HEADERS });
-		}
-		const doId = env.ACCOUNT_MCP_SESSION.idFromName(accountId);
-		const stub = env.ACCOUNT_MCP_SESSION.get(doId);
-		const res = await stub.fetch(request);
-		const headers = new Headers(res.headers);
-		headers.set('Access-Control-Allow-Origin', '*');
-		return new Response(res.body, {
-			status: res.status,
-			statusText: res.statusText,
-			headers
-		});
+	let session;
+	try {
+		session = await getMcpSessionManager().getSessionFromToken(token);
+	} catch {
+		return unauthorized('Invalid or revoked MCP token');
 	}
 
-	const manager = getMcpSessionManager();
-	let session = sessionId ? manager.getSession(sessionId) : undefined;
-	if (!session && token) {
-		try {
-			const info = await manager.createSessionFromToken(token);
-			session = info.session;
-		} catch {
-			// invalid token
+	let rawBody: string;
+	try {
+		rawBody = await request.text();
+		if (new TextEncoder().encode(rawBody).length > MAX_REQUEST_BYTES) {
+			return json(
+				{ error: 'MCP request body is too large' },
+				{ status: 413, headers: RESPONSE_HEADERS }
+			);
 		}
-	}
-
-	if (!session) {
-		return json({ error: 'Session not found or expired' }, { status: 404, headers: CORS_HEADERS });
+	} catch {
+		return json(
+			{ error: 'Could not read request body' },
+			{ status: 400, headers: RESPONSE_HEADERS }
+		);
 	}
 
 	let body: unknown;
 	try {
-		body = await request.json();
+		body = JSON.parse(rawBody);
 	} catch {
 		return json(
 			{ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } },
-			{ status: 400, headers: CORS_HEADERS }
+			{ status: 400, headers: RESPONSE_HEADERS }
 		);
 	}
 
 	const response = await handleJsonRpcMessage(session, body);
-	const headers = new Headers(CORS_HEADERS);
-	headers.set('Content-Type', 'application/json');
-	const currentSessionId = sessionId || `${session.accountId}.${crypto.randomUUID()}`;
-	headers.set('Mcp-Session-Id', currentSessionId);
-
+	const legacySseMessage = url.pathname.endsWith('/messages');
 	if (response === null) {
-		return new Response(null, { status: 204, headers });
+		return new Response(null, { status: legacySseMessage ? 202 : 204, headers: RESPONSE_HEADERS });
 	}
 
-	session.broadcast('message', response);
-	return new Response(JSON.stringify(response), { status: 200, headers });
+	if (legacySseMessage) {
+		if (Array.isArray(response)) {
+			for (const item of response) session.broadcast('message', item);
+		} else {
+			session.broadcast('message', response);
+		}
+		return new Response(null, { status: 202, headers: RESPONSE_HEADERS });
+	}
+	return json(response, { headers: RESPONSE_HEADERS });
 };

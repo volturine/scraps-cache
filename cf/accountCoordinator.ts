@@ -90,7 +90,7 @@ export class AccountCoordinator {
 			{ sql: 'DELETE FROM reminder_wakes WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_revisions WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id = ?', args: [accountId] },
-			{ sql: 'DELETE FROM mcp_revocations WHERE account_id = ?', args: [accountId] }
+			{ sql: 'DELETE FROM mcp_tokens WHERE account_id = ?', args: [accountId] }
 		]);
 		await Promise.all(keys.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
 		return Response.json({ deleted: results[0]?.rowsAffected === 1 });

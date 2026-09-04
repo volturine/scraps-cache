@@ -1,4 +1,3 @@
-import { verifyMcpToken } from '$lib/mcp/token';
 import {
 	encryptSyncPayload,
 	decryptSyncPayload,
@@ -7,7 +6,8 @@ import {
 } from '$lib/syncPairing';
 import { parseBody, parseCheckLine, formatCheckLine } from '$lib/checklistBody';
 import { sha256 } from '$lib/syncHash';
-import type { Note, Label, NoteColor } from '$lib/types';
+import { fieldTime, mergeTwoNotes, NOTE_FIELDS, touchNoteFields } from '$lib/noteMerge';
+import type { Note, Label, NoteColor, NoteField } from '$lib/types';
 import type { SyncRecordPayload } from '$lib/syncRecords';
 
 export type McpStorage = {
@@ -205,7 +205,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
 
 export class McpSession {
 	readonly accountId: string;
-	readonly syncKey: string;
+	private readonly syncKey: string;
 	private readonly storage: McpStorage;
 
 	private notes = new Map<string, Note>();
@@ -213,8 +213,8 @@ export class McpSession {
 	private syncedSlots = new Map<string, { id: string; slot: string }>();
 
 	private cursor = 0;
-	private isHydrated = false;
 	lastActiveAt = Date.now();
+	private operationQueue: Promise<void> = Promise.resolve();
 
 	private sseListeners = new Set<(event: string, data: unknown) => void>();
 
@@ -245,61 +245,90 @@ export class McpSession {
 		}
 	}
 
-	async ensureHydrated(): Promise<void> {
-		this.touch();
-		if (this.isHydrated) return;
+	close(): void {
+		this.broadcast('close', { reason: 'MCP access ended' });
+		this.sseListeners.clear();
+	}
 
+	async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+		const previous = this.operationQueue;
+		let release!: () => void;
+		this.operationQueue = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		await previous;
+		try {
+			return await operation();
+		} finally {
+			release();
+		}
+	}
+
+	private clearHydratedState(): void {
+		this.notes.clear();
+		this.labels.clear();
+		this.syncedSlots.clear();
+		this.cursor = 0;
+	}
+
+	private applyEnvelopes(envelopes: Array<{ id: string; slot: string; ciphertext: string }>): void {
+		for (const envelope of envelopes) {
+			try {
+				const payload = decryptSyncPayload(this.syncKey, envelope.ciphertext) as SyncRecordPayload;
+				if (!payload || typeof payload !== 'object') continue;
+				if (payload.kind === 'note') {
+					this.notes.set(payload.value.id, payload.value as Note);
+					this.syncedSlots.set(`note:${payload.value.id}`, envelope);
+				} else if (payload.kind === 'note-tombstone') {
+					this.notes.delete(payload.id);
+					this.syncedSlots.set(`note:${payload.id}`, envelope);
+				} else if (payload.kind === 'label') {
+					this.labels.set(payload.value.id, payload.value);
+					this.syncedSlots.set(`label:${payload.value.id}`, envelope);
+				} else if (payload.kind === 'label-tombstone') {
+					this.labels.delete(payload.id);
+					this.syncedSlots.set(`label:${payload.id}`, envelope);
+				}
+			} catch {
+				// Ignore records that were not encrypted with this account's key.
+			}
+		}
+	}
+
+	private async downloadChanges(): Promise<void> {
 		let hasMore = true;
 		while (hasMore) {
 			const result = await this.storage.sync(this.accountId, this.cursor, [], [], 100);
-			if (result.reset) {
-				this.notes.clear();
-				this.labels.clear();
-				this.syncedSlots.clear();
-				this.cursor = 0;
-			}
-			for (const envelope of result.envelopes) {
-				try {
-					const payload = decryptSyncPayload(
-						this.syncKey,
-						envelope.ciphertext
-					) as SyncRecordPayload;
-					if (payload && typeof payload === 'object') {
-						if (payload.kind === 'note') {
-							this.notes.set(payload.value.id, payload.value as Note);
-							this.syncedSlots.set(`note:${payload.value.id}`, {
-								id: envelope.id,
-								slot: envelope.slot
-							});
-						} else if (payload.kind === 'note-tombstone') {
-							this.notes.delete(payload.id);
-							this.syncedSlots.set(`note:${payload.id}`, {
-								id: envelope.id,
-								slot: envelope.slot
-							});
-						} else if (payload.kind === 'label') {
-							this.labels.set(payload.value.id, payload.value);
-							this.syncedSlots.set(`label:${payload.value.id}`, {
-								id: envelope.id,
-								slot: envelope.slot
-							});
-						} else if (payload.kind === 'label-tombstone') {
-							this.labels.delete(payload.id);
-							this.syncedSlots.set(`label:${payload.id}`, {
-								id: envelope.id,
-								slot: envelope.slot
-							});
-						}
-					}
-				} catch {
-					// Ignore undecryptable / foreign envelope
-				}
-			}
+			if (result.reset) this.clearHydratedState();
+			this.applyEnvelopes([...result.envelopes, ...result.conflicts]);
 			this.cursor = result.cursor;
 			hasMore = result.hasMore;
 		}
+	}
 
-		this.isHydrated = true;
+	async ensureHydrated(): Promise<void> {
+		this.touch();
+		await this.downloadChanges();
+	}
+
+	private async commitUploads(
+		uploads: Array<{ id: string; slot: string; ciphertext: string; expectedId?: string | null }>,
+		onRejected?: () => void
+	): Promise<void> {
+		for (let attempt = 0; attempt < 4; attempt += 1) {
+			const result = await this.storage.sync(this.accountId, this.cursor, uploads, [], 100);
+			if (result.reset) this.clearHydratedState();
+			this.applyEnvelopes([...result.envelopes, ...result.conflicts]);
+			this.cursor = result.cursor;
+			if (result.hasMore) await this.downloadChanges();
+			if (result.writesAccepted) return;
+			for (const upload of uploads) {
+				const current = [...this.syncedSlots.values()].find((slot) => slot.slot === upload.slot);
+				upload.expectedId = current?.id ?? null;
+			}
+			onRejected?.();
+		}
+		throw new Error('The note changed concurrently and could not be saved');
 	}
 
 	private getLabelNames(labelIds: string[] = []): string[] {
@@ -432,6 +461,7 @@ export class McpSession {
 			ciphertext: string;
 			expectedId?: string | null;
 		}> = [];
+		const createdLabels: Array<{ label: Label; uploadId: string; slot: string }> = [];
 
 		// Handle labels: find existing or create new
 		const labelIds: string[] = [];
@@ -440,7 +470,7 @@ export class McpSession {
 				const trimmed = rawName.trim();
 				if (!trimmed) continue;
 				let found: Label | undefined;
-				for (const lbl of this.labels.values()) {
+				for (const lbl of [...this.labels.values(), ...createdLabels.map(({ label }) => label)]) {
 					if (lbl.name.toLowerCase() === trimmed.toLowerCase()) {
 						found = lbl;
 						break;
@@ -456,7 +486,6 @@ export class McpSession {
 						createdAt: now,
 						updatedAt: now
 					};
-					this.labels.set(newLabelId, newLabel);
 					labelIds.push(newLabelId);
 
 					const labelSlot = await sha256(`${this.syncKey}\u0000label:${newLabelId}`);
@@ -471,7 +500,7 @@ export class McpSession {
 						ciphertext: labelCiphertext,
 						expectedId: null
 					});
-					this.syncedSlots.set(`label:${newLabelId}`, { id: labelUploadId, slot: labelSlot });
+					createdLabels.push({ label: newLabel, uploadId: labelUploadId, slot: labelSlot });
 				}
 			}
 		}
@@ -524,8 +553,6 @@ export class McpSession {
 			labels: labelIds
 		};
 
-		this.notes.set(noteId, note);
-
 		const noteSlot = await sha256(`${this.syncKey}\u0000note:${noteId}`);
 		const noteCiphertext = encryptSyncPayload(this.syncKey, {
 			kind: 'note',
@@ -538,9 +565,13 @@ export class McpSession {
 			ciphertext: noteCiphertext,
 			expectedId: null
 		});
+		await this.commitUploads(uploads);
+		for (const { label, uploadId, slot } of createdLabels) {
+			this.labels.set(label.id, label);
+			this.syncedSlots.set(`label:${label.id}`, { id: uploadId, slot });
+		}
+		this.notes.set(noteId, note);
 		this.syncedSlots.set(`note:${noteId}`, { id: noteUploadId, slot: noteSlot });
-
-		await this.storage.sync(this.accountId, this.cursor, uploads, [], 100);
 
 		return {
 			success: true,
@@ -566,19 +597,23 @@ export class McpSession {
 		archived?: boolean;
 	}) {
 		await this.ensureHydrated();
-		const note = this.notes.get(args.id);
-		if (!note || note.trashed) {
+		const currentNote = this.notes.get(args.id);
+		if (!currentNote || currentNote.trashed) {
 			throw new Error(`Note with id "${args.id}" not found`);
 		}
+		let note: Note = { ...currentNote, labels: [...(currentNote.labels ?? [])] };
+		const changedFields = new Set<NoteField>();
 
 		if (args.title !== undefined) {
 			note.title = args.title.trim();
+			changedFields.add('title');
 		}
 
 		if (args.appendBody) {
 			const toAppend = args.appendBody.trim();
 			if (toAppend) {
 				note.body = note.body ? `${note.body}\n\n${toAppend}` : toAppend;
+				changedFields.add('body');
 			}
 		}
 
@@ -593,6 +628,7 @@ export class McpSession {
 			} else {
 				note.body = itemsText;
 			}
+			changedFields.add('body');
 		}
 
 		if (args.toggleChecklistItems && args.toggleChecklistItems.length > 0) {
@@ -610,17 +646,37 @@ export class McpSession {
 				return line;
 			});
 			note.body = updatedLines.join('\n');
+			changedFields.add('body');
 		}
 
 		if (args.pinned !== undefined) {
 			note.pinned = args.pinned;
+			changedFields.add('pinned');
 		}
 
 		if (args.archived !== undefined) {
 			note.archived = args.archived;
+			changedFields.add('archived');
 		}
 
-		note.updatedAt = Date.now();
+		if (changedFields.size === 0) {
+			return {
+				success: true,
+				note: {
+					id: note.id,
+					title: note.title,
+					body: note.body,
+					pinned: note.pinned,
+					archived: note.archived,
+					updatedAt: new Date(note.updatedAt).toISOString()
+				}
+			};
+		}
+		note = {
+			...note,
+			fieldTimes: Object.fromEntries(NOTE_FIELDS.map((field) => [field, fieldTime(note, field)]))
+		};
+		note = touchNoteFields(note, [...changedFields]);
 
 		const noteSlot = await sha256(`${this.syncKey}\u0000note:${note.id}`);
 		const noteCiphertext = encryptSyncPayload(this.syncKey, {
@@ -636,7 +692,13 @@ export class McpSession {
 			expectedId: priorSlot?.id ?? null
 		};
 
-		await this.storage.sync(this.accountId, this.cursor, [upload], [], 100);
+		await this.commitUploads([upload], () => {
+			const remote = this.notes.get(note.id);
+			if (!remote || remote.trashed) throw new Error('The note was deleted concurrently');
+			note = mergeTwoNotes(note, remote);
+			upload.ciphertext = encryptSyncPayload(this.syncKey, { kind: 'note', value: note });
+		});
+		this.notes.set(note.id, note);
 		this.syncedSlots.set(`note:${note.id}`, { id: uploadId, slot: noteSlot });
 
 		return {
@@ -740,30 +802,4 @@ export class McpSession {
 				throw new Error(`Unknown tool: ${name}`);
 		}
 	}
-}
-
-export function extractAccountIdFromSessionId(
-	sessionId: string,
-	token?: string | null
-): string | null {
-	if (token) {
-		const verified = verifyMcpToken(token);
-		if (verified.valid && verified.accountId) {
-			return verified.accountId;
-		}
-	}
-	if (!sessionId) return null;
-	const dotIndex = sessionId.indexOf('.');
-	if (dotIndex > 0) {
-		return sessionId.slice(0, dotIndex);
-	}
-	const tildeIndex = sessionId.indexOf('~');
-	if (tildeIndex > 0) {
-		return sessionId.slice(0, tildeIndex);
-	}
-	const lastUnderscore = sessionId.lastIndexOf('_');
-	if (lastUnderscore > 0) {
-		return sessionId.slice(0, lastUnderscore);
-	}
-	return sessionId;
 }

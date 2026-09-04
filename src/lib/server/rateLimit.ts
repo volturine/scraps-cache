@@ -58,6 +58,10 @@ export function getPublicApiLimiter(): TokenBucketLimiter {
 	return publicLimiter;
 }
 
+export function closePublicApiLimiter(): void {
+	publicLimiter = undefined;
+}
+
 export async function checkAdminApiLimit(
 	getClientAddress: () => string,
 	now = Date.now()

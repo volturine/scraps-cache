@@ -128,12 +128,15 @@ const OPS_DDL = `
 	);
 	CREATE INDEX IF NOT EXISTS reminder_wake_deliveries_account
 		ON reminder_wake_deliveries(account_id);
-	CREATE TABLE IF NOT EXISTS mcp_revocations (
-		account_id TEXT PRIMARY KEY,
-		revoked_before INTEGER NOT NULL
+	CREATE TABLE IF NOT EXISTS mcp_tokens (
+		token_hash TEXT PRIMARY KEY,
+		account_id TEXT NOT NULL,
+		wrapped_sync_key TEXT NOT NULL,
+		created_at INTEGER NOT NULL
 	);
-	CREATE INDEX IF NOT EXISTS mcp_revocations_account
-		ON mcp_revocations(account_id);
+	CREATE INDEX IF NOT EXISTS mcp_tokens_account
+		ON mcp_tokens(account_id);
+	DROP TABLE IF EXISTS mcp_revocations;
 `;
 
 /** Wrap pre-built clients (any libsql transport) with lazy idempotent schema setup. */

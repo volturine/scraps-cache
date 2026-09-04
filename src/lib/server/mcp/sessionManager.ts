@@ -1,7 +1,7 @@
 import { McpSession, type McpStorage } from './engine';
-import { verifyMcpToken } from '$lib/mcp/token';
-import { getMcpRevocationStore } from './revocation';
+import { getMcpTokenStore, type McpTokenStore } from './tokenStore';
 import { getSyncStore } from '$lib/server/syncStore';
+import { hashMcpToken, isMcpToken } from '$lib/mcp/token';
 
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -9,7 +9,10 @@ export class McpSessionManager {
 	private sessions = new Map<string, McpSession>();
 	private reapTimer?: ReturnType<typeof setInterval>;
 
-	constructor(private readonly idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS) {
+	constructor(
+		private readonly idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS,
+		private readonly tokenStore: Pick<McpTokenStore, 'resolve'> = getMcpTokenStore()
+	) {
 		this.startReaper();
 	}
 
@@ -23,6 +26,7 @@ export class McpSessionManager {
 		const now = Date.now();
 		for (const [id, session] of this.sessions.entries()) {
 			if (now - session.lastActiveAt > this.idleTimeoutMs) {
+				session.close();
 				this.sessions.delete(id);
 			}
 		}
@@ -32,6 +36,7 @@ export class McpSessionManager {
 		const now = Date.now();
 		for (const [id, session] of this.sessions.entries()) {
 			if (now - session.lastActiveAt > olderThanMs) {
+				session.close();
 				this.sessions.delete(id);
 			}
 		}
@@ -40,48 +45,39 @@ export class McpSessionManager {
 	removeAccountSessions(accountId: string): void {
 		for (const [id, session] of this.sessions.entries()) {
 			if (session.accountId === accountId) {
+				session.close();
 				this.sessions.delete(id);
 			}
 		}
 	}
 
-	async createSessionFromToken(token: string): Promise<{ sessionId: string; session: McpSession }> {
-		const verified = verifyMcpToken(token);
-		if (!verified.valid || !verified.accountId || !verified.syncKey || !verified.createdAt) {
-			throw new Error(verified.error || 'Invalid or malformed MCP token');
+	async getSessionFromToken(token: string): Promise<McpSession> {
+		const resolved = await this.tokenStore.resolve(token);
+		if (!resolved) {
+			if (isMcpToken(token)) {
+				const tokenHash = hashMcpToken(token);
+				this.sessions.get(tokenHash)?.close();
+				this.sessions.delete(tokenHash);
+			}
+			throw new Error('Invalid or revoked MCP token');
 		}
 
-		const revocationStore = getMcpRevocationStore();
-		const isRevoked = await revocationStore.isRevoked(verified.accountId, verified.createdAt);
-		if (isRevoked) {
-			throw new Error('MCP token has been revoked');
+		let session = this.sessions.get(resolved.tokenHash);
+		if (session && Date.now() - session.lastActiveAt > this.idleTimeoutMs) {
+			session.close();
+			this.sessions.delete(resolved.tokenHash);
+			session = undefined;
 		}
-
-		const sessionId = crypto.randomUUID();
-		const session = new McpSession(
-			verified.accountId,
-			verified.syncKey,
-			getSyncStore() as unknown as McpStorage
-		);
-		this.sessions.set(sessionId, session);
-		return { sessionId, session };
-	}
-
-	getSession(sessionId: string): McpSession | undefined {
-		const session = this.sessions.get(sessionId);
-		if (!session) return undefined;
-
-		if (Date.now() - session.lastActiveAt > this.idleTimeoutMs) {
-			this.sessions.delete(sessionId);
-			return undefined;
+		if (!session) {
+			session = new McpSession(
+				resolved.accountId,
+				resolved.syncKey,
+				getSyncStore() as unknown as McpStorage
+			);
+			this.sessions.set(resolved.tokenHash, session);
 		}
-
 		session.touch();
 		return session;
-	}
-
-	removeSession(sessionId: string): boolean {
-		return this.sessions.delete(sessionId);
 	}
 
 	close(): void {
@@ -89,6 +85,7 @@ export class McpSessionManager {
 			clearInterval(this.reapTimer);
 			this.reapTimer = undefined;
 		}
+		for (const session of this.sessions.values()) session.close();
 		this.sessions.clear();
 	}
 }

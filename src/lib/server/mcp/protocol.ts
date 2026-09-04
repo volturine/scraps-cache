@@ -30,13 +30,14 @@ export async function handleJsonRpcMessage(
 				error: { code: -32600, message: 'Invalid Request: empty batch' }
 			};
 		}
-		const responses = await Promise.all(
-			message.map((msg) => handleSingleJsonRpcMessage(session, msg))
-		);
+		const responses: Array<JsonRpcResponse | null> = [];
+		for (const item of message) {
+			responses.push(await session.runExclusive(() => handleSingleJsonRpcMessage(session, item)));
+		}
 		const nonNull = responses.filter((r): r is JsonRpcResponse => r !== null);
 		return nonNull.length > 0 ? nonNull : null;
 	}
-	return handleSingleJsonRpcMessage(session, message);
+	return session.runExclusive(() => handleSingleJsonRpcMessage(session, message));
 }
 
 async function handleSingleJsonRpcMessage(
@@ -73,12 +74,11 @@ async function handleSingleJsonRpcMessage(
 	try {
 		switch (req.method) {
 			case 'initialize': {
-				const reqProto = (req.params as { protocolVersion?: string } | undefined)?.protocolVersion;
 				return {
 					jsonrpc: '2.0',
 					id,
 					result: {
-						protocolVersion: reqProto || '2024-11-05',
+						protocolVersion: '2024-11-05',
 						capabilities: {
 							tools: {},
 							resources: {}
@@ -182,15 +182,7 @@ async function handleSingleJsonRpcMessage(
 					return {
 						jsonrpc: '2.0',
 						id,
-						result: {
-							contents: [
-								{
-									uri: params.uri,
-									mimeType: 'text/markdown',
-									text: content
-								}
-							]
-						}
+						result: content
 					};
 				} catch (err: unknown) {
 					const errorMessage = err instanceof Error ? err.message : String(err);

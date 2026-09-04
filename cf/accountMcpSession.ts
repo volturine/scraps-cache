@@ -1,54 +1,44 @@
 import type { DurableObjectState } from '@cloudflare/workers-types';
 import type { CloudflareBindings } from '../src/lib/server/cloudflare/env';
 import { execute } from '../src/lib/server/cloudflare/d1';
+import {
+	hashMcpToken,
+	isMcpToken,
+	resolveStoredMcpToken,
+	type ResolvedMcpToken
+} from '../src/lib/mcp/token';
 import { McpSession, type McpStorage } from '../src/lib/server/mcp/engine';
 import { handleJsonRpcMessage } from '../src/lib/server/mcp/protocol';
-import { verifyMcpToken } from '../src/lib/mcp/token';
 
-const CORS_HEADERS = {
-	'Access-Control-Allow-Origin': '*',
-	'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, HEAD',
-	'Access-Control-Allow-Headers': '*'
-};
+const MAX_REQUEST_BYTES = 1024 * 1024;
+type TokenResolver = (token: string) => Promise<ResolvedMcpToken | null>;
+
+function bearerToken(request: Request): string | null {
+	const authorization = request.headers.get('authorization');
+	const match = authorization?.match(/^Bearer\s+(\S+)\s*$/i);
+	if (!match) return null;
+	const token = match[1];
+	return isMcpToken(token) ? token : null;
+}
 
 export class AccountMcpSession {
 	private session?: McpSession;
-	private activeToken?: string;
+	private activeTokenHash?: string;
 
 	constructor(
-		private readonly state: DurableObjectState,
-		private readonly env?: CloudflareBindings
+		_state: DurableObjectState,
+		private readonly env?: CloudflareBindings,
+		private readonly injectedTokenResolver?: TokenResolver
 	) {}
-
-	async alarm(): Promise<void> {
-		this.session = undefined;
-		this.activeToken = undefined;
-		try {
-			if (this.state?.storage) {
-				await this.state.storage.deleteAll();
-			}
-		} catch {
-			// ignore
-		}
-	}
 
 	private createStorage(): McpStorage {
 		return {
 			sync: async (accountId, cursor, uploads, deletions, downloadLimit) => {
-				if (!this.env?.ACCOUNT_COORDINATOR) {
-					return {
-						cursor: 0,
-						envelopes: [],
-						conflicts: [],
-						hasMore: false,
-						reset: false,
-						writesAccepted: true
-					};
-				}
+				if (!this.env?.ACCOUNT_COORDINATOR) throw new Error('Sync storage is unavailable');
 				const stub = this.env.ACCOUNT_COORDINATOR.get(
 					this.env.ACCOUNT_COORDINATOR.idFromName(accountId)
 				);
-				const res = await stub.fetch('https://coordinator/sync', {
+				const response = await stub.fetch('https://coordinator/sync', {
 					method: 'POST',
 					body: JSON.stringify({
 						accountId,
@@ -59,202 +49,157 @@ export class AccountMcpSession {
 						maxAccountBytes: 1_000_000_000
 					})
 				});
-				if (!res.ok) {
-					throw new Error(`Account coordinator sync failed with status ${res.status}`);
+				if (!response.ok) {
+					throw new Error(`Account coordinator sync failed with status ${response.status}`);
 				}
-				return res.json();
+				return response.json();
 			}
 		};
 	}
 
-	private async isTokenRevoked(accountId: string, tokenCreatedAt: number): Promise<boolean> {
-		if (!this.env?.SCRAPSCACHE_DB) return false;
-		try {
-			const result = await execute(this.env.SCRAPSCACHE_DB, {
-				sql: 'SELECT revoked_before AS revokedBefore FROM mcp_revocations WHERE account_id = ?',
-				args: [accountId]
-			});
-			const row = result.rows[0] as { revokedBefore?: number } | undefined;
-			if (!row || row.revokedBefore == null) return false;
-			return tokenCreatedAt <= Number(row.revokedBefore);
-		} catch {
-			return false;
+	private async resolveToken(token: string): Promise<ResolvedMcpToken | null> {
+		if (this.injectedTokenResolver) return this.injectedTokenResolver(token);
+		if (!this.env?.SCRAPSCACHE_DB) throw new Error('MCP token storage is unavailable');
+		const tokenHash = hashMcpToken(token);
+		const result = await execute(this.env.SCRAPSCACHE_DB, {
+			sql: `SELECT token_hash AS tokenHash, account_id AS accountId,
+				wrapped_sync_key AS wrappedSyncKey, created_at AS createdAt
+				FROM mcp_tokens WHERE token_hash = ?`,
+			args: [tokenHash]
+		});
+		const row = result.rows[0] as
+			| { tokenHash: string; accountId: string; wrappedSyncKey: string; createdAt: number }
+			| undefined;
+		return row ? resolveStoredMcpToken(token, row) : null;
+	}
+
+	private useSession(resolved: ResolvedMcpToken): McpSession {
+		if (!this.session || this.activeTokenHash !== resolved.tokenHash) {
+			this.session?.close();
+			this.session = new McpSession(resolved.accountId, resolved.syncKey, this.createStorage());
+			this.activeTokenHash = resolved.tokenHash;
 		}
+		this.session.touch();
+		return this.session;
+	}
+
+	private async authenticate(request: Request): Promise<McpSession | null> {
+		const token = bearerToken(request);
+		if (!token) return null;
+		const resolved = await this.resolveToken(token);
+		if (!resolved) {
+			this.session?.close();
+			this.session = undefined;
+			this.activeTokenHash = undefined;
+			return null;
+		}
+		return this.useSession(resolved);
 	}
 
 	async fetch(request: Request): Promise<Response> {
-		if (request.method === 'OPTIONS') {
-			return new Response(null, {
-				status: 204,
-				headers: CORS_HEADERS
-			});
+		if (request.method === 'DELETE') {
+			this.session?.close();
+			this.session = undefined;
+			this.activeTokenHash = undefined;
+			return new Response(null, { status: 204 });
+		}
+
+		let session: McpSession | null;
+		try {
+			session = await this.authenticate(request);
+		} catch {
+			return Response.json({ error: 'MCP token storage is unavailable' }, { status: 503 });
+		}
+		if (!session) {
+			return Response.json(
+				{ error: 'Missing, invalid, or revoked MCP bearer token' },
+				{ status: 401 }
+			);
 		}
 
 		const url = new URL(request.url);
-
-		const authHeader = request.headers.get('Authorization') || '';
-		let token =
-			url.searchParams.get('token') ||
-			authHeader.replace(/^Bearer\s+/i, '').trim() ||
-			this.activeToken ||
-			'';
-
-		if (!token && this.state?.storage) {
-			try {
-				token = (await this.state.storage.get<string>('mcp_token')) || '';
-			} catch {
-				// ignore
-			}
-		}
-
 		if (request.method === 'GET' || request.method === 'HEAD') {
-			const verified = verifyMcpToken(token);
-			if (!verified.valid || !verified.accountId || !verified.syncKey || !verified.createdAt) {
-				return Response.json(
-					{ error: verified.error || 'Unauthorized' },
-					{ status: 401, headers: CORS_HEADERS }
-				);
-			}
-
-			if (await this.isTokenRevoked(verified.accountId, verified.createdAt)) {
-				return Response.json({ error: 'Token revoked' }, { status: 401, headers: CORS_HEADERS });
-			}
-
-			this.activeToken = token;
-			this.session = new McpSession(verified.accountId, verified.syncKey, this.createStorage());
-			const sessionId = `${verified.accountId}.${crypto.randomUUID()}`;
-
-			try {
-				if (this.state?.storage) {
-					await this.state.storage.put('mcp_token', token);
-					await this.state.storage.setAlarm(Date.now() + 60 * 60 * 1000);
-				}
-			} catch {
-				// storage error non-fatal
-			}
-
 			let interval: ReturnType<typeof setInterval> | undefined;
-
+			let unsubscribe: (() => void) | undefined;
 			const stream = new ReadableStream({
-				start: (controller) => {
+				start(controller) {
 					const encoder = new TextEncoder();
 					const send = (event: string, data: string) => {
 						try {
 							controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
 						} catch {
-							// stream closed
+							// The abort handler performs cleanup.
 						}
 					};
-
-					// Send endpoint URL containing both sessionId and token parameter for persistence
-					send(
-						'endpoint',
-						`${url.origin}/api/mcp/messages?sessionId=${sessionId}&token=${encodeURIComponent(token)}`
-					);
-
-					// Keep-alive every 15s
-					interval = setInterval(() => {
-						try {
-							controller.enqueue(encoder.encode(': ping\n\n'));
-						} catch {
-							if (interval) clearInterval(interval);
-						}
-					}, 15000);
-
-					const unsubscribe = this.session!.addSseListener((event, data) => {
+					send('endpoint', `${url.origin}/api/mcp/messages`);
+					interval = setInterval(() => send('ping', '{}'), 15_000);
+					unsubscribe = session.addSseListener((event, data) => {
 						send(event, typeof data === 'string' ? data : JSON.stringify(data));
-					});
-
-					request.signal.addEventListener('abort', () => {
-						if (interval) clearInterval(interval);
-						unsubscribe();
-						try {
+						if (event === 'close') {
+							if (interval) clearInterval(interval);
+							unsubscribe?.();
 							controller.close();
-						} catch {
-							// ignore
 						}
 					});
+					request.signal.addEventListener(
+						'abort',
+						() => {
+							if (interval) clearInterval(interval);
+							unsubscribe?.();
+							try {
+								controller.close();
+							} catch {
+								// The stream may already be closed.
+							}
+						},
+						{ once: true }
+					);
 				},
-				cancel: () => {
+				cancel() {
 					if (interval) clearInterval(interval);
+					unsubscribe?.();
 				}
 			});
-
 			return new Response(stream, {
 				headers: {
 					'Content-Type': 'text/event-stream',
 					'Cache-Control': 'no-cache, no-transform',
 					Connection: 'keep-alive',
-					'X-Accel-Buffering': 'no',
-					...CORS_HEADERS
+					'X-Accel-Buffering': 'no'
 				}
 			});
 		}
 
-		if (request.method === 'POST') {
-			// If in-memory session was lost or DO woke up, rehydrate from token
-			if (!this.session && token) {
-				const verified = verifyMcpToken(token);
-				if (
-					verified.valid &&
-					verified.accountId &&
-					verified.syncKey &&
-					verified.createdAt &&
-					!(await this.isTokenRevoked(verified.accountId, verified.createdAt))
-				) {
-					this.activeToken = token;
-					this.session = new McpSession(verified.accountId, verified.syncKey, this.createStorage());
-					try {
-						if (this.state?.storage) {
-							await this.state.storage.setAlarm(Date.now() + 60 * 60 * 1000);
-						}
-					} catch {
-						// ignore
-					}
-				}
-			}
-
-			if (!this.session) {
-				return Response.json(
-					{ error: 'No active session or session expired' },
-					{ status: 404, headers: CORS_HEADERS }
-				);
-			}
-
-			let body: unknown;
-			try {
-				body = await request.json();
-			} catch {
-				return Response.json(
-					{ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } },
-					{ status: 400, headers: CORS_HEADERS }
-				);
-			}
-
-			const response = await handleJsonRpcMessage(this.session, body);
-			const headers = new Headers(CORS_HEADERS);
-			headers.set('Content-Type', 'application/json');
-			const sessionId =
-				url.searchParams.get('sessionId') ||
-				request.headers.get('Mcp-Session-Id') ||
-				`${this.session.accountId}.${crypto.randomUUID()}`;
-			headers.set('Mcp-Session-Id', sessionId);
-
-			if (response === null) {
-				return new Response(null, { status: 204, headers });
-			}
-
-			if (Array.isArray(response)) {
-				for (const r of response) {
-					this.session.broadcast('message', r);
-				}
-			} else {
-				this.session.broadcast('message', response);
-			}
-
-			return new Response(JSON.stringify(response), { status: 200, headers });
+		if (request.method !== 'POST') return new Response(null, { status: 405 });
+		const contentLength = Number(request.headers.get('content-length') ?? 0);
+		if (contentLength > MAX_REQUEST_BYTES) {
+			return Response.json({ error: 'MCP request body is too large' }, { status: 413 });
+		}
+		const rawBody = await request.text();
+		if (new TextEncoder().encode(rawBody).length > MAX_REQUEST_BYTES) {
+			return Response.json({ error: 'MCP request body is too large' }, { status: 413 });
+		}
+		let body: unknown;
+		try {
+			body = JSON.parse(rawBody);
+		} catch {
+			return Response.json(
+				{ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } },
+				{ status: 400 }
+			);
 		}
 
-		return Response.json({ error: 'Method not allowed' }, { status: 405, headers: CORS_HEADERS });
+		const response = await handleJsonRpcMessage(session, body);
+		const legacySseMessage = url.pathname.endsWith('/messages');
+		if (response === null) return new Response(null, { status: legacySseMessage ? 202 : 204 });
+		if (legacySseMessage) {
+			if (Array.isArray(response)) {
+				for (const item of response) session.broadcast('message', item);
+			} else {
+				session.broadcast('message', response);
+			}
+			return new Response(null, { status: 202 });
+		}
+		return Response.json(response, { headers: { 'Cache-Control': 'no-store' } });
 	}
 }

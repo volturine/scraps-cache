@@ -468,6 +468,10 @@ export class SyncStore {
 					{
 						sql: `DELETE FROM reminder_wake_deliveries WHERE account_id IN (${placeholders})`,
 						args: ids
+					},
+					{
+						sql: `DELETE FROM mcp_tokens WHERE account_id IN (${placeholders})`,
+						args: ids
 					}
 				],
 				'write'

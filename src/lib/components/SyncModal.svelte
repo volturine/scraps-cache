@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
@@ -9,7 +9,7 @@
 	import { portalToAppFloat } from '$lib/appViewport';
 	import { PairingRole } from '$lib/pairingProtocol';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
-	import { createMcpToken, verifyMcpToken } from '$lib/mcp/token';
+	import { createMcpTokenGrant, isMcpToken } from '$lib/mcp/token';
 
 	const SyncModalMode = {
 		Menu: 'menu',
@@ -50,27 +50,19 @@
 	let mcpToken = $state('');
 	let mcpCopiedUrl = $state(false);
 	let mcpCopiedToken = $state(false);
-	let mcpCopiedFullUrl = $state(false);
+	let mcpIssuing = $state(false);
 	let mcpRevoking = $state(false);
 
-	$effect(() => {
+	onMount(() => {
 		if (typeof localStorage === 'undefined') return;
 		const accountId = syncStore.account?.accountId;
-		if (!accountId) {
-			mcpToken = '';
-			return;
-		}
-		if (!mcpToken) {
-			const saved = localStorage.getItem(`${LS_MCP_TOKEN_PREFIX}${accountId}`);
-			if (saved) {
-				const verified = verifyMcpToken(saved);
-				if (verified.valid && verified.accountId === accountId) {
-					mcpToken = saved;
-					mcpOpen = true;
-				} else {
-					localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${accountId}`);
-				}
-			}
+		if (!accountId) return;
+		const saved = localStorage.getItem(`${LS_MCP_TOKEN_PREFIX}${accountId}`);
+		if (saved && isMcpToken(saved)) {
+			mcpToken = saved;
+			mcpOpen = true;
+		} else if (saved) {
+			localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${accountId}`);
 		}
 	});
 
@@ -289,16 +281,32 @@
 		info = 'Cloud data deleted. Notes on this device were kept.';
 	}
 
-	function generateMcpToken() {
-		if (!syncStore.account?.syncKey || !syncStore.account?.accountId) return;
-		mcpToken = createMcpToken(syncStore.account.syncKey);
-		mcpOpen = true;
-		if (typeof localStorage !== 'undefined') {
-			localStorage.setItem(`${LS_MCP_TOKEN_PREFIX}${syncStore.account.accountId}`, mcpToken);
+	async function generateMcpToken() {
+		const account = syncStore.account;
+		if (!account?.syncKey || mcpIssuing || mcpRevoking) return;
+		mcpIssuing = true;
+		error = '';
+		try {
+			const grant = createMcpTokenGrant(account.syncKey);
+			const response = await syncStore.authorizedFetch('/api/mcp/token', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ token: grant.token, wrappedSyncKey: grant.wrappedSyncKey })
+			});
+			if (!response.ok) throw new Error('Issue failed');
+			mcpToken = grant.token;
+			mcpOpen = true;
+			if (typeof localStorage !== 'undefined') {
+				localStorage.setItem(`${LS_MCP_TOKEN_PREFIX}${account.accountId}`, mcpToken);
+			}
+		} catch {
+			error = 'Failed to enable Mobile AI access.';
+		} finally {
+			mcpIssuing = false;
 		}
 	}
 
-	async function copyMcpText(text: string, which: 'url' | 'token' | 'full') {
+	async function copyMcpText(text: string, which: 'url' | 'token') {
 		let copied = false;
 		try {
 			if (navigator.clipboard?.writeText) {
@@ -327,21 +335,14 @@
 		} else if (which === 'token') {
 			mcpCopiedToken = true;
 			setTimeout(() => (mcpCopiedToken = false), 1500);
-		} else {
-			mcpCopiedFullUrl = true;
-			setTimeout(() => (mcpCopiedFullUrl = false), 1500);
 		}
 	}
 
 	async function revokeMcpAccess() {
-		if (mcpRevoking) return;
+		if (mcpRevoking || mcpIssuing) return;
 		mcpRevoking = true;
 		try {
-			const res = await fetch('/api/mcp/revoke', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ token: mcpToken || undefined })
-			});
+			const res = await syncStore.authorizedFetch('/api/mcp/revoke', { method: 'POST' });
 			if (!res.ok) throw new Error('Revoke failed');
 			if (typeof localStorage !== 'undefined' && syncStore.account?.accountId) {
 				localStorage.removeItem(`${LS_MCP_TOKEN_PREFIX}${syncStore.account.accountId}`);
@@ -533,10 +534,11 @@
 					{#if !mcpToken}
 						<button
 							type="button"
-							onclick={generateMcpToken}
+							onclick={() => void generateMcpToken()}
+							disabled={mcpIssuing || mcpRevoking}
 							class="scrapscache-button scrapscache-button-secondary w-full px-2 py-2 text-xs font-medium"
 						>
-							✨ Enable Mobile AI Access
+							{mcpIssuing ? 'Enabling…' : '✨ Enable Mobile AI Access'}
 						</button>
 					{:else if mcpOpen}
 						<div class="space-y-3 pt-1 border-t border-[var(--scrapscache-border)]">
@@ -544,106 +546,66 @@
 								<div
 									class="flex items-center justify-between text-[11px] text-[var(--scrapscache-text-muted)] mb-1"
 								>
-									<span class="font-medium text-[var(--scrapscache-text)]"
-										>Connector URL (Grok / Perplexity)</span
-									>
+									<span class="font-medium text-[var(--scrapscache-text)]">Server URL</span>
 									<button
 										type="button"
-										onclick={() =>
-											copyMcpText(
-												`${window.location.origin}/api/mcp/sse?token=${mcpToken}`,
-												'full'
-											)}
+										onclick={() => copyMcpText(`${window.location.origin}/api/mcp`, 'url')}
 										class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline font-medium"
 									>
-										{#if mcpCopiedFullUrl}
+										{#if mcpCopiedUrl}
 											<Check class="h-3 w-3" /> Copied
 										{:else}
-											<Copy class="h-3 w-3" /> Copy Connector URL
+											<Copy class="h-3 w-3" /> Copy URL
 										{/if}
 									</button>
 								</div>
 								<div
 									class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[11px] select-all"
 								>
-									{typeof window !== 'undefined'
-										? `${window.location.origin}/api/mcp/sse?token=${mcpToken}`
-										: `/api/mcp/sse?token=${mcpToken}`}
+									{typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : `/api/mcp`}
 								</div>
 								<p class="text-[10px] text-[var(--scrapscache-text-muted)] mt-1">
-									Paste into Grok or Perplexity <b>Server URL</b> field. No OAuth setup needed.
+									Configure the token below as the <b>Authorization: Bearer</b> credential.
 								</p>
 							</div>
 
-							<details class="text-[11px] text-[var(--scrapscache-text-muted)]">
-								<summary
-									class="cursor-pointer hover:text-[var(--scrapscache-text)] text-[10px] font-medium select-none"
-								>
-									Advanced (Separate URL & Bearer Token)
-								</summary>
-								<div class="space-y-2 mt-2 pt-2 border-t border-[var(--scrapscache-border)]/50">
-									<div>
-										<div class="flex items-center justify-between text-[10px] mb-1">
-											<span>Base Server URL</span>
-											<button
-												type="button"
-												onclick={() => copyMcpText(`${window.location.origin}/api/mcp/sse`, 'url')}
-												class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
-											>
-												{#if mcpCopiedUrl}
-													<Check class="h-3 w-3" /> Copied
-												{:else}
-													<Copy class="h-3 w-3" /> Copy URL
-												{/if}
-											</button>
-										</div>
-										<div
-											class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[10px] select-all"
-										>
-											{typeof window !== 'undefined'
-												? `${window.location.origin}/api/mcp/sse`
-												: '/api/mcp/sse'}
-										</div>
-									</div>
-
-									<div>
-										<div class="flex items-center justify-between text-[10px] mb-1">
-											<span>Bearer Token</span>
-											<button
-												type="button"
-												onclick={() => copyMcpText(mcpToken, 'token')}
-												class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
-											>
-												{#if mcpCopiedToken}
-													<Check class="h-3 w-3" /> Copied
-												{:else}
-													<Copy class="h-3 w-3" /> Copy Token
-												{/if}
-											</button>
-										</div>
-										<div
-											class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[10px] select-all"
-										>
-											{mcpToken}
-										</div>
-									</div>
+							<div>
+								<div class="flex items-center justify-between text-[10px] mb-1">
+									<span>Bearer Token</span>
+									<button
+										type="button"
+										onclick={() => copyMcpText(mcpToken, 'token')}
+										class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
+									>
+										{#if mcpCopiedToken}
+											<Check class="h-3 w-3" /> Copied
+										{:else}
+											<Copy class="h-3 w-3" /> Copy Token
+										{/if}
+									</button>
 								</div>
-							</details>
+								<div
+									class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[10px] select-all"
+								>
+									{mcpToken}
+								</div>
+							</div>
 
 							<div
 								class="flex items-center justify-between pt-1 border-t border-[var(--scrapscache-border)]/50"
 							>
 								<button
 									type="button"
-									onclick={generateMcpToken}
+									onclick={() => void generateMcpToken()}
+									disabled={mcpIssuing || mcpRevoking}
 									class="text-[10px] text-[var(--scrapscache-text-muted)] hover:text-[var(--scrapscache-text)] underline"
 								>
-									Regenerate token
+									{mcpIssuing ? 'Regenerating…' : 'Regenerate token'}
 								</button>
 								<button
 									type="button"
 									onclick={() => void revokeMcpAccess()}
-									disabled={mcpRevoking}
+									disabled={mcpRevoking || mcpIssuing}
 									class="text-[11px] text-[var(--scrapscache-danger)] hover:underline"
 								>
 									{mcpRevoking ? 'Revoking…' : 'Revoke Access'}

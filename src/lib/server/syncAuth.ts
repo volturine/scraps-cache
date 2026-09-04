@@ -234,3 +234,7 @@ export function getSyncAuth(): SyncAuth {
 	singleton ??= new SyncAuth(getDb());
 	return singleton;
 }
+
+export function closeSyncAuth(): void {
+	singleton = undefined;
+}

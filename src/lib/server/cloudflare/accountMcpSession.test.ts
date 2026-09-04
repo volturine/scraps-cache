@@ -1,99 +1,113 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { testDb, cleanupTestDbs } from '$lib/server/testDb';
-import type { Db } from '$lib/server/db';
-import { closeMcpRevocationStore } from '$lib/server/mcp/revocation';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountMcpSession } from '../../../../cf/accountMcpSession';
 import { createSyncIdentity } from '$lib/syncPairing';
-import { createMcpToken } from '$lib/mcp/token';
-
-let mockDb: Db;
-
-vi.mock('$lib/server/db', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/server/db')>();
-	return {
-		...actual,
-		getDb: () => {
-			if (!mockDb) mockDb = testDb();
-			return mockDb;
-		}
-	};
-});
+import { createMcpTokenGrant, hashMcpToken, type ResolvedMcpToken } from '$lib/mcp/token';
 
 describe('AccountMcpSession Durable Object', () => {
-	let identity: ReturnType<typeof createSyncIdentity>;
 	let token: string;
+	let resolved: ResolvedMcpToken;
 
 	beforeEach(() => {
-		mockDb = testDb();
-		identity = createSyncIdentity();
-		token = createMcpToken(identity.syncKey);
+		const identity = createSyncIdentity();
+		token = createMcpTokenGrant(identity.syncKey).token;
+		resolved = {
+			tokenHash: hashMcpToken(token),
+			accountId: identity.accountId,
+			syncKey: identity.syncKey,
+			createdAt: Date.now()
+		};
 	});
 
-	afterEach(() => {
-		closeMcpRevocationStore();
-		cleanupTestDbs();
-	});
+	it('keeps decrypted material only in memory and requires the bearer on every request', async () => {
+		const storage = { get: vi.fn(), put: vi.fn(), setAlarm: vi.fn(), deleteAll: vi.fn() };
+		const durableObject = new AccountMcpSession({ storage } as any, undefined, async (candidate) =>
+			candidate === token ? resolved : null
+		);
 
-	it('handles SSE connection and JSON-RPC dispatch in Durable Object', async () => {
-		const doSession = new AccountMcpSession({} as any);
-
-		// 1. Connect via SSE
-		const sseReq = new Request(`https://scrapscache.com/sse?token=${token}`, {
-			headers: { Accept: 'text/event-stream' }
+		const sseRequest = new Request('https://scrapscache.com/api/mcp/sse', {
+			headers: { Authorization: `Bearer ${token}` }
 		});
-		const sseRes = await doSession.fetch(sseReq);
-		expect(sseRes.status).toBe(200);
-		expect(sseRes.headers.get('Content-Type')).toBe('text/event-stream');
+		const sseResponse = await durableObject.fetch(sseRequest);
+		expect(sseResponse.status).toBe(200);
+		const reader = sseResponse.body!.getReader();
+		const text = new TextDecoder().decode((await reader.read()).value);
+		expect(text).toContain('data: https://scrapscache.com/api/mcp/messages');
+		expect(text).not.toContain('token=');
 
-		const reader = sseRes.body!.getReader();
-		const decoder = new TextDecoder();
-		const chunk1 = await reader.read();
-		const text = decoder.decode(chunk1.value);
-		expect(text).toContain('event: endpoint');
-
-		const match = text.match(/sessionId=([a-zA-Z0-9_.-]+)/);
-		expect(match).toBeTruthy();
-		const sessionId = match![1];
-
-		// 2. Send ping to messages
-		const pingReq = new Request(`https://scrapscache.com/messages?sessionId=${sessionId}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				jsonrpc: '2.0',
-				id: 10,
-				method: 'ping'
-			})
-		});
-		const pingRes = await doSession.fetch(pingReq);
-		expect(pingRes.status).toBe(200);
-		const pingJson = await pingRes.json();
-		expect(pingJson).toEqual({ jsonrpc: '2.0', id: 10, result: {} });
-
-		reader.cancel();
-	});
-
-	it('auto-rehydrates session from token on messages endpoint when memory is empty', async () => {
-		const doSession = new AccountMcpSession({} as any);
-
-		// Do not connect SSE first; directly call messages with token param
-		const toolsReq = new Request(
-			`https://scrapscache.com/messages?sessionId=${identity.accountId}.test&token=${encodeURIComponent(token)}`,
-			{
+		const unauthenticated = await durableObject.fetch(
+			new Request('https://scrapscache.com/api/mcp/messages?sessionId=guessed', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					jsonrpc: '2.0',
-					id: 20,
-					method: 'tools/list'
-				})
-			}
+				body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' })
+			})
 		);
-		const toolsRes = await doSession.fetch(toolsReq);
-		expect(toolsRes.status).toBe(200);
-		const toolsJson = (await toolsRes.json()) as any;
-		expect(toolsJson.result.tools).toBeDefined();
-		expect(toolsJson.result.tools.some((t: any) => t.name === 'list_notes')).toBe(true);
-		expect(toolsJson.result.tools.some((t: any) => t.name === 'search_notes')).toBe(true);
+		expect(unauthenticated.status).toBe(401);
+		expect(storage.get).not.toHaveBeenCalled();
+		expect(storage.put).not.toHaveBeenCalled();
+		expect(storage.setAlarm).not.toHaveBeenCalled();
+
+		expect(
+			(await durableObject.fetch(new Request('https://mcp-session/revoke', { method: 'DELETE' })))
+				.status
+		).toBe(204);
+		expect(new TextDecoder().decode((await reader.read()).value)).toContain('event: close');
+		expect((await reader.read()).done).toBe(true);
+	});
+
+	it('rehydrates from an authorized request and fails closed after revocation', async () => {
+		let active = true;
+		const durableObject = new AccountMcpSession({} as any, undefined, async (candidate) =>
+			active && candidate === token ? resolved : null
+		);
+		const request = () =>
+			new Request('https://scrapscache.com/api/mcp', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${token}`
+				},
+				body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' })
+			});
+
+		const response = await durableObject.fetch(request());
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as any).result.tools).toBeDefined();
+
+		active = false;
+		expect((await durableObject.fetch(request())).status).toBe(401);
+	});
+
+	it('keeps concurrent clients on the same bearer session connected', async () => {
+		const durableObject = new AccountMcpSession({} as any, undefined, async (candidate) =>
+			candidate === token ? resolved : null
+		);
+		const connect = () =>
+			durableObject.fetch(
+				new Request('https://scrapscache.com/api/mcp/sse', {
+					headers: { Authorization: `Bearer ${token}` }
+				})
+			);
+		const readers = await Promise.all(
+			(await Promise.all([connect(), connect()])).map(async (response) => {
+				const reader = response.body!.getReader();
+				await reader.read();
+				return reader;
+			})
+		);
+		const message = await durableObject.fetch(
+			new Request('https://scrapscache.com/api/mcp/messages', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${token}`
+				},
+				body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'ping' })
+			})
+		);
+		expect(message.status).toBe(202);
+		for (const reader of readers) {
+			expect(new TextDecoder().decode((await reader.read()).value)).toContain('"id":3');
+			await reader.cancel();
+		}
 	});
 });

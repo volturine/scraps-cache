@@ -1,42 +1,17 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getMcpRevocationStore } from '$lib/server/mcp/revocation';
 import { getSyncAuth } from '$lib/server/syncAuth';
-import { verifyMcpToken } from '$lib/mcp/token';
-import { getMcpSessionManager } from '$lib/server/mcp/sessionManager';
+import { getMcpTokenStore } from '$lib/server/mcp/tokenStore';
+import { endMcpSessions } from '$lib/server/mcp/liveSessions';
 
-export const POST: RequestHandler = async ({ request }) => {
-	let accountId: string | null = null;
-
-	try {
-		accountId = await getSyncAuth().authenticateSyncRequest(request);
-	} catch {
-		// Not authenticated via sync session
-	}
-
-	if (!accountId) {
-		try {
-			const body = (await request.json()) as { token?: string };
-			if (body.token) {
-				const verified = verifyMcpToken(body.token);
-				if (verified.valid && verified.accountId) {
-					accountId = verified.accountId;
-				}
-			}
-		} catch {
-			// Ignore
-		}
-	}
-
+export const POST: RequestHandler = async ({ request, platform }) => {
+	const accountId = await getSyncAuth().authenticateSyncRequest(request);
 	if (!accountId) {
 		return json({ error: 'Unauthorized to revoke MCP tokens' }, { status: 401 });
 	}
 
-	const revocationStore = getMcpRevocationStore();
-	await revocationStore.revoke(accountId);
-
-	const manager = getMcpSessionManager();
-	manager.removeAccountSessions(accountId);
+	const tokenHashes = await getMcpTokenStore().revokeAccount(accountId);
+	await endMcpSessions(accountId, tokenHashes, platform);
 
 	return json({ success: true, revokedAt: Date.now() });
 };

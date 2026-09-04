@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import type { LayoutProps } from './$types';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { syncStore } from '$lib/stores/sync.svelte';
@@ -19,6 +20,8 @@
 	import { attachAppViewport } from '$lib/appViewport';
 	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
+
+	let { children }: LayoutProps = $props();
 
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
@@ -209,6 +212,7 @@
 					class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
 					onscroll={rememberFeedScroll}
 				>
+					{@render children()}
 					<AppViews />
 				</main>
 				<div class="app-float" data-app-float>

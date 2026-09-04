@@ -2,6 +2,27 @@ import adapterNode from '@sveltejs/adapter-node';
 import adapterCloudflare from '@sveltejs/adapter-cloudflare';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
+function nodeAdapter() {
+	const adapter = adapterNode();
+	return {
+		...adapter,
+		async adapt(builder) {
+			const warn = console.warn;
+			console.warn = (...args) => {
+				// adapter-node reports SvelteKit's tree-shaken no-op virtual env chunk as empty when SSR
+				// is disabled. The adapter's real env entry is still emitted, so this warning is not actionable.
+				if (args.length === 1 && args[0] === 'Generated an empty chunk: "chunks/env.js".') return;
+				warn(...args);
+			};
+			try {
+				await adapter.adapt(builder);
+			} finally {
+				console.warn = warn;
+			}
+		}
+	};
+}
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	preprocess: vitePreprocess(),
@@ -10,7 +31,7 @@ const config = {
 		adapter:
 			process.env.DEPLOY_TARGET === 'cloudflare'
 				? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
-				: adapterNode(),
+				: nodeAdapter(),
 		csp: {
 			mode: 'nonce',
 			directives: {
