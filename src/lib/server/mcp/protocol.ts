@@ -1,5 +1,8 @@
 import { MCP_TOOLS, type McpSession } from './engine';
 
+const MCP_PROTOCOL_VERSIONS = new Set(['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']);
+const LATEST_MCP_PROTOCOL_VERSION = '2025-11-25';
+
 export type JsonRpcRequest = {
 	jsonrpc: '2.0';
 	id?: string | number | null;
@@ -74,11 +77,16 @@ async function handleSingleJsonRpcMessage(
 	try {
 		switch (req.method) {
 			case 'initialize': {
+				const requestedProtocolVersion = req.params?.protocolVersion;
 				return {
 					jsonrpc: '2.0',
 					id,
 					result: {
-						protocolVersion: '2024-11-05',
+						protocolVersion:
+							typeof requestedProtocolVersion === 'string' &&
+							MCP_PROTOCOL_VERSIONS.has(requestedProtocolVersion)
+								? requestedProtocolVersion
+								: LATEST_MCP_PROTOCOL_VERSION,
 						capabilities: {
 							tools: {},
 							resources: {}

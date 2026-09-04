@@ -10,10 +10,6 @@ const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 type ClientMetadata = {
 	redirect_uris?: unknown;
 	token_endpoint_auth_method?: unknown;
-	grant_types?: unknown;
-	response_types?: unknown;
-	scope?: unknown;
-	application_type?: unknown;
 	client_name?: unknown;
 };
 
@@ -21,12 +17,6 @@ function registrationError(error: string, description: string): Response {
 	return json(
 		{ error, error_description: description },
 		{ status: 400, headers: NO_STORE_HEADERS }
-	);
-}
-
-function isOnly(value: unknown, expected: string): boolean {
-	return (
-		value === undefined || (Array.isArray(value) && value.length === 1 && value[0] === expected)
 	);
 }
 
@@ -57,10 +47,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		Array.isArray(metadata) ||
 		(metadata.token_endpoint_auth_method !== undefined &&
 			metadata.token_endpoint_auth_method !== 'none') ||
-		!isOnly(metadata.grant_types, 'authorization_code') ||
-		!isOnly(metadata.response_types, 'code') ||
-		(metadata.scope !== undefined && metadata.scope !== MCP_OAUTH_SCOPE) ||
-		(metadata.application_type !== undefined && metadata.application_type !== 'web') ||
 		(metadata.client_name !== undefined &&
 			(typeof metadata.client_name !== 'string' || metadata.client_name.length > 200))
 	) {
@@ -69,8 +55,8 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 
 	if (
 		!Array.isArray(metadata.redirect_uris) ||
-		metadata.redirect_uris.length !== 1 ||
-		metadata.redirect_uris[0] !== GROK_OAUTH_REDIRECT_URI
+		metadata.redirect_uris.length === 0 ||
+		!metadata.redirect_uris.every((uri) => uri === GROK_OAUTH_REDIRECT_URI)
 	) {
 		return registrationError('invalid_redirect_uri', 'Only the Grok OAuth callback is allowed');
 	}

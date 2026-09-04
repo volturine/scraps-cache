@@ -96,7 +96,23 @@ describe('mcp api routes', () => {
 		});
 		expect(initResponse.status).toBe(200);
 		expect(initResponse.headers.get('mcp-session-id')).toBeNull();
-		expect((await initResponse.json()).result.protocolVersion).toBe('2024-11-05');
+		expect((await initResponse.json()).result.protocolVersion).toBe('2025-11-25');
+
+		const notificationRequest = new Request('http://localhost:5173/api/mcp', {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+				Authorization: `Bearer ${token}`
+			},
+			body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })
+		});
+		const notificationResponse = await (messagesHandler as any)({
+			request: notificationRequest,
+			url: new URL(notificationRequest.url),
+			platform: undefined
+		});
+		expect(notificationResponse.status).toBe(202);
+		expect(await notificationResponse.text()).toBe('');
 		await reader.cancel();
 	});
 

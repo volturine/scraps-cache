@@ -73,6 +73,19 @@ describe('AccountMcpSession Durable Object', () => {
 		expect(response.status).toBe(200);
 		expect(((await response.json()) as any).result.tools).toBeDefined();
 
+		const notificationResponse = await durableObject.fetch(
+			new Request('https://scrapscache.com/api/mcp', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${token}`
+				},
+				body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })
+			})
+		);
+		expect(notificationResponse.status).toBe(202);
+		expect(await notificationResponse.text()).toBe('');
+
 		active = false;
 		expect((await durableObject.fetch(request())).status).toBe(401);
 	});

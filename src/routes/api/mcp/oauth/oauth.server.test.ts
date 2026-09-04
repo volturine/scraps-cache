@@ -159,10 +159,10 @@ describe('MCP OAuth routes', () => {
 			body: JSON.stringify({
 				client_name: 'Grok',
 				redirect_uris: [GROK_OAUTH_REDIRECT_URI],
-				grant_types: ['authorization_code'],
+				grant_types: ['authorization_code', 'refresh_token'],
 				response_types: ['code'],
-				scope: 'mcp',
-				application_type: 'web'
+				scope: 'mcp offline_access',
+				application_type: 'native'
 			})
 		});
 		const registrationResponse = await (registerHandler as any)({
@@ -171,7 +171,8 @@ describe('MCP OAuth routes', () => {
 		});
 		expect(registrationResponse.status).toBe(201);
 		expect(registrationResponse.headers.get('cache-control')).toBe('no-store');
-		expect(await registrationResponse.json()).toMatchObject({
+		const registeredClient = await registrationResponse.json();
+		expect(registeredClient).toMatchObject({
 			client_id: MCP_OAUTH_CLIENT_ID,
 			redirect_uris: [GROK_OAUTH_REDIRECT_URI],
 			token_endpoint_auth_method: 'none',
@@ -179,6 +180,24 @@ describe('MCP OAuth routes', () => {
 			response_types: ['code'],
 			scope: 'mcp',
 			application_type: 'web'
+		});
+		expect(registeredClient).not.toHaveProperty('client_secret');
+
+		const confidentialClientRequest = new Request(registrationRequest.url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				redirect_uris: [GROK_OAUTH_REDIRECT_URI],
+				token_endpoint_auth_method: 'client_secret_post'
+			})
+		});
+		const confidentialClientResponse = await (registerHandler as any)({
+			request: confidentialClientRequest,
+			getClientAddress: () => '127.0.0.1'
+		});
+		expect(confidentialClientResponse.status).toBe(400);
+		expect(await confidentialClientResponse.json()).toMatchObject({
+			error: 'invalid_client_metadata'
 		});
 
 		const maliciousRequest = new Request(registrationRequest.url, {

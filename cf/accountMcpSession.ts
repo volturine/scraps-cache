@@ -191,7 +191,7 @@ export class AccountMcpSession {
 
 		const response = await handleJsonRpcMessage(session, body);
 		const legacySseMessage = url.pathname.endsWith('/messages');
-		if (response === null) return new Response(null, { status: legacySseMessage ? 202 : 204 });
+		if (response === null) return new Response(null, { status: 202 });
 		if (legacySseMessage) {
 			if (Array.isArray(response)) {
 				for (const item of response) session.broadcast('message', item);

@@ -227,7 +227,7 @@ export const handleMcpPost: RequestHandler = async ({
 	const response = await handleJsonRpcMessage(session, body);
 	const legacySseMessage = url.pathname.endsWith('/messages');
 	if (response === null) {
-		return new Response(null, { status: legacySseMessage ? 202 : 204, headers: RESPONSE_HEADERS });
+		return new Response(null, { status: 202, headers: RESPONSE_HEADERS });
 	}
 
 	if (legacySseMessage) {
