@@ -5,10 +5,11 @@
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { unregisterReminderDevice } from '$lib/reminderWake';
-	import { Cloud, X } from '@lucide/svelte';
+	import { Cloud, X, Sparkles, Copy, Check } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 	import { PairingRole } from '$lib/pairingProtocol';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
+	import { createMcpToken } from '$lib/mcp/token';
 
 	const SyncModalMode = {
 		Menu: 'menu',
@@ -43,6 +44,12 @@
 	let deleteConfirm = $state(false);
 	let syncError = $derived(syncStore.lastError ?? '');
 	let quotaStatus = $derived(resolveSyncStatus(syncError, syncStore.usage));
+
+	let mcpOpen = $state(false);
+	let mcpToken = $state('');
+	let mcpCopiedUrl = $state(false);
+	let mcpCopiedToken = $state(false);
+	let mcpRevoking = $state(false);
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -203,8 +210,6 @@
 		mode = SyncModalMode.Menu;
 		error = '';
 		info = '';
-		// Sign-out is local and immediate; a failed server-side unsubscribe must
-		// stay visible so the user knows this browser lingers in wake delivery.
 		unregisterReminderDevice(account).catch(() => {
 			error =
 				'Signed out, but the relay could not remove this device from reminder push. It will age out of delivery on its own.';
@@ -237,7 +242,6 @@
 			}
 			document.body.removeChild(ta);
 		}
-		// Only confirm when the write actually landed; never claim a copy that failed.
 		if (!copied) return;
 		copyFlash = true;
 		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
@@ -260,6 +264,63 @@
 		deleteConfirm = false;
 		mode = SyncModalMode.Menu;
 		info = 'Cloud data deleted. Notes on this device were kept.';
+	}
+
+	function generateMcpToken() {
+		if (!syncStore.account?.syncKey) return;
+		mcpToken = createMcpToken(syncStore.account.syncKey);
+		mcpOpen = true;
+	}
+
+	async function copyMcpText(text: string, which: 'url' | 'token') {
+		let copied = false;
+		try {
+			if (navigator.clipboard?.writeText) {
+				await navigator.clipboard.writeText(text);
+				copied = true;
+			}
+		} catch {
+			const ta = document.createElement('textarea');
+			ta.value = text;
+			ta.setAttribute('readonly', '');
+			ta.style.position = 'fixed';
+			ta.style.left = '-9999px';
+			document.body.appendChild(ta);
+			ta.select();
+			try {
+				copied = document.execCommand('copy');
+			} catch {
+				/* best effort */
+			}
+			document.body.removeChild(ta);
+		}
+		if (!copied) return;
+		if (which === 'url') {
+			mcpCopiedUrl = true;
+			setTimeout(() => (mcpCopiedUrl = false), 1500);
+		} else {
+			mcpCopiedToken = true;
+			setTimeout(() => (mcpCopiedToken = false), 1500);
+		}
+	}
+
+	async function revokeMcpAccess() {
+		if (mcpRevoking) return;
+		mcpRevoking = true;
+		try {
+			const res = await fetch('/api/mcp/revoke', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ token: mcpToken || undefined })
+			});
+			if (!res.ok) throw new Error('Revoke failed');
+			mcpToken = '';
+			info = 'Mobile AI (MCP) access revoked successfully.';
+		} catch {
+			error = 'Failed to revoke Mobile AI access.';
+		} finally {
+			mcpRevoking = false;
+		}
 	}
 
 	function secondsLeft() {
@@ -382,6 +443,109 @@
 						</div>
 					</div>
 				{/if}
+
+				<!-- Mobile & AI Access (MCP) Section -->
+				<div
+					class="rounded-[var(--scrapscache-radius-md)] border border-[var(--scrapscache-border)] bg-[var(--scrapscache-interactive-hover)] p-3 text-xs space-y-2.5"
+				>
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-1.5 font-medium text-[var(--scrapscache-text)]">
+							<Sparkles class="h-3.5 w-3.5 text-amber-500" />
+							<span>Mobile & AI Access (MCP)</span>
+						</div>
+						{#if mcpToken}
+							<button
+								type="button"
+								onclick={() => (mcpOpen = !mcpOpen)}
+								class="text-[var(--scrapscache-text-muted)] hover:text-[var(--scrapscache-text)] text-[11px] underline"
+							>
+								{mcpOpen ? 'Hide' : 'Show details'}
+							</button>
+						{/if}
+					</div>
+
+					<p class="text-[var(--scrapscache-text-muted)] leading-relaxed">
+						Connect mobile LLMs (Claude, Cursor, phone apps) to your notes via Model Context
+						Protocol. Notes are decrypted in ephemeral memory only when connected.
+					</p>
+
+					{#if !mcpToken}
+						<button
+							type="button"
+							onclick={generateMcpToken}
+							class="scrapscache-button scrapscache-button-secondary w-full px-2 py-2 text-xs font-medium"
+						>
+							✨ Enable Mobile AI Access
+						</button>
+					{:else if mcpOpen}
+						<div class="space-y-2 pt-1 border-t border-[var(--scrapscache-border)]">
+							<div>
+								<div
+									class="flex items-center justify-between text-[11px] text-[var(--scrapscache-text-muted)] mb-1"
+								>
+									<span>Server URL (SSE)</span>
+									<button
+										type="button"
+										onclick={() => copyMcpText(`${window.location.origin}/api/mcp/sse`, 'url')}
+										class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
+									>
+										{#if mcpCopiedUrl}
+											<Check class="h-3 w-3" /> Copied
+										{:else}
+											<Copy class="h-3 w-3" /> Copy URL
+										{/if}
+									</button>
+								</div>
+								<div
+									class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[11px] select-all"
+								>
+									{typeof window !== 'undefined'
+										? `${window.location.origin}/api/mcp/sse`
+										: '/api/mcp/sse'}
+								</div>
+							</div>
+
+							<div>
+								<div
+									class="flex items-center justify-between text-[11px] text-[var(--scrapscache-text-muted)] mb-1"
+								>
+									<span>Bearer Token</span>
+									<button
+										type="button"
+										onclick={() => copyMcpText(mcpToken, 'token')}
+										class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
+									>
+										{#if mcpCopiedToken}
+											<Check class="h-3 w-3" /> Copied
+										{:else}
+											<Copy class="h-3 w-3" /> Copy Token
+										{/if}
+									</button>
+								</div>
+								<div
+									class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[11px] select-all"
+								>
+									{mcpToken}
+								</div>
+							</div>
+
+							<div class="flex items-center justify-between pt-1">
+								<span class="text-[10px] text-[var(--scrapscache-text-muted)]"
+									>Ephemeral RAM session</span
+								>
+								<button
+									type="button"
+									onclick={() => void revokeMcpAccess()}
+									disabled={mcpRevoking}
+									class="text-[11px] text-[var(--scrapscache-danger)] hover:underline"
+								>
+									{mcpRevoking ? 'Revoking…' : 'Revoke Access'}
+								</button>
+							</div>
+						</div>
+					{/if}
+				</div>
+
 				<button
 					type="button"
 					onclick={unlinkDevice}

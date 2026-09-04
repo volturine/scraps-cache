@@ -1,77 +1,61 @@
-import type { D1Database, DurableObjectState, R2Bucket } from '@cloudflare/workers-types';
-import { batch, execute, type SqlStatement } from '../src/lib/server/cloudflare/d1';
+import type { DurableObjectState } from '@cloudflare/workers-types';
+import type { CloudflareBindings } from '../src/lib/server/cloudflare/env';
+import { batch, execute } from '../src/lib/server/cloudflare/d1';
+import {
+	MAX_SYNC_MUTATIONS_PER_REQUEST,
+	type SyncEnvelopeUpload,
+	type SyncEnvelopeDeletion,
+	type SyncResult
+} from '../src/lib/server/syncStore';
 
-type Env = {
-	SCRAPSCACHE_DB: D1Database;
-	SCRAPSCACHE_ENVELOPES: R2Bucket;
-};
-
-type Upload = { id: string; slot: string; ciphertext: string; expectedId?: string | null };
-type Deletion = { id: string; slot: string };
-type EnvelopeRow = {
-	seq: number;
-	id: string;
-	slot: string;
-	r2Key: string;
-	ciphertextBytes: number;
-};
 type SyncInput = {
 	accountId: string;
 	cursor: number;
-	uploads: Upload[];
-	deletions: Deletion[];
-	downloadLimit: number;
-	maxAccountBytes: number;
+	uploads: SyncEnvelopeUpload[];
+	deletions: SyncEnvelopeDeletion[];
+	downloadLimit?: number;
 };
 
-const STORAGE_OVERHEAD_BYTES = 512;
-const encoder = new TextEncoder();
+type EnvelopeRow = {
+	slot: string;
+	seq: number;
+	id: string;
+	ciphertext: string;
+	r2_key: string;
+};
 
-function hex(bytes: ArrayBuffer): string {
-	return [...new Uint8Array(bytes)].map((value) => value.toString(16).padStart(2, '0')).join('');
-}
+type QuotaRow = {
+	max_bytes: number | null;
+};
 
-async function accountPrefix(accountId: string): Promise<string> {
-	return hex(await crypto.subtle.digest('SHA-256', encoder.encode(accountId)));
-}
-
-async function ciphertext(env: Env, row: EnvelopeRow): Promise<string> {
-	const object = await env.SCRAPSCACHE_ENVELOPES.get(row.r2Key);
-	if (!object) throw new Error('Encrypted envelope object is missing');
-	return object.text();
-}
-
-async function hydrated(env: Env, rows: EnvelopeRow[]) {
-	return Promise.all(
-		rows.map(async (row) => ({
-			seq: row.seq,
-			id: row.id,
-			slot: row.slot,
-			ciphertext: await ciphertext(env, row)
-		}))
-	);
-}
+const DEFAULT_MAX_ACCOUNT_BYTES = 50 * 1024 * 1024;
+const DEFAULT_DOWNLOAD_LIMIT = 500;
+const MAX_DOWNLOAD_LIMIT = 2_000;
 
 export class AccountCoordinator {
 	constructor(
 		private readonly state: DurableObjectState,
-		private readonly env: Env
+		private readonly env: CloudflareBindings
 	) {}
 
-	fetch(request: Request): Promise<Response> {
-		return this.state.blockConcurrencyWhile(async () => {
-			if (request.method !== 'POST') {
-				return Response.json({ error: 'Not found' }, { status: 404 });
-			}
-			const path = new URL(request.url).pathname;
-			if (path === '/sync') return this.sync((await request.json()) as SyncInput);
-			if (path === '/delete') {
-				return this.deleteAccount(
-					String(((await request.json()) as { accountId?: unknown }).accountId)
-				);
-			}
-			return Response.json({ error: 'Not found' }, { status: 404 });
-		});
+	async fetch(request: Request): Promise<Response> {
+		const url = new URL(request.url);
+		if (request.method === 'POST' && url.pathname === '/sync') {
+			const body = (await request.json()) as SyncInput;
+			return this.sync(body);
+		}
+		if (request.method === 'POST' && url.pathname === '/delete-account') {
+			const { accountId } = (await request.json()) as { accountId: string };
+			return this.deleteAccount(accountId);
+		}
+		if (request.method === 'POST' && url.pathname === '/check-quota') {
+			const { accountId, additionalBytes } = (await request.json()) as {
+				accountId: string;
+				additionalBytes: number;
+			};
+			return this.checkQuota(accountId, additionalBytes);
+		}
+		return new Response('Not found', { status: 404 });
 	}
 
 	private async deleteAccount(accountId: string): Promise<Response> {
@@ -89,7 +73,8 @@ export class AccountCoordinator {
 			{ sql: 'DELETE FROM reminder_push_devices WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wakes WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_revisions WHERE account_id = ?', args: [accountId] },
-			{ sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id = ?', args: [accountId] }
+			{ sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id = ?', args: [accountId] },
+			{ sql: 'DELETE FROM mcp_revocations WHERE account_id = ?', args: [accountId] }
 		]);
 		await Promise.all(keys.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
 		return Response.json({ deleted: results[0]?.rowsAffected === 1 });
@@ -101,243 +86,201 @@ export class AccountCoordinator {
 			await execute(db, {
 				sql: `SELECT next_seq AS nextSeq, envelope_count AS envelopeCount,
 					ciphertext_bytes AS ciphertextBytes
-				 FROM accounts WHERE account_id = ?`,
+					FROM accounts WHERE account_id = ?`,
 				args: [input.accountId]
 			})
 		).rows[0] as { nextSeq: number; envelopeCount: number; ciphertextBytes: number } | undefined;
-		if (!account) return Response.json({ error: 'Sync account does not exist' }, { status: 404 });
 
-		const quota = (
-			await execute(db, {
-				sql: 'SELECT max_bytes AS maxBytes FROM account_quotas WHERE account_id = ?',
-				args: [input.accountId]
-			})
-		).rows[0] as { maxBytes: number } | undefined;
-		const maxBytes = quota?.maxBytes ?? input.maxAccountBytes;
-		let envelopeCount = account.envelopeCount;
-		let ciphertextBytes = account.ciphertextBytes;
-		const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes) =>
-			activeBytes + activeCount * STORAGE_OVERHEAD_BYTES;
-		const usage = () => ({
-			envelopeCount,
-			ciphertextBytes,
-			storageBytes: storageBytes(),
-			maxBytes
-		});
+		if (!account) {
+			return Response.json({ error: 'Account not found' }, { status: 404 });
+		}
+
+		let { nextSeq, envelopeCount, ciphertextBytes } = account;
 		const now = Date.now();
+		const stagingKeys: string[] = [];
 
-		if (input.cursor > account.nextSeq) {
-			await execute(db, {
-				sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
-				args: [now, input.accountId]
-			});
-			return Response.json({
-				cursor: 0,
-				envelopes: [],
-				conflicts: [],
-				hasMore: false,
-				reset: true,
-				writesAccepted: false,
-				usage: usage()
-			});
-		}
-
-		const page = (
-			await execute(db, {
-				sql: `SELECT seq, id, slot, r2_key AS r2Key, ciphertext_bytes AS ciphertextBytes
-				 FROM envelopes WHERE account_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?`,
-				args: [input.accountId, input.cursor, input.downloadLimit + 1]
-			})
-		).rows as EnvelopeRow[];
-		const hasMore = page.length > input.downloadLimit;
-		const remote = hasMore ? page.slice(0, input.downloadLimit) : page;
-		if (remote.length > 0) {
-			await execute(db, {
-				sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
-				args: [now, input.accountId]
-			});
-			return Response.json({
-				cursor: remote.at(-1)?.seq ?? input.cursor,
-				envelopes: await hydrated(this.env, remote),
-				conflicts: [],
-				hasMore,
-				reset: false,
-				writesAccepted: input.uploads.length === 0 && input.deletions.length === 0,
-				usage: usage()
-			});
-		}
-
-		const slots = [...new Set([...input.uploads, ...input.deletions].map(({ slot }) => slot))];
-		const currentRows = slots.length
-			? ((
-					await execute(db, {
-						sql: `SELECT seq, id, slot, r2_key AS r2Key, ciphertext_bytes AS ciphertextBytes
-						 FROM envelopes WHERE account_id = ? AND slot IN (${slots.map(() => '?').join(', ')})`,
-						args: [input.accountId, ...slots]
-					})
-				).rows as EnvelopeRow[])
-			: [];
-		const currentBySlot = new Map(currentRows.map((row) => [row.slot, row]));
-		const conflicts = input.uploads
-			.map((upload) => ({ upload, current: currentBySlot.get(upload.slot) }))
-			.filter(
-				(value): value is { upload: Upload; current: EnvelopeRow } =>
-					!!value.current &&
-					value.current.id !== value.upload.id &&
-					value.current.id !== (value.upload.expectedId ?? null)
-			)
-			.map(({ current }) => current);
-		if (conflicts.length > 0) {
-			await execute(db, {
-				sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
-				args: [now, input.accountId]
-			});
-			return Response.json({
-				cursor: Math.max(input.cursor, account.nextSeq),
-				envelopes: [],
-				conflicts: await hydrated(this.env, conflicts),
-				hasMore: false,
-				reset: false,
-				writesAccepted: false,
-				usage: usage()
-			});
-		}
-
-		const knownIds = input.uploads.length
-			? new Set(
-					(
-						await execute(db, {
-							sql: `SELECT id FROM envelopes WHERE account_id = ? AND id IN (${input.uploads
-								.map(() => '?')
-								.join(', ')})`,
-							args: [input.accountId, ...input.uploads.map(({ id }) => id)]
-						})
-					).rows.map(({ id }) => String(id))
-				)
-			: new Set<string>();
-		const acceptedUploads = input.uploads.filter(({ id }) => {
-			if (knownIds.has(id)) return false;
-			knownIds.add(id);
-			return true;
-		});
-		const prefix = await accountPrefix(input.accountId);
-		const objectKeys = new Map(
-			acceptedUploads.map(({ id }) => [id, `v1/${prefix}/${crypto.randomUUID()}`] as const)
-		);
-		if (acceptedUploads.length > 0) {
-			await batch(
-				db,
-				acceptedUploads.map(({ id }) => ({
-					sql: `INSERT OR REPLACE INTO pending_envelopes(account_id, id, r2_key, created_at)
-						VALUES (?, ?, ?, ?)`,
-					args: [input.accountId, id, objectKeys.get(id)!, now]
-				}))
-			);
-			await Promise.all(
-				acceptedUploads.map((upload) =>
-					this.env.SCRAPSCACHE_ENVELOPES.put(objectKeys.get(upload.id)!, upload.ciphertext)
-				)
-			);
-		}
-
-		const statements: SqlStatement[] = [];
-		const obsoleteObjects: string[] = [];
-		for (const deletion of input.deletions) {
-			const removed = currentBySlot.get(deletion.slot);
-			if (!removed || removed.id !== deletion.id) continue;
-			statements.push(
-				{
-					sql: `INSERT OR REPLACE INTO deleted_envelopes(
-						account_id, slot, id, r2_key, ciphertext_bytes, deleted_at
-					) VALUES (?, ?, ?, ?, ?, ?)`,
-					args: [
-						input.accountId,
-						removed.slot,
-						removed.id,
-						removed.r2Key,
-						removed.ciphertextBytes,
-						now
-					]
-				},
-				{
-					sql: 'DELETE FROM envelopes WHERE account_id = ? AND slot = ? AND id = ?',
-					args: [input.accountId, removed.slot, removed.id]
-				}
-			);
-			envelopeCount -= 1;
-			ciphertextBytes -= removed.ciphertextBytes;
-			currentBySlot.delete(deletion.slot);
-		}
-
-		let sequence = account.nextSeq;
-		for (const upload of acceptedUploads) {
-			const prior = currentBySlot.get(upload.slot);
-			const projectedCount = envelopeCount + (prior ? 0 : 1);
-			const projectedBytes =
-				ciphertextBytes + upload.ciphertext.length - (prior?.ciphertextBytes ?? 0);
-			const projectedStorage = storageBytes(projectedCount, projectedBytes);
-			if (projectedStorage > maxBytes && projectedStorage >= storageBytes()) {
-				await batch(
-					db,
-					acceptedUploads.map(({ id }) => ({
-						sql: 'DELETE FROM pending_envelopes WHERE account_id = ? AND id = ?',
-						args: [input.accountId, id]
-					}))
+		try {
+			if (input.uploads.length + input.deletions.length > MAX_SYNC_MUTATIONS_PER_REQUEST) {
+				return Response.json(
+					{ error: `Mutation batch exceeds limit of ${MAX_SYNC_MUTATIONS_PER_REQUEST}` },
+					{ status: 400 }
 				);
-				await Promise.all(
-					acceptedUploads.map(({ id }) =>
-						this.env.SCRAPSCACHE_ENVELOPES.delete(objectKeys.get(id)!)
-					)
-				);
-				return Response.json({ error: 'quota' }, { status: 507 });
 			}
-			sequence += 1;
-			statements.push({
-				sql: `INSERT INTO envelopes(account_id, slot, seq, id, r2_key, ciphertext_bytes)
-					VALUES (?, ?, ?, ?, ?, ?)
-					ON CONFLICT(account_id, slot) DO UPDATE SET
-						seq = excluded.seq, id = excluded.id,
-						r2_key = excluded.r2_key, ciphertext_bytes = excluded.ciphertext_bytes`,
-				args: [
-					input.accountId,
-					upload.slot,
-					sequence,
-					upload.id,
-					objectKeys.get(upload.id)!,
-					upload.ciphertext.length
-				]
-			});
-			statements.push({
-				sql: 'DELETE FROM pending_envelopes WHERE account_id = ? AND id = ?',
-				args: [input.accountId, upload.id]
-			});
-			if (prior && prior.r2Key !== objectKeys.get(upload.id)) obsoleteObjects.push(prior.r2Key);
-			envelopeCount = projectedCount;
-			ciphertextBytes = projectedBytes;
-			currentBySlot.set(upload.slot, {
-				seq: sequence,
-				id: upload.id,
-				slot: upload.slot,
-				r2Key: objectKeys.get(upload.id)!,
-				ciphertextBytes: upload.ciphertext.length
-			});
-		}
-		statements.push({
-			sql: `UPDATE accounts SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?,
-				updated_at = ?, last_seen_at = ? WHERE account_id = ?`,
-			args: [sequence, envelopeCount, ciphertextBytes, now, now, input.accountId]
-		});
-		await batch(db, statements);
-		await Promise.all(obsoleteObjects.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
 
-		return Response.json({
-			cursor: Math.max(input.cursor, sequence),
-			envelopes: [],
-			conflicts: [],
-			hasMore: false,
-			reset: false,
-			writesAccepted: true,
-			usage: usage()
-		});
+			// Pre-flight quota check for uploads
+			let uploadBytesDelta = 0;
+			for (const u of input.uploads) {
+				uploadBytesDelta += new TextEncoder().encode(u.ciphertext).byteLength;
+			}
+			const quotaLimit = await this.resolveMaxBytes(input.accountId);
+			if (ciphertextBytes + uploadBytesDelta > quotaLimit) {
+				return Response.json(
+					{ error: `Storage quota exceeded (${quotaLimit} bytes limit)` },
+					{ status: 413 }
+				);
+			}
+
+			// Stage new uploads into R2 under pending/ prefix
+			const stagedUploads: Array<SyncEnvelopeUpload & { r2Key: string; byteLength: number }> = [];
+			for (const u of input.uploads) {
+				const byteLength = new TextEncoder().encode(u.ciphertext).byteLength;
+				const r2Key = `accounts/${input.accountId}/envelopes/${u.slot}/${u.id}`;
+				stagingKeys.push(r2Key);
+				await this.env.SCRAPSCACHE_ENVELOPES.put(r2Key, u.ciphertext, {
+					customMetadata: { accountId: input.accountId, slot: u.slot, id: u.id }
+				});
+				stagedUploads.push({ ...u, r2Key, byteLength });
+			}
+
+			// Atomic metadata update in D1
+			const d1Statements: Array<{ sql: string; args: unknown[] }> = [];
+
+			for (const u of stagedUploads) {
+				const seq = nextSeq++;
+				// Slot-conflict: find existing envelope if any
+				const existing = (
+					await execute(db, {
+						sql: 'SELECT id, ciphertext_bytes AS bytes FROM envelopes WHERE account_id = ? AND slot = ?',
+						args: [input.accountId, u.slot]
+					})
+				).rows[0] as { id: string; bytes: number } | undefined;
+
+				if (existing) {
+					if (u.expectedId !== null && existing.id !== u.expectedId) {
+						// Conflict: abort and discard staged objects
+						await Promise.all(stagingKeys.map((k) => this.env.SCRAPSCACHE_ENVELOPES.delete(k)));
+						return Response.json(
+							{
+								error: `Slot conflict on ${u.slot}: expected ${u.expectedId}, found ${existing.id}`
+							},
+							{ status: 409 }
+						);
+					}
+					ciphertextBytes -= existing.bytes;
+					envelopeCount -= 1;
+				}
+
+				ciphertextBytes += u.byteLength;
+				envelopeCount += 1;
+
+				d1Statements.push({
+					sql: `INSERT INTO envelopes (account_id, slot, seq, id, r2_key, ciphertext_bytes, created_at)
+						VALUES (?, ?, ?, ?, ?, ?, ?)
+						ON CONFLICT(account_id, slot) DO UPDATE SET
+							seq = excluded.seq,
+							id = excluded.id,
+							r2_key = excluded.r2_key,
+							ciphertext_bytes = excluded.ciphertext_bytes,
+							created_at = excluded.created_at`,
+					args: [input.accountId, u.slot, seq, u.id, u.r2Key, u.byteLength, now]
+				});
+			}
+
+			for (const d of input.deletions) {
+				const existing = (
+					await execute(db, {
+						sql: 'SELECT id, r2_key AS r2Key, ciphertext_bytes AS bytes FROM envelopes WHERE account_id = ? AND slot = ?',
+						args: [input.accountId, d.slot]
+					})
+				).rows[0] as { id: string; r2Key: string; bytes: number } | undefined;
+
+				if (existing && (d.expectedId === null || existing.id === d.expectedId)) {
+					ciphertextBytes -= existing.bytes;
+					envelopeCount -= 1;
+					d1Statements.push({
+						sql: 'DELETE FROM envelopes WHERE account_id = ? AND slot = ?',
+						args: [input.accountId, d.slot]
+					});
+					d1Statements.push({
+						sql: `INSERT INTO deleted_envelopes (account_id, slot, id, r2_key, deleted_at)
+							VALUES (?, ?, ?, ?, ?)`,
+						args: [input.accountId, d.slot, existing.id, existing.r2Key, now]
+					});
+				}
+			}
+
+			d1Statements.push({
+				sql: `UPDATE accounts SET
+					next_seq = ?, envelope_count = ?, ciphertext_bytes = ?,
+					updated_at = ?, last_seen_at = ?
+					WHERE account_id = ?`,
+				args: [nextSeq, envelopeCount, ciphertextBytes, now, now, input.accountId]
+			});
+
+			await batch(db, d1Statements);
+
+			// Download delta
+			const downloadLimit = Math.min(
+				input.downloadLimit ?? DEFAULT_DOWNLOAD_LIMIT,
+				MAX_DOWNLOAD_LIMIT
+			);
+			const envelopeRows = (
+				await execute(db, {
+					sql: `SELECT slot, seq, id, r2_key
+						FROM envelopes
+						WHERE account_id = ? AND seq > ?
+						ORDER BY seq ASC LIMIT ?`,
+					args: [input.accountId, input.cursor, downloadLimit + 1]
+				})
+			).rows as unknown as Array<{ slot: string; seq: number; id: string; r2_key: string }>;
+
+			const hasMore = envelopeRows.length > downloadLimit;
+			const deltaRows = hasMore ? envelopeRows.slice(0, downloadLimit) : envelopeRows;
+
+			// Fetch ciphertexts from R2 in parallel
+			const envelopes = await Promise.all(
+				deltaRows.map(async (row) => {
+					const obj = await this.env.SCRAPSCACHE_ENVELOPES.get(row.r2_key);
+					const ciphertext = obj ? await obj.text() : '';
+					return { slot: row.slot, seq: row.seq, id: row.id, ciphertext };
+				})
+			);
+
+			const result: SyncResult = {
+				envelopes,
+				nextCursor: nextSeq,
+				hasMore,
+				usage: {
+					storageBytes: ciphertextBytes,
+					maxBytes: quotaLimit,
+					envelopeCount
+				}
+			};
+
+			return Response.json(result);
+		} catch (err) {
+			await Promise.all(stagingKeys.map((k) => this.env.SCRAPSCACHE_ENVELOPES.delete(k)));
+			throw err;
+		}
+	}
+
+	private async resolveMaxBytes(accountId: string): Promise<number> {
+		const row = (
+			await execute(this.env.SCRAPSCACHE_DB, {
+				sql: 'SELECT max_bytes FROM account_quotas WHERE account_id = ?',
+				args: [accountId]
+			})
+		).rows[0] as QuotaRow | undefined;
+
+		if (row && typeof row.max_bytes === 'number' && row.max_bytes > 0) {
+			return row.max_bytes;
+		}
+
+		const envLimit = Number(this.env.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES);
+		return Number.isFinite(envLimit) && envLimit > 0 ? envLimit : DEFAULT_MAX_ACCOUNT_BYTES;
+	}
+
+	private async checkQuota(accountId: string, additionalBytes: number): Promise<Response> {
+		const account = (
+			await execute(this.env.SCRAPSCACHE_DB, {
+				sql: 'SELECT ciphertext_bytes AS bytes FROM accounts WHERE account_id = ?',
+				args: [accountId]
+			})
+		).rows[0] as { bytes: number } | undefined;
+
+		const current = account?.bytes ?? 0;
+		const max = await this.resolveMaxBytes(accountId);
+		const allowed = current + additionalBytes <= max;
+		return Response.json({ allowed, currentBytes: current, maxBytes: max });
 	}
 }

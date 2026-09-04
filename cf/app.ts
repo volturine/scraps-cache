@@ -3,4 +3,5 @@
 import app from '../.svelte-kit/cloudflare/_worker.js';
 
 export { AccountCoordinator } from './accountCoordinator';
+export { AccountMcpSession } from './accountMcpSession';
 export default app;

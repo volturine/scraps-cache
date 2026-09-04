@@ -37,6 +37,10 @@
 			{
 				"name": "ACCOUNT_COORDINATOR",
 				"class_name": "AccountCoordinator"
+			},
+			{
+				"name": "ACCOUNT_MCP_SESSION",
+				"class_name": "AccountMcpSession"
 			}
 		]
 	},
@@ -44,6 +48,10 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["AccountCoordinator"]
+		},
+		{
+			"tag": "v2",
+			"new_classes": ["AccountMcpSession"]
 		}
 	],
 	"env": {
@@ -67,6 +75,10 @@
 					{
 						"name": "ACCOUNT_COORDINATOR",
 						"class_name": "AccountCoordinator"
+					},
+					{
+						"name": "ACCOUNT_MCP_SESSION",
+						"class_name": "AccountMcpSession"
 					}
 				]
 			},

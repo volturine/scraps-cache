@@ -1,14 +1,10 @@
 import { createClient, type Client, type Transaction } from '@libsql/client/web';
 import { env } from '$env/dynamic/private';
 
-/** Server-side storage split: the relay DB holds account-scoped sync state worth
- * backing up (credentials, ciphertext envelopes); the ops DB holds disposable
- * high-churn operational state (rate limits, auth sessions, pairing rendezvous,
- * wake queue, operator config). */
 export type Db = {
-	readonly relay: Client;
-	readonly ops: Client;
-	/** Resolves once both schemas exist; rejects (and retries on next access) while unreachable. */
+	relay: Client;
+	ops: Client;
+	/** Resolves when initial migrations have completed on both databases. */
 	readonly ready: Promise<void>;
 };
 
@@ -132,6 +128,12 @@ const OPS_DDL = `
 	);
 	CREATE INDEX IF NOT EXISTS reminder_wake_deliveries_account
 		ON reminder_wake_deliveries(account_id);
+	CREATE TABLE IF NOT EXISTS mcp_revocations (
+		account_id TEXT PRIMARY KEY,
+		revoked_before INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS mcp_revocations_account
+		ON mcp_revocations(account_id);
 `;
 
 /** Wrap pre-built clients (any libsql transport) with lazy idempotent schema setup. */

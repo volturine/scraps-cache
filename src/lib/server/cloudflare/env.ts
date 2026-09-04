@@ -5,6 +5,7 @@ export type CloudflareBindings = {
 	SCRAPSCACHE_DB: D1Database;
 	SCRAPSCACHE_ENVELOPES: R2Bucket;
 	ACCOUNT_COORDINATOR: DurableObjectNamespace;
+	ACCOUNT_MCP_SESSION?: DurableObjectNamespace;
 	SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES?: string;
 };
 
