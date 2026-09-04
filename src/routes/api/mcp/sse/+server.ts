@@ -3,6 +3,19 @@ import { json } from '@sveltejs/kit';
 import { getMcpSessionManager } from '$lib/server/mcp/sessionManager';
 import { verifyMcpToken } from '$lib/mcp/token';
 
+const CORS_HEADERS = {
+	'Access-Control-Allow-Origin': '*',
+	'Access-Control-Allow-Methods': 'GET, OPTIONS',
+	'Access-Control-Allow-Headers': '*'
+};
+
+export const OPTIONS: RequestHandler = async () => {
+	return new Response(null, {
+		status: 204,
+		headers: CORS_HEADERS
+	});
+};
+
 export const GET: RequestHandler = async ({ request, url, platform }) => {
 	const authHeader = request.headers.get('Authorization') || '';
 	let token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
@@ -11,7 +24,10 @@ export const GET: RequestHandler = async ({ request, url, platform }) => {
 	}
 
 	if (!token) {
-		return json({ error: 'Missing MCP authorization token' }, { status: 401 });
+		return json(
+			{ error: 'Missing MCP authorization token' },
+			{ status: 401, headers: CORS_HEADERS }
+		);
 	}
 
 	const env = (
@@ -30,11 +46,21 @@ export const GET: RequestHandler = async ({ request, url, platform }) => {
 	if (env?.ACCOUNT_MCP_SESSION) {
 		const verified = verifyMcpToken(token);
 		if (!verified.valid || !verified.accountId) {
-			return json({ error: verified.error || 'Invalid token' }, { status: 401 });
+			return json(
+				{ error: verified.error || 'Invalid token' },
+				{ status: 401, headers: CORS_HEADERS }
+			);
 		}
 		const doId = env.ACCOUNT_MCP_SESSION.idFromName(verified.accountId);
 		const stub = env.ACCOUNT_MCP_SESSION.get(doId);
-		return stub.fetch(request);
+		const res = await stub.fetch(request);
+		const headers = new Headers(res.headers);
+		headers.set('Access-Control-Allow-Origin', '*');
+		return new Response(res.body, {
+			status: res.status,
+			statusText: res.statusText,
+			headers
+		});
 	}
 
 	const manager = getMcpSessionManager();
@@ -43,7 +69,7 @@ export const GET: RequestHandler = async ({ request, url, platform }) => {
 		sessionInfo = await manager.createSessionFromToken(token);
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : 'Unauthorized';
-		return json({ error: msg }, { status: 401 });
+		return json({ error: msg }, { status: 401, headers: CORS_HEADERS });
 	}
 
 	const { sessionId, session } = sessionInfo;
@@ -95,7 +121,8 @@ export const GET: RequestHandler = async ({ request, url, platform }) => {
 			'Content-Type': 'text/event-stream',
 			'Cache-Control': 'no-cache, no-transform',
 			Connection: 'keep-alive',
-			'X-Accel-Buffering': 'no'
+			'X-Accel-Buffering': 'no',
+			...CORS_HEADERS
 		}
 	});
 };

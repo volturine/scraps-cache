@@ -5,6 +5,12 @@ import { McpSession, type McpStorage } from '../src/lib/server/mcp/engine';
 import { handleJsonRpcMessage } from '../src/lib/server/mcp/protocol';
 import { verifyMcpToken } from '../src/lib/mcp/token';
 
+const CORS_HEADERS = {
+	'Access-Control-Allow-Origin': '*',
+	'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+	'Access-Control-Allow-Headers': '*'
+};
+
 export class AccountMcpSession {
 	private session?: McpSession;
 
@@ -64,6 +70,13 @@ export class AccountMcpSession {
 	}
 
 	async fetch(request: Request): Promise<Response> {
+		if (request.method === 'OPTIONS') {
+			return new Response(null, {
+				status: 204,
+				headers: CORS_HEADERS
+			});
+		}
+
 		const url = new URL(request.url);
 
 		if (url.pathname.endsWith('/sse')) {
@@ -75,11 +88,14 @@ export class AccountMcpSession {
 
 			const verified = verifyMcpToken(token);
 			if (!verified.valid || !verified.accountId || !verified.syncKey || !verified.createdAt) {
-				return Response.json({ error: verified.error || 'Unauthorized' }, { status: 401 });
+				return Response.json(
+					{ error: verified.error || 'Unauthorized' },
+					{ status: 401, headers: CORS_HEADERS }
+				);
 			}
 
 			if (await this.isTokenRevoked(verified.accountId, verified.createdAt)) {
-				return Response.json({ error: 'Token revoked' }, { status: 401 });
+				return Response.json({ error: 'Token revoked' }, { status: 401, headers: CORS_HEADERS });
 			}
 
 			this.session = new McpSession(verified.accountId, verified.syncKey, this.createStorage());
@@ -98,8 +114,8 @@ export class AccountMcpSession {
 						}
 					};
 
-					// Initial endpoint event
-					send('endpoint', `/api/mcp/messages?sessionId=${sessionId}`);
+					// Initial endpoint event - absolute URL for MCP clients
+					send('endpoint', `${url.origin}/api/mcp/messages?sessionId=${sessionId}`);
 
 					// Keep-alive every 15s
 					interval = setInterval(() => {
@@ -134,18 +150,25 @@ export class AccountMcpSession {
 					'Content-Type': 'text/event-stream',
 					'Cache-Control': 'no-cache, no-transform',
 					Connection: 'keep-alive',
-					'X-Accel-Buffering': 'no'
+					'X-Accel-Buffering': 'no',
+					...CORS_HEADERS
 				}
 			});
 		}
 
 		if (url.pathname.endsWith('/messages')) {
 			if (request.method !== 'POST') {
-				return Response.json({ error: 'Method not allowed' }, { status: 405 });
+				return Response.json(
+					{ error: 'Method not allowed' },
+					{ status: 405, headers: CORS_HEADERS }
+				);
 			}
 
 			if (!this.session) {
-				return Response.json({ error: 'No active session or session expired' }, { status: 404 });
+				return Response.json(
+					{ error: 'No active session or session expired' },
+					{ status: 404, headers: CORS_HEADERS }
+				);
 			}
 
 			let body: unknown;
@@ -154,18 +177,18 @@ export class AccountMcpSession {
 			} catch {
 				return Response.json(
 					{ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } },
-					{ status: 400 }
+					{ status: 400, headers: CORS_HEADERS }
 				);
 			}
 
 			const response = await handleJsonRpcMessage(this.session, body);
 			if (response) {
 				this.session.broadcast('message', response);
-				return Response.json(response, { status: 200 });
+				return Response.json(response, { status: 200, headers: CORS_HEADERS });
 			}
-			return new Response(null, { status: 202 });
+			return new Response(null, { status: 202, headers: CORS_HEADERS });
 		}
 
-		return Response.json({ error: 'Not found' }, { status: 404 });
+		return Response.json({ error: 'Not found' }, { status: 404, headers: CORS_HEADERS });
 	}
 }

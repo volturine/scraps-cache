@@ -16,21 +16,34 @@ export const handle: Handle = async ({ event, resolve }) => {
 		? suppliedRequestId
 		: crypto.randomUUID();
 	const response = await resolve(event);
-	for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
-	response.headers.set('x-request-id', requestId);
+	let finalResponse = response;
+	try {
+		for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
+		response.headers.set('x-request-id', requestId);
+	} catch {
+		// Response headers may be immutable (e.g. from Durable Objects or upstream fetch)
+		const newHeaders = new Headers(response.headers);
+		for (const [name, value] of SECURITY_HEADERS) newHeaders.set(name, value);
+		newHeaders.set('x-request-id', requestId);
+		finalResponse = new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers: newHeaders
+		});
+	}
 	const durationMs = performance.now() - startedAt;
-	recordHttpRequest(event.url.pathname, response.status, durationMs);
-	if (event.url.pathname.startsWith('/api/') && response.status >= 400) {
+	recordHttpRequest(event.url.pathname, finalResponse.status, durationMs);
+	if (event.url.pathname.startsWith('/api/') && finalResponse.status >= 400) {
 		console.info(
 			JSON.stringify({
 				level: 'info',
 				event: 'http_request',
 				requestId,
 				path: event.url.pathname,
-				status: response.status,
+				status: finalResponse.status,
 				durationMs: Math.round(durationMs)
 			})
 		);
 	}
-	return response;
+	return finalResponse;
 };

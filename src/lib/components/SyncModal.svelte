@@ -49,6 +49,7 @@
 	let mcpToken = $state('');
 	let mcpCopiedUrl = $state(false);
 	let mcpCopiedToken = $state(false);
+	let mcpCopiedFullUrl = $state(false);
 	let mcpRevoking = $state(false);
 
 	function stopWaiting() {
@@ -272,7 +273,7 @@
 		mcpOpen = true;
 	}
 
-	async function copyMcpText(text: string, which: 'url' | 'token') {
+	async function copyMcpText(text: string, which: 'url' | 'token' | 'full') {
 		let copied = false;
 		try {
 			if (navigator.clipboard?.writeText) {
@@ -298,9 +299,12 @@
 		if (which === 'url') {
 			mcpCopiedUrl = true;
 			setTimeout(() => (mcpCopiedUrl = false), 1500);
-		} else {
+		} else if (which === 'token') {
 			mcpCopiedToken = true;
 			setTimeout(() => (mcpCopiedToken = false), 1500);
+		} else {
+			mcpCopiedFullUrl = true;
+			setTimeout(() => (mcpCopiedFullUrl = false), 1500);
 		}
 	}
 
@@ -478,21 +482,27 @@
 							✨ Enable Mobile AI Access
 						</button>
 					{:else if mcpOpen}
-						<div class="space-y-2 pt-1 border-t border-[var(--scrapscache-border)]">
+						<div class="space-y-3 pt-1 border-t border-[var(--scrapscache-border)]">
 							<div>
 								<div
 									class="flex items-center justify-between text-[11px] text-[var(--scrapscache-text-muted)] mb-1"
 								>
-									<span>Server URL (SSE)</span>
+									<span class="font-medium text-[var(--scrapscache-text)]"
+										>Connector URL (Grok / Mobile)</span
+									>
 									<button
 										type="button"
-										onclick={() => copyMcpText(`${window.location.origin}/api/mcp/sse`, 'url')}
-										class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
+										onclick={() =>
+											copyMcpText(
+												`${window.location.origin}/api/mcp/sse?token=${mcpToken}`,
+												'full'
+											)}
+										class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline font-medium"
 									>
-										{#if mcpCopiedUrl}
+										{#if mcpCopiedFullUrl}
 											<Check class="h-3 w-3" /> Copied
 										{:else}
-											<Copy class="h-3 w-3" /> Copy URL
+											<Copy class="h-3 w-3" /> Copy Full URL
 										{/if}
 									</button>
 								</div>
@@ -500,34 +510,68 @@
 									class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[11px] select-all"
 								>
 									{typeof window !== 'undefined'
-										? `${window.location.origin}/api/mcp/sse`
-										: '/api/mcp/sse'}
+										? `${window.location.origin}/api/mcp/sse?token=${mcpToken}`
+										: `/api/mcp/sse?token=${mcpToken}`}
 								</div>
+								<p class="text-[10px] text-[var(--scrapscache-text-muted)] mt-1">
+									Paste into Grok's <b>Server URL</b> field. No OAuth setup needed.
+								</p>
 							</div>
 
-							<div>
-								<div
-									class="flex items-center justify-between text-[11px] text-[var(--scrapscache-text-muted)] mb-1"
+							<details class="text-[11px] text-[var(--scrapscache-text-muted)]">
+								<summary
+									class="cursor-pointer hover:text-[var(--scrapscache-text)] text-[10px] font-medium select-none"
 								>
-									<span>Bearer Token</span>
-									<button
-										type="button"
-										onclick={() => copyMcpText(mcpToken, 'token')}
-										class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
-									>
-										{#if mcpCopiedToken}
-											<Check class="h-3 w-3" /> Copied
-										{:else}
-											<Copy class="h-3 w-3" /> Copy Token
-										{/if}
-									</button>
+									Advanced (Separate URL & Bearer Token)
+								</summary>
+								<div class="space-y-2 mt-2 pt-2 border-t border-[var(--scrapscache-border)]/50">
+									<div>
+										<div class="flex items-center justify-between text-[10px] mb-1">
+											<span>Base Server URL</span>
+											<button
+												type="button"
+												onclick={() => copyMcpText(`${window.location.origin}/api/mcp/sse`, 'url')}
+												class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
+											>
+												{#if mcpCopiedUrl}
+													<Check class="h-3 w-3" /> Copied
+												{:else}
+													<Copy class="h-3 w-3" /> Copy URL
+												{/if}
+											</button>
+										</div>
+										<div
+											class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[10px] select-all"
+										>
+											{typeof window !== 'undefined'
+												? `${window.location.origin}/api/mcp/sse`
+												: '/api/mcp/sse'}
+										</div>
+									</div>
+
+									<div>
+										<div class="flex items-center justify-between text-[10px] mb-1">
+											<span>Bearer Token</span>
+											<button
+												type="button"
+												onclick={() => copyMcpText(mcpToken, 'token')}
+												class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
+											>
+												{#if mcpCopiedToken}
+													<Check class="h-3 w-3" /> Copied
+												{:else}
+													<Copy class="h-3 w-3" /> Copy Token
+												{/if}
+											</button>
+										</div>
+										<div
+											class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[10px] select-all"
+										>
+											{mcpToken}
+										</div>
+									</div>
 								</div>
-								<div
-									class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[11px] select-all"
-								>
-									{mcpToken}
-								</div>
-							</div>
+							</details>
 
 							<div class="flex items-center justify-between pt-1">
 								<span class="text-[10px] text-[var(--scrapscache-text-muted)]"
