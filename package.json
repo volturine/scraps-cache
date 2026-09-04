@@ -33,7 +33,7 @@
 		"cf:dev": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --local --env '' && wrangler dev --env ''",
 		"cf:cron:dev": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --local --env '' && wrangler dev --config cf/wrangler.cron.jsonc --config wrangler.jsonc --env '' --test-scheduled",
 		"cf:deploy": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env '' && wrangler deploy --env '' && wrangler deploy --config cf/wrangler.cron.jsonc --env ''",
-		"cf:deploy:dev": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env dev && wrangler deploy --env dev && wrangler deploy --config cf/wrangler.cron.jsonc --env dev",
+		"cf:deploy:dev": "npm run build:cloudflare && python3 scripts/reset_cloudflare_dev.py && wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env dev && wrangler deploy --env dev && wrangler deploy --config cf/wrangler.cron.jsonc --env dev",
 		"start": "node build",
 		"preview": "vite preview",
 		"test": "vitest run",
