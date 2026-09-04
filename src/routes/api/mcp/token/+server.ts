@@ -3,10 +3,14 @@ import { json } from '@sveltejs/kit';
 import { getSyncAuth } from '$lib/server/syncAuth';
 import { getMcpTokenStore } from '$lib/server/mcp/tokenStore';
 import { endMcpSessions } from '$lib/server/mcp/liveSessions';
+import { getMcpAccessStore } from '$lib/server/mcp/accessStore';
 
 export const POST: RequestHandler = async ({ request, platform }) => {
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
 	if (!accountId) return json({ error: 'Unauthorized' }, { status: 401 });
+	if (!(await getMcpAccessStore().isEnabled(accountId))) {
+		return json({ error: 'Hosted MCP is not enabled for this account' }, { status: 403 });
+	}
 	if (Number(request.headers.get('content-length') ?? 0) > 2048) {
 		return json({ error: 'Request body is too large' }, { status: 413 });
 	}

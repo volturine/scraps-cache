@@ -9,6 +9,13 @@ import {
 import { identityFromSyncKey } from '$lib/syncPairing';
 import { getDb, type Db } from '$lib/server/db';
 
+export class McpAccessDisabledError extends Error {
+	constructor() {
+		super('MCP access is not enabled for this account');
+		this.name = 'McpAccessDisabledError';
+	}
+}
+
 export class McpTokenStore {
 	constructor(private readonly db: Db = getDb()) {}
 
@@ -38,11 +45,15 @@ export class McpTokenStore {
 				: []),
 			{
 				sql: `INSERT INTO mcp_tokens(token_hash, account_id, wrapped_sync_key, created_at)
-						VALUES (?, ?, ?, ?)`,
-				args: [hashMcpToken(token), accountId, wrappedSyncKey, createdAt]
+						SELECT ?, ?, ?, ?
+						WHERE EXISTS (SELECT 1 FROM account_mcp_access WHERE account_id = ?)`,
+				args: [hashMcpToken(token), accountId, wrappedSyncKey, createdAt, accountId]
 			}
 		];
 		const results = await this.db.ops.batch(statements, 'write');
+		if (results.at(-1)?.rowsAffected !== 1) {
+			throw new McpAccessDisabledError();
+		}
 		return {
 			createdAt,
 			replacedTokenHashes: rotateExisting
@@ -58,7 +69,12 @@ export class McpTokenStore {
 		const result = await this.db.ops.execute({
 			sql: `SELECT token_hash AS tokenHash, account_id AS accountId,
 				wrapped_sync_key AS wrappedSyncKey, created_at AS createdAt
-				FROM mcp_tokens WHERE token_hash = ?`,
+				FROM mcp_tokens
+				WHERE token_hash = ?
+					AND EXISTS (
+						SELECT 1 FROM account_mcp_access
+						WHERE account_mcp_access.account_id = mcp_tokens.account_id
+					)`,
 			args: [tokenHash]
 		});
 		const row = result.rows[0] as unknown as StoredMcpToken | undefined;

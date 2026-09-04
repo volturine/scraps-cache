@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft, ShieldCheck } from '@lucide/svelte';
@@ -43,10 +44,25 @@
 	let oauthRequest = $derived(parseRequest(page.url));
 	let busy = $state(false);
 	let error = $state('');
+	let mcpEntitled = $state<boolean | null>(null);
+
+	onMount(() => {
+		if (!syncStore.account) return;
+		void syncStore
+			.authorizedFetch('/api/mcp/access')
+			.then(async (response) => {
+				if (!response.ok) throw new Error('Could not check MCP access');
+				const result = (await response.json()) as { enabled?: unknown };
+				mcpEntitled = result.enabled === true;
+			})
+			.catch(() => {
+				mcpEntitled = null;
+			});
+	});
 
 	async function approve() {
 		const account = syncStore.account;
-		if (!oauthRequest.valid || !account?.syncKey || busy) return;
+		if (!oauthRequest.valid || !account?.syncKey || mcpEntitled !== true || busy) return;
 		busy = true;
 		error = '';
 		try {
@@ -136,6 +152,14 @@
 					<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
 						Set up encrypted sync on this device before connecting Grok.
 					</div>
+				{:else if mcpEntitled === false}
+					<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+						Hosted MCP is not enabled for this sync account.
+					</div>
+				{:else if mcpEntitled === null}
+					<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+						Checking whether this account can use hosted MCP…
+					</div>
 				{:else}
 					<div class="space-y-3 text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
 						<p>Grok will be able to search, read, create, update, and delete your notes.</p>
@@ -166,7 +190,10 @@
 					<button
 						type="button"
 						onclick={approve}
-						disabled={busy || !oauthRequest.valid || !syncStore.account?.syncKey}
+						disabled={busy ||
+							!oauthRequest.valid ||
+							!syncStore.account?.syncKey ||
+							mcpEntitled !== true}
 						class="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						{busy ? 'Connecting…' : 'Allow access'}

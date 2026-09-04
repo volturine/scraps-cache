@@ -39,6 +39,8 @@ export type AccountByteQuota = {
 	overridden: boolean;
 };
 
+export type AccountUsage = AccountByteQuota & UsageRow;
+
 type UsageRow = {
 	envelopeCount: number;
 	ciphertextBytes: number;
@@ -173,6 +175,29 @@ export class SyncStore {
 		const row = await this.accountByteQuota(this.relay, accountId);
 		if (!row) return null;
 		return {
+			maxBytes: row.maxBytes ?? this.maxAccountBytes,
+			overridden: row.maxBytes !== null
+		};
+	}
+
+	async getAccountUsage(accountId: string): Promise<AccountUsage | null> {
+		await this.db.ready;
+		const result = await this.relay.execute({
+			sql: `SELECT accounts.envelope_count AS envelopeCount,
+					accounts.ciphertext_bytes AS ciphertextBytes,
+					quotas.max_bytes AS maxBytes
+				FROM accounts
+				LEFT JOIN account_quotas AS quotas USING(account_id)
+				WHERE account_id = ?`,
+			args: [accountId]
+		});
+		const row = result.rows[0] as unknown as
+			{ envelopeCount: number; ciphertextBytes: number; maxBytes: number | null } | undefined;
+		if (!row) return null;
+		return {
+			envelopeCount: row.envelopeCount,
+			ciphertextBytes: row.ciphertextBytes,
+			storageBytes: row.ciphertextBytes + row.envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
 			maxBytes: row.maxBytes ?? this.maxAccountBytes,
 			overridden: row.maxBytes !== null
 		};
@@ -473,6 +498,10 @@ export class SyncStore {
 					},
 					{
 						sql: `DELETE FROM mcp_oauth_codes WHERE account_id IN (${placeholders})`,
+						args: ids
+					},
+					{
+						sql: `DELETE FROM account_mcp_access WHERE account_id IN (${placeholders})`,
 						args: ids
 					}
 				],

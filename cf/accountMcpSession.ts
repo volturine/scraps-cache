@@ -64,7 +64,12 @@ export class AccountMcpSession {
 		const result = await execute(this.env.SCRAPSCACHE_DB, {
 			sql: `SELECT token_hash AS tokenHash, account_id AS accountId,
 				wrapped_sync_key AS wrappedSyncKey, created_at AS createdAt
-				FROM mcp_tokens WHERE token_hash = ?`,
+				FROM mcp_tokens
+				WHERE token_hash = ?
+					AND EXISTS (
+						SELECT 1 FROM account_mcp_access
+						WHERE account_mcp_access.account_id = mcp_tokens.account_id
+					)`,
 			args: [tokenHash]
 		});
 		const row = result.rows[0] as

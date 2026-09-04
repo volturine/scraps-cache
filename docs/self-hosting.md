@@ -199,10 +199,36 @@ may override them.
 | `GET /api/admin/status`                    | same bearer token                                | Anonymous JSON: storage, users, activity, retention |
 | `POST /api/admin/retention`                | same bearer token                                | Run the inactive-account sweeper now                |
 | `POST/PUT/DELETE /api/admin/account-quota` | same bearer token                                | Inspect, set, or clear one account's byte quota     |
+| `POST/PUT/DELETE /api/admin/account-mcp`   | same bearer token                                | Inspect, enable, or disable hosted MCP              |
 | `POST /api/cron/tick`                      | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                 |
 
-With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the three token-protected
+With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the token-protected
 endpoints return 404 — the admin API is disabled.
+
+### Cloudflare Access operator console
+
+Cloudflare deployments include an operator console at `/admin`. It shows anonymous relay
+health and activity, and lets the operator inspect an account by its sync account ID, change
+its storage limit, and enable or disable premium hosted MCP. Disabling MCP also revokes that
+account's tokens, pending OAuth codes, and live sessions.
+
+The console intentionally returns `404` until Cloudflare Access is configured:
+
+1. In Cloudflare Zero Trust, create a **Self-hosted** Access application for
+   `scrapscache.com/admin*`. Add a separate `dev.scrapscache.com/admin*` application if the
+   development deployment needs a console.
+2. Add an **Allow** policy whose Include rule is your exact email address. Do not use
+   `Everyone` or all valid emails.
+3. Configure these Worker variables for the matching deployment:
+   - `SCRAPSCACHE_CF_ACCESS_TEAM_DOMAIN=https://<team-name>.cloudflareaccess.com`
+   - `SCRAPSCACHE_CF_ACCESS_AUD=<application audience tag>`
+   - `SCRAPSCACHE_CF_ACCESS_EMAIL=<the exact allowed email>`
+4. Open `/admin`. Cloudflare performs the login and the Worker independently validates the
+   signed Access assertion, application audience, issuer, and email.
+
+Protect the complete `/admin*` path, including its data endpoints. The existing
+`/api/admin/*` bearer-token API remains available for automation, and the admin token is never
+sent to the dashboard browser.
 
 The cron endpoint (`/api/cron/tick`) is the scheduler entry point. The included
 Cloudflare scheduler Worker calls it through a private service binding every
@@ -246,6 +272,12 @@ curl -fsS -X DELETE \
 	-H "Content-Type: application/json" \
 	-d "{\"accountId\":\"$ACCOUNT_ID\"}" \
 	"http://localhost:3000/api/admin/account-quota"
+
+curl -fsS -X PUT \
+	-H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d "{\"accountId\":\"$ACCOUNT_ID\"}" \
+	"http://localhost:3000/api/admin/account-mcp"
 ```
 
 ## Images and CI

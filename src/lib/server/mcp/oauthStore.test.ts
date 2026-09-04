@@ -4,6 +4,7 @@ import { createMcpTokenGrant } from '$lib/mcp/token';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { cleanupTestDbs, testDb } from '$lib/server/testDb';
 import { McpOAuthStore } from './oauthStore';
+import { McpAccessStore } from './accessStore';
 
 afterEach(cleanupTestDbs);
 
@@ -12,6 +13,7 @@ describe('McpOAuthStore', () => {
 		const db = testDb();
 		const store = new McpOAuthStore(db);
 		const identity = createSyncIdentity();
+		await new McpAccessStore(db).enable(identity.accountId);
 		const grant = createMcpTokenGrant(identity.syncKey);
 		const verifier = 'a'.repeat(43);
 		const resource = 'https://scrapscache.com/api/mcp';
@@ -57,8 +59,10 @@ describe('McpOAuthStore', () => {
 	});
 
 	it('rejects expired codes without exposing the sync key', async () => {
-		const store = new McpOAuthStore(testDb());
+		const db = testDb();
+		const store = new McpOAuthStore(db);
 		const identity = createSyncIdentity();
+		await new McpAccessStore(db).enable(identity.accountId);
 		const grant = createMcpTokenGrant(identity.syncKey);
 		const verifier = 'c'.repeat(43);
 		const resource = 'https://scrapscache.com/api/mcp';

@@ -150,6 +150,11 @@ const OPS_DDL = `
 		ON mcp_oauth_codes(account_id);
 	CREATE INDEX IF NOT EXISTS mcp_oauth_codes_expires
 		ON mcp_oauth_codes(expires_at);
+	CREATE TABLE IF NOT EXISTS account_mcp_access (
+		account_id TEXT PRIMARY KEY,
+		enabled_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
 	DROP TABLE IF EXISTS mcp_revocations;
 `;
 

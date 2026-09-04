@@ -15,6 +15,11 @@ export type SyncResult = {
 };
 export type SyncQuotas = { maxAccountBytes: number };
 export type AccountByteQuota = { maxBytes: number; overridden: boolean };
+export type AccountUsage = AccountByteQuota & {
+	envelopeCount: number;
+	ciphertextBytes: number;
+	storageBytes: number;
+};
 export type OperatorUsage = {
 	accounts: number;
 	envelopeCount: number;
@@ -104,6 +109,24 @@ export class SyncStore {
 		).rows[0];
 		if (!row) return null;
 		return {
+			maxBytes: row.maxBytes == null ? this.maxAccountBytes : Number(row.maxBytes),
+			overridden: row.maxBytes != null
+		};
+	}
+	async getAccountUsage(accountId: string): Promise<AccountUsage | null> {
+		const row = (
+			await execute(this.db, {
+				sql: 'SELECT a.envelope_count AS envelopeCount,a.ciphertext_bytes AS ciphertextBytes,q.max_bytes AS maxBytes FROM accounts a LEFT JOIN account_quotas q USING(account_id) WHERE a.account_id=?',
+				args: [accountId]
+			})
+		).rows[0];
+		if (!row) return null;
+		const envelopeCount = Number(row.envelopeCount);
+		const ciphertextBytes = Number(row.ciphertextBytes);
+		return {
+			envelopeCount,
+			ciphertextBytes,
+			storageBytes: ciphertextBytes + envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
 			maxBytes: row.maxBytes == null ? this.maxAccountBytes : Number(row.maxBytes),
 			overridden: row.maxBytes != null
 		};

@@ -2,7 +2,8 @@
 
 **Scraps Cache** is a self-hostable notes app with **end-to-end encrypted** multi-device
 sync. Pins, labels, reminders, checklists, attachments, kanban boards,
-trash/archive — and a ciphertext-only relay that never sees your note contents.
+trash/archive — with a ciphertext-only relay for ordinary device sync. Optional hosted MCP is
+a separate, explicitly enabled trust path that lets an AI provider access notes.
 
 Visit [scrapscache.com](https://scrapscache.com).
 
@@ -14,13 +15,13 @@ Visit [scrapscache.com](https://scrapscache.com).
 
 ## Why Scraps Cache
 
-| Principle              | What it means                                                                                                           |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **Private by design**  | Note contents never leave your devices in plaintext. No remote link previews, no third-party trackers, restrictive CSP. |
-| **E2E encrypted sync** | Multi-device sync always encrypts on the client. The relay stores opaque ciphertext only.                               |
-| **Self-hosted**        | Run the app and relay yourself. One Node process, one SQLite database.                                                  |
-| **Local-first data**   | Notes live in the browser (IndexedDB). Day-to-day use does not require the network.                                     |
-| **Recoverable**        | Encrypted client backups (`.scraps-cache-backup`) can be exported and imported from the UI.                             |
+| Principle              | What it means                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Private by default** | Ordinary use and device sync never send plaintext notes to the relay. Hosted MCP is a separate opt-in access path. |
+| **E2E encrypted sync** | Multi-device sync always encrypts on the client. The relay stores opaque ciphertext only.                          |
+| **Self-hosted**        | Run the app and relay yourself. One Node process, one SQLite database.                                             |
+| **Local-first data**   | Notes live in the browser (IndexedDB). Day-to-day use does not require the network.                                |
+| **Recoverable**        | Encrypted client backups (`.scraps-cache-backup`) can be exported and imported from the UI.                        |
 
 ## Features
 
@@ -32,6 +33,7 @@ Visit [scrapscache.com](https://scrapscache.com).
 - **Kanban** — boards with custom backlog filters
 - **Search** — local full-text style filtering on your device
 - **Sync** — pair devices with a short code; payloads are always E2E encrypted; server stores ciphertext only
+- **Hosted MCP** — optional premium AI access with a separate trust model; the server decrypts requested notes in memory and the AI provider receives them
 - **Backups** — passphrase-protected client exports and imports
 - **PWA** — installable shell with a service worker
 
@@ -88,7 +90,7 @@ Published images:
 
 Prefer a **pinned release tag or digest**, not floating `latest`, for production.
 
-## How privacy works (short)
+## How ordinary sync privacy works (short)
 
 ```text
 ┌─────────────┐     encrypted envelopes      ┌──────────────────┐
@@ -106,6 +108,11 @@ Prefer a **pinned release tag or digest**, not floating `latest`, for production
    (PAKE) so the relay never sees the key in the clear.
 4. User-triggered **backups** are encrypted with Argon2id + a passphrase in the
    browser.
+
+Hosted MCP does not use this end-to-end trust boundary. When an operator enables it and a
+user grants access, the server unwraps the sync key and decrypts requested notes in ephemeral
+memory so the AI provider can read or change them. Revoking MCP invalidates its credentials;
+users who never enable it remain on the ciphertext-only sync path.
 
 Details, threat model, and limits: **[docs/security.md](docs/security.md)**.
 

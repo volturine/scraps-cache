@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { syncStore } from '$lib/stores/sync.svelte';
+import { notesStore } from '$lib/stores/notes.svelte';
 import SyncModal from './SyncModal.svelte';
 
 const MB = 1_000_000;
@@ -27,6 +28,7 @@ function renderUsage(ciphertextBytes: number, maxBytes = 10 * MB): HTMLElement {
 }
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	delete (Element.prototype as Partial<Element>).animate;
 	syncStore.account = null;
 	syncStore.usage = null;
@@ -76,5 +78,29 @@ describe('SyncModal storage usage', () => {
 	it('displays the default 100 MB decimal-byte limit', () => {
 		const usage = renderUsage(5_000, 100_000_000);
 		expect(usage.textContent?.replace(/\s+/g, ' ')).toContain('5 KB of 100 MB');
+	});
+
+	it('uploads local notes after creating a new sync account instead of replacing them', async () => {
+		const identity = createSyncIdentity();
+		const register = vi.spyOn(syncStore, 'register').mockImplementation(async () => {
+			syncStore.account = identity;
+			return { success: true };
+		});
+		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+		const replace = vi.spyOn(notesStore, 'replaceWithCloudManual').mockResolvedValue(true);
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(
+			new Response(JSON.stringify({ enabled: false }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
+
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Create sync key' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Create my sync key' }));
+
+		await waitFor(() => expect(sync).toHaveBeenCalledOnce());
+		expect(register).toHaveBeenCalledOnce();
+		expect(replace).not.toHaveBeenCalled();
 	});
 });

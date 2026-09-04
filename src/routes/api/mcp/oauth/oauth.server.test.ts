@@ -8,6 +8,7 @@ import { closePublicApiLimiter } from '$lib/server/rateLimit';
 import { closeSyncAuth, getSyncAuth } from '$lib/server/syncAuth';
 import { cleanupTestDbs, testDb } from '$lib/server/testDb';
 import { createSyncIdentity } from '$lib/syncPairing';
+import { McpAccessStore, closeMcpAccessStore } from '$lib/server/mcp/accessStore';
 
 let mockDb: Db;
 
@@ -35,6 +36,7 @@ describe('MCP OAuth routes', () => {
 	afterEach(() => {
 		closeMcpOAuthStore();
 		closeMcpTokenStore();
+		closeMcpAccessStore();
 		closePublicApiLimiter();
 		closeSyncAuth();
 		cleanupTestDbs();
@@ -42,6 +44,7 @@ describe('MCP OAuth routes', () => {
 
 	it('exchanges one browser-approved PKCE code without persisting plaintext secrets', async () => {
 		const identity = createSyncIdentity();
+		await new McpAccessStore(mockDb).enable(identity.accountId);
 		const existingGrant = createMcpTokenGrant(identity.syncKey);
 		const tokenStore = new McpTokenStore(mockDb);
 		await tokenStore.issue(identity.accountId, existingGrant.token, existingGrant.wrappedSyncKey);
@@ -226,6 +229,7 @@ describe('MCP OAuth routes', () => {
 
 	it('rejects redirect substitution before storing an authorization code', async () => {
 		const identity = createSyncIdentity();
+		await new McpAccessStore(mockDb).enable(identity.accountId);
 		const syncSession = await getSyncAuth().createSyncSession(identity.accountId);
 		const codeGrant = createMcpTokenGrant(identity.syncKey);
 		const request = new Request('https://scrapscache.com/api/mcp/oauth/authorize', {

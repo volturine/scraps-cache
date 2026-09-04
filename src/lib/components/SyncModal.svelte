@@ -49,10 +49,13 @@
 	let mcpToken = $state('');
 	let mcpCopiedUrl = $state(false);
 	let mcpCopiedToken = $state(false);
+	let accountIdCopied = $state(false);
 	let mcpIssuing = $state(false);
 	let mcpRevoking = $state(false);
+	let mcpEntitled = $state<boolean | null>(null);
 
 	onMount(() => {
+		void refreshMcpAccess();
 		if (typeof localStorage === 'undefined') return;
 		const accountId = syncStore.account?.accountId;
 		if (!accountId) return;
@@ -64,6 +67,27 @@
 			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${accountId}`);
 		}
 	});
+
+	async function refreshMcpAccess() {
+		const account = syncStore.account;
+		if (!account) {
+			mcpEntitled = null;
+			return;
+		}
+		try {
+			const response = await syncStore.authorizedFetch('/api/mcp/access');
+			if (!response.ok) throw new Error('Could not check MCP access');
+			const result = (await response.json()) as { enabled?: unknown };
+			mcpEntitled = result.enabled === true;
+			if (!mcpEntitled && typeof localStorage !== 'undefined') {
+				localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`);
+				mcpToken = '';
+				mcpOpen = false;
+			}
+		} catch {
+			mcpEntitled = null;
+		}
+	}
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -102,8 +126,9 @@
 		}
 		mode = SyncModalMode.Linked;
 		syncing = true;
-		const ok = await notesStore.replaceWithCloudManual();
+		const ok = await notesStore.syncWithCloudManual();
 		syncing = false;
+		void refreshMcpAccess();
 		if (!ok)
 			error = friendlyError(
 				syncStore.lastError || notesStore.lastPersistError,
@@ -166,6 +191,7 @@
 					syncStore.logout();
 					mode = SyncModalMode.Link;
 				}
+				void refreshMcpAccess();
 			}
 			return;
 		}
@@ -282,7 +308,7 @@
 
 	async function generateMcpToken() {
 		const account = syncStore.account;
-		if (!account?.syncKey || mcpIssuing || mcpRevoking) return;
+		if (!account?.syncKey || mcpEntitled !== true || mcpIssuing || mcpRevoking) return;
 		mcpIssuing = true;
 		error = '';
 		try {
@@ -292,7 +318,10 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ token: grant.token, wrappedSyncKey: grant.wrappedSyncKey })
 			});
-			if (!response.ok) throw new Error('Issue failed');
+			if (!response.ok) {
+				if (response.status === 403) mcpEntitled = false;
+				throw new Error('Issue failed');
+			}
 			mcpToken = grant.token;
 			mcpOpen = true;
 			if (typeof localStorage !== 'undefined') {
@@ -305,7 +334,7 @@
 		}
 	}
 
-	async function copyMcpText(text: string, which: 'url' | 'token') {
+	async function copyMcpText(text: string, which: 'url' | 'token' | 'account') {
 		let copied = false;
 		try {
 			if (navigator.clipboard?.writeText) {
@@ -328,7 +357,10 @@
 			document.body.removeChild(ta);
 		}
 		if (!copied) return;
-		if (which === 'url') {
+		if (which === 'account') {
+			accountIdCopied = true;
+			setTimeout(() => (accountIdCopied = false), 1500);
+		} else if (which === 'url') {
 			mcpCopiedUrl = true;
 			setTimeout(() => (mcpCopiedUrl = false), 1500);
 		} else if (which === 'token') {
@@ -496,6 +528,23 @@
 						</div>
 					</div>
 				{/if}
+				<div
+					class="flex items-center justify-between gap-3 rounded-[var(--scrapscache-radius-md)] border border-[var(--scrapscache-border)] p-3 text-xs"
+				>
+					<div class="min-w-0">
+						<div class="font-medium text-[var(--scrapscache-text)]">Sync account ID</div>
+						<div class="truncate font-mono text-[10px] text-[var(--scrapscache-text-muted)]">
+							{syncStore.account.accountId}
+						</div>
+					</div>
+					<button
+						type="button"
+						onclick={() => syncStore.account && copyMcpText(syncStore.account.accountId, 'account')}
+						class="flex shrink-0 items-center gap-1 font-medium text-[var(--scrapscache-accent)] hover:underline"
+					>
+						{#if accountIdCopied}<Check class="h-3 w-3" /> Copied{:else}<Copy class="h-3 w-3" /> Copy{/if}
+					</button>
+				</div>
 
 				<!-- Mobile & AI Access (MCP) Section -->
 				<div
@@ -505,7 +554,7 @@
 						<div class="flex items-center gap-1.5 font-medium text-[var(--scrapscache-text)]">
 							<Sparkles class="h-3.5 w-3.5 text-amber-500" />
 							<span>Mobile & AI Access (MCP)</span>
-							{#if mcpToken}
+							{#if mcpToken && mcpEntitled}
 								<span
 									class="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded"
 								>
@@ -514,7 +563,7 @@
 								</span>
 							{/if}
 						</div>
-						{#if mcpToken}
+						{#if mcpToken && mcpEntitled}
 							<button
 								type="button"
 								onclick={() => (mcpOpen = !mcpOpen)}
@@ -532,7 +581,18 @@
 						authenticated AI requests, and your AI provider can see any note contents returned.
 					</p>
 
-					{#if !mcpToken}
+					{#if mcpEntitled === false}
+						<div
+							class="rounded border border-amber-500/30 bg-amber-500/10 p-2.5 text-[var(--scrapscache-text-muted)]"
+						>
+							Hosted MCP is a premium feature. Ask the service operator to enable it for this sync
+							account.
+						</div>
+					{:else if mcpEntitled === null}
+						<p class="text-[var(--scrapscache-text-muted)]">
+							MCP availability could not be verified.
+						</p>
+					{:else if !mcpToken}
 						<button
 							type="button"
 							onclick={() => void generateMcpToken()}

@@ -6,6 +6,7 @@ import {
 } from '$lib/server/operatorConfig';
 import { getRetentionStatus, type RetentionStatus } from '$lib/server/retentionSweep';
 import { getSyncStore, type OperatorUsage, type SyncQuotas } from '$lib/server/syncStore';
+import { getMcpAccessStore } from '$lib/server/mcp/accessStore';
 
 export type OperatorSnapshot = {
 	generatedAt: number;
@@ -23,6 +24,7 @@ export type OperatorSnapshot = {
 	activity: ProcessActivity;
 	retention: RetentionStatus;
 	quotas: SyncQuotas;
+	features: { mcpEnabledAccounts: number };
 };
 
 export function buildOperatorSnapshot(
@@ -31,7 +33,8 @@ export function buildOperatorSnapshot(
 	activity: ProcessActivity,
 	retention: RetentionStatus,
 	now: number,
-	retentionInactiveDays: number
+	retentionInactiveDays: number,
+	mcpEnabledAccounts: number
 ): OperatorSnapshot {
 	return {
 		generatedAt: now,
@@ -48,7 +51,8 @@ export function buildOperatorSnapshot(
 		},
 		activity,
 		retention,
-		quotas
+		quotas,
+		features: { mcpEnabledAccounts }
 	};
 }
 
@@ -65,6 +69,7 @@ export async function getOperatorSnapshot(now = Date.now()): Promise<OperatorSna
 		processActivity(),
 		await getRetentionStatus(),
 		now,
-		retentionInactiveDays
+		retentionInactiveDays,
+		await getMcpAccessStore().countEnabled()
 	);
 }

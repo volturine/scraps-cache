@@ -8,6 +8,7 @@ import { closeSyncAuth, getSyncAuth } from '$lib/server/syncAuth';
 import { closePublicApiLimiter } from '$lib/server/rateLimit';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { createMcpTokenGrant, hashMcpToken } from '$lib/mcp/token';
+import { McpAccessStore, closeMcpAccessStore } from '$lib/server/mcp/accessStore';
 
 let mockDb: Db;
 
@@ -23,6 +24,7 @@ import { GET as sseHandler } from './sse/+server';
 import { POST as messagesHandler } from './messages/+server';
 import { POST as revokeHandler } from './revoke/+server';
 import { POST as tokenHandler } from './token/+server';
+import { GET as accessHandler } from './access/+server';
 
 describe('mcp api routes', () => {
 	let identity: ReturnType<typeof createSyncIdentity>;
@@ -33,6 +35,7 @@ describe('mcp api routes', () => {
 		identity = createSyncIdentity();
 		const grant = createMcpTokenGrant(identity.syncKey);
 		token = grant.token;
+		await new McpAccessStore(mockDb).enable(identity.accountId);
 		await new McpTokenStore(mockDb).issue(identity.accountId, grant.token, grant.wrappedSyncKey);
 	});
 
@@ -40,6 +43,7 @@ describe('mcp api routes', () => {
 		closeMcpSessionManager();
 		closeMcpTokenStore();
 		closeMcpOAuthStore();
+		closeMcpAccessStore();
 		closeSyncAuth();
 		closePublicApiLimiter();
 		cleanupTestDbs();
@@ -227,5 +231,21 @@ describe('mcp api routes', () => {
 			platform: undefined
 		});
 		expect(rejected.status).toBe(401);
+	});
+
+	it('reports the premium entitlement to the authenticated account', async () => {
+		const syncSession = await getSyncAuth().createSyncSession(identity.accountId);
+		const request = () =>
+			new Request('http://localhost:5173/api/mcp/access', {
+				headers: { Authorization: `Bearer ${syncSession.accessToken}` }
+			});
+
+		const enabled = await (accessHandler as any)({ request: request() });
+		expect(enabled.status).toBe(200);
+		expect(await enabled.json()).toMatchObject({ enabled: true });
+
+		await new McpAccessStore(mockDb).disable(identity.accountId);
+		const disabled = await (accessHandler as any)({ request: request() });
+		expect(await disabled.json()).toMatchObject({ enabled: false });
 	});
 });

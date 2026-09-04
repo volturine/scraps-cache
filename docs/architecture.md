@@ -29,8 +29,9 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 ## Design principles
 
 1. **Offline-first** — IndexedDB is the durable source of truth on each device.
-2. **Ciphertext relay** — the server stores slots of encrypted blobs; it never
-   receives note plaintext, labels, or attachment bytes.
+2. **Ciphertext sync relay** — ordinary device sync stores slots of encrypted blobs and never
+   sends note plaintext, labels, or attachment bytes to the server. Optional hosted MCP is a
+   separate trust path that decrypts requested data in ephemeral server memory.
 3. **Native deployment** — self-hosting uses two local sqld stores; Cloudflare
    uses D1 metadata, R2 ciphertext objects, and a per-account Durable Object.
 4. **Client-side crypto** — sync keys, backup passphrases, and encryption live

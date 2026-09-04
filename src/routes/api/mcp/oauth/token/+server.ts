@@ -8,7 +8,7 @@ import {
 } from '$lib/mcp/oauth';
 import { createMcpTokenGrant } from '$lib/mcp/token';
 import { getMcpOAuthStore } from '$lib/server/mcp/oauthStore';
-import { getMcpTokenStore } from '$lib/server/mcp/tokenStore';
+import { getMcpTokenStore, McpAccessDisabledError } from '$lib/server/mcp/tokenStore';
 import { endMcpSessions } from '$lib/server/mcp/liveSessions';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
@@ -109,7 +109,10 @@ export const POST: RequestHandler = async ({ request, url, platform, getClientAd
 			},
 			{ headers: NO_STORE_HEADERS }
 		);
-	} catch {
+	} catch (error) {
+		if (error instanceof McpAccessDisabledError) {
+			return oauthError('invalid_grant', 'Hosted MCP is not enabled for this account');
+		}
 		return oauthError('server_error', 'Could not issue an access token', 500);
 	}
 };

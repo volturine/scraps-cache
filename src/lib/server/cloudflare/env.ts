@@ -7,6 +7,9 @@ export type CloudflareBindings = {
 	ACCOUNT_COORDINATOR: DurableObjectNamespace;
 	ACCOUNT_MCP_SESSION?: DurableObjectNamespace;
 	SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES?: string;
+	SCRAPSCACHE_CF_ACCESS_TEAM_DOMAIN?: string;
+	SCRAPSCACHE_CF_ACCESS_AUD?: string;
+	SCRAPSCACHE_CF_ACCESS_EMAIL?: string;
 };
 
 export function cloudflareBindings(): CloudflareBindings {

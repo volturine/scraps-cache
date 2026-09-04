@@ -37,7 +37,8 @@ describe('operator snapshot', () => {
 				lastError: null
 			},
 			1_000,
-			365
+			365,
+			2
 		);
 
 		expect(snapshot.storage).toEqual({
@@ -53,6 +54,7 @@ describe('operator snapshot', () => {
 		});
 		expect(JSON.stringify(snapshot)).not.toMatch(/account-[a-z0-9]+|credential/i);
 		expect(snapshot.activity.syncRequests).toBe(4);
+		expect(snapshot.features.mcpEnabledAccounts).toBe(2);
 	});
 
 	it('omits stale retention counts when the policy is disabled', () => {
@@ -79,6 +81,7 @@ describe('operator snapshot', () => {
 				lastError: null
 			},
 			1_000,
+			0,
 			0
 		);
 		expect(snapshot.accounts.staleForRetention).toBeNull();

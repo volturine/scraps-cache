@@ -54,14 +54,15 @@ export class McpOAuthStore {
 
 		const expiresAt = now + MCP_OAUTH_CODE_TTL_MS;
 		await this.db.ready;
-		await this.db.ops.batch(
+		const results = await this.db.ops.batch(
 			[
 				{ sql: 'DELETE FROM mcp_oauth_codes WHERE expires_at <= ?', args: [now] },
 				{
 					sql: `INSERT INTO mcp_oauth_codes(
 						code_hash, account_id, wrapped_sync_key, client_id,
 						redirect_uri, code_challenge, resource, expires_at
-					) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+					) SELECT ?, ?, ?, ?, ?, ?, ?, ?
+					WHERE EXISTS (SELECT 1 FROM account_mcp_access WHERE account_id = ?)`,
 					args: [
 						hashMcpToken(request.token),
 						accountId,
@@ -70,12 +71,16 @@ export class McpOAuthStore {
 						request.redirectUri,
 						request.codeChallenge,
 						request.resource,
-						expiresAt
+						expiresAt,
+						accountId
 					]
 				}
 			],
 			'write'
 		);
+		if (results.at(-1)?.rowsAffected !== 1) {
+			throw new Error('MCP access is not enabled for this account');
+		}
 		return expiresAt;
 	}
 
@@ -97,6 +102,10 @@ export class McpOAuthStore {
 			sql: `DELETE FROM mcp_oauth_codes
 				WHERE code_hash = ? AND client_id = ? AND redirect_uri = ?
 					AND code_challenge = ? AND resource = ? AND expires_at > ?
+					AND EXISTS (
+						SELECT 1 FROM account_mcp_access
+						WHERE account_mcp_access.account_id = mcp_oauth_codes.account_id
+					)
 				RETURNING account_id AS accountId, wrapped_sync_key AS wrappedSyncKey`,
 			args: [
 				hashMcpToken(request.code),

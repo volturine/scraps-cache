@@ -11,6 +11,7 @@ import { getSyncAuth } from '$lib/server/syncAuth';
 import { getMcpOAuthStore } from '$lib/server/mcp/oauthStore';
 import { InvalidRequestBody, readJsonBody } from '$lib/server/request';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { getMcpAccessStore } from '$lib/server/mcp/accessStore';
 
 const MAX_BODY_BYTES = 4096;
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
@@ -44,6 +45,12 @@ export const POST: RequestHandler = async ({ request, url, getClientAddress }) =
 
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
 	if (!accountId) return json({ error: 'Unauthorized' }, { status: 401 });
+	if (!(await getMcpAccessStore().isEnabled(accountId))) {
+		return json(
+			{ error: 'access_denied', error_description: 'Hosted MCP is not enabled for this account' },
+			{ status: 403, headers: NO_STORE_HEADERS }
+		);
+	}
 
 	let body: AuthorizationBody;
 	try {

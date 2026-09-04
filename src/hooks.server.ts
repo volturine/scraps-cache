@@ -1,5 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
 import { recordHttpRequest } from '$lib/server/metrics';
+import { authenticateCloudflareAdmin } from '$lib/server/cloudflareAccess';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
@@ -32,9 +33,20 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const requestId = /^[A-Za-z0-9._-]{1,128}$/.test(suppliedRequestId)
 		? suppliedRequestId
 		: crypto.randomUUID();
-	const response = rejectsCrossSiteForm(event.request, event.url)
-		? new Response('Cross-site form submissions are forbidden', { status: 403 })
-		: await resolve(event);
+	let response: Response;
+	if (rejectsCrossSiteForm(event.request, event.url)) {
+		response = new Response('Cross-site form submissions are forbidden', { status: 403 });
+	} else if (
+		(event.url.pathname === '/admin' || event.url.pathname.startsWith('/admin/')) &&
+		!(await authenticateCloudflareAdmin(event.request))
+	) {
+		response = new Response('Not found\n', {
+			status: 404,
+			headers: { 'cache-control': 'no-store' }
+		});
+	} else {
+		response = await resolve(event);
+	}
 	let finalResponse = response;
 	try {
 		for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);

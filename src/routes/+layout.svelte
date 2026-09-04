@@ -24,6 +24,10 @@
 
 	let { children }: LayoutProps = $props();
 	let oauthAuthorization = $derived(page.url.pathname === '/mcp/oauth/authorize');
+	let adminConsole = $derived(
+		page.url.pathname === '/admin' || page.url.pathname.startsWith('/admin/')
+	);
+	let standalonePage = $derived(oauthAuthorization || adminConsole);
 
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
@@ -50,7 +54,7 @@
 	}
 
 	onMount(() => {
-		if (oauthAuthorization) return;
+		if (standalonePage) return;
 		applyEditorOpen(editingId !== null);
 		const stopViewport = attachAppViewport(document.documentElement);
 		uiStore.viewChangeHandler = restoreFeedScroll;
@@ -163,7 +167,7 @@
 	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
-{#if oauthAuthorization}
+{#if standalonePage}
 	{@render children()}
 {:else}
 	<div class="app-viewport">
