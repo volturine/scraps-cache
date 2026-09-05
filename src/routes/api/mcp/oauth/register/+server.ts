@@ -20,6 +20,21 @@ function registrationError(error: string, description: string): Response {
 	);
 }
 
+function callbackDescription(uri: unknown): string {
+	if (typeof uri !== 'string') return 'not a URL string';
+	try {
+		const url = new URL(uri);
+		if (url.protocol !== 'https:' && url.protocol !== 'http:') return 'unsupported URL scheme';
+		return (
+			`${url.origin}${url.pathname}`.slice(0, 256) +
+			(url.search ? ' (query present)' : '') +
+			(url.hash ? ' (fragment present)' : '')
+		);
+	} catch {
+		return 'invalid URL';
+	}
+}
+
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await getPublicApiLimiter().check(
 		`mcp-oauth-register:${clientAddress(getClientAddress)}`,
@@ -54,13 +69,18 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 
 	const redirects = metadata.redirect_uris;
-	const clientId = Array.isArray(redirects) ? oauthClientForRedirect(redirects[0]) : null;
-	if (
-		!Array.isArray(redirects) ||
-		redirects.length === 0 ||
-		!clientId ||
-		!redirects.every((uri) => oauthClientForRedirect(uri) === clientId)
-	) {
+	if (!Array.isArray(redirects) || redirects.length === 0) {
+		return registrationError('invalid_redirect_uri', 'redirect_uris must be a non-empty array');
+	}
+	const unsupportedIndex = redirects.findIndex((uri) => !oauthClientForRedirect(uri));
+	if (unsupportedIndex !== -1) {
+		return registrationError(
+			'invalid_redirect_uri',
+			`Unsupported redirect_uris[${unsupportedIndex}]: ${callbackDescription(redirects[unsupportedIndex])}`
+		);
+	}
+	const clientId = oauthClientForRedirect(redirects[0]);
+	if (!redirects.every((uri) => oauthClientForRedirect(uri) === clientId)) {
 		return registrationError(
 			'invalid_redirect_uri',
 			'Use supported callbacks belonging to one OAuth client'

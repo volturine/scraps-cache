@@ -250,6 +250,42 @@ describe('MCP OAuth routes', () => {
 		expect(await maliciousResponse.json()).toMatchObject({ error: 'invalid_redirect_uri' });
 	});
 
+	it.each([
+		[[], 'redirect_uris must be a non-empty array'],
+		[[123], 'Unsupported redirect_uris[0]: not a URL string'],
+		[['not-a-url'], 'Unsupported redirect_uris[0]: invalid URL'],
+		[['data:text/plain,private-value'], 'Unsupported redirect_uris[0]: unsupported URL scheme'],
+		[
+			[
+				GROK_OAUTH_REDIRECT_URI,
+				'https://user:password@unsupported.example/callback?token=secret#private'
+			],
+			'Unsupported redirect_uris[1]: https://unsupported.example/callback (query present) (fragment present)'
+		],
+		[
+			[GROK_OAUTH_REDIRECT_URI, 'https://claude.ai/api/mcp/auth_callback'],
+			'Use supported callbacks belonging to one OAuth client'
+		]
+	])(
+		'explains rejected callbacks without reflecting credentials: %j',
+		async (redirects, description) => {
+			const response = await (registerHandler as any)({
+				request: new Request('https://scrapscache.com/api/mcp/oauth/register', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ redirect_uris: redirects })
+				}),
+				getClientAddress: () => '127.0.0.1'
+			});
+			expect(response.status).toBe(400);
+			expect(response.headers.get('cache-control')).toBe('no-store');
+			expect(await response.json()).toEqual({
+				error: 'invalid_redirect_uri',
+				error_description: description
+			});
+		}
+	);
+
 	it('rejects redirect substitution before storing an authorization code', async () => {
 		const identity = createSyncIdentity();
 		await new McpAccessStore(mockDb).enable(identity.accountId);
