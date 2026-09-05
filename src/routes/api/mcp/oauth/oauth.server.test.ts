@@ -48,6 +48,7 @@ describe('MCP OAuth routes', () => {
 		['chatgpt', 'https://chatgpt.com/connector/oauth/test-callback-id'],
 		['claude', 'https://claude.ai/api/mcp/auth_callback'],
 		['perplexity', 'https://www.perplexity.ai/rest/connections/oauth_callback'],
+		['perplexity', 'https://www.perplexity.com/rest/connections/oauth_callback'],
 		['perplexity', 'https://enterprise.perplexity.ai/rest/connections/oauth_callback'],
 		['hermes', 'http://127.0.0.1:27890/callback'],
 		['hermes', 'http://localhost:54321/callback']
@@ -248,6 +249,27 @@ describe('MCP OAuth routes', () => {
 		});
 		expect(maliciousResponse.status).toBe(400);
 		expect(await maliciousResponse.json()).toMatchObject({ error: 'invalid_redirect_uri' });
+	});
+
+	it('registers Perplexity with both .ai and .com callbacks', async () => {
+		const redirects = [
+			'https://www.perplexity.ai/rest/connections/oauth_callback',
+			'https://www.perplexity.com/rest/connections/oauth_callback'
+		];
+		const response = await (registerHandler as any)({
+			request: new Request('https://scrapscache.com/api/mcp/oauth/register', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ redirect_uris: redirects, token_endpoint_auth_method: 'none' })
+			}),
+			getClientAddress: () => '127.0.0.1'
+		});
+		expect(response.status).toBe(201);
+		expect(await response.json()).toMatchObject({
+			client_id: 'perplexity',
+			redirect_uris: redirects,
+			token_endpoint_auth_method: 'none'
+		});
 	});
 
 	it.each([

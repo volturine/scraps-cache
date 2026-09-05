@@ -6,6 +6,12 @@ describe('OAuth callback boundaries', () => {
 		'https://claude.ai.evil.example/api/mcp/auth_callback',
 		'https://claude.ai/api/mcp/auth_callback?redirect=elsewhere',
 		'https://www.perplexity.ai.evil.example/rest/connections/oauth_callback',
+		'https://www.perplexity.com.evil.example/rest/connections/oauth_callback',
+		'https://www.perplexity.com@evil.example/rest/connections/oauth_callback',
+		'http://www.perplexity.com/rest/connections/oauth_callback',
+		'https://www.perplexity.com/rest/connections/oauth_callback?redirect=elsewhere',
+		'https://www.perplexity.com/rest/connections/oauth_callback#fragment',
+		'https://www.perplexity.com/other',
 		'https://perplexity.ai/rest/connections/oauth_callback',
 		'http://localhost.evil.example:27890/callback',
 		'http://127.0.0.2:27890/callback',
@@ -31,5 +37,8 @@ describe('OAuth callback boundaries', () => {
 	it('does not permit cross-provider client substitution', () => {
 		expect(isOAuthClientRedirect('grok', 'https://chatgpt.com/connector/oauth/id')).toBe(false);
 		expect(isOAuthClientRedirect(null, 'https://evil.example')).toBe(false);
+		expect(
+			isOAuthClientRedirect('grok', 'https://www.perplexity.com/rest/connections/oauth_callback')
+		).toBe(false);
 	});
 });

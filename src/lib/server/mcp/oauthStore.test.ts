@@ -11,6 +11,11 @@ afterEach(cleanupTestDbs);
 describe('McpOAuthStore', () => {
 	it.each([
 		[
+			'perplexity',
+			'https://www.perplexity.ai/rest/connections/oauth_callback',
+			'https://www.perplexity.com/rest/connections/oauth_callback'
+		],
+		[
 			'chatgpt',
 			'https://chatgpt.com/connector/oauth/first',
 			'https://chatgpt.com/connector/oauth/second'

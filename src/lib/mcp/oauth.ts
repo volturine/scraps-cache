@@ -21,6 +21,7 @@ export function oauthClientForRedirect(uri: unknown): keyof typeof OAUTH_CLIENT_
 	if (uri === 'https://claude.ai/api/mcp/auth_callback') return 'claude';
 	if (
 		uri === 'https://www.perplexity.ai/rest/connections/oauth_callback' ||
+		uri === 'https://www.perplexity.com/rest/connections/oauth_callback' ||
 		uri === 'https://enterprise.perplexity.ai/rest/connections/oauth_callback'
 	)
 		return 'perplexity';
