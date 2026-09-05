@@ -22,7 +22,8 @@ export function oauthClientForRedirect(uri: unknown): keyof typeof OAUTH_CLIENT_
 	if (
 		uri === 'https://www.perplexity.ai/rest/connections/oauth_callback' ||
 		uri === 'https://www.perplexity.com/rest/connections/oauth_callback' ||
-		uri === 'https://enterprise.perplexity.ai/rest/connections/oauth_callback'
+		uri === 'https://enterprise.perplexity.ai/rest/connections/oauth_callback' ||
+		uri === 'https://enterprise.perplexity.com/rest/connections/oauth_callback'
 	)
 		return 'perplexity';
 	const loopback = /^http:\/\/(?:127\.0\.0\.1|localhost):([1-9][0-9]{0,4})\/callback$/.exec(uri);

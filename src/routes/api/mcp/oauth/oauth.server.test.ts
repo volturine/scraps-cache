@@ -50,6 +50,7 @@ describe('MCP OAuth routes', () => {
 		['perplexity', 'https://www.perplexity.ai/rest/connections/oauth_callback'],
 		['perplexity', 'https://www.perplexity.com/rest/connections/oauth_callback'],
 		['perplexity', 'https://enterprise.perplexity.ai/rest/connections/oauth_callback'],
+		['perplexity', 'https://enterprise.perplexity.com/rest/connections/oauth_callback'],
 		['hermes', 'http://127.0.0.1:27890/callback'],
 		['hermes', 'http://localhost:54321/callback']
 	])('exchanges a browser-approved PKCE code for %s at %s', async (clientId, redirectUri) => {
@@ -251,10 +252,12 @@ describe('MCP OAuth routes', () => {
 		expect(await maliciousResponse.json()).toMatchObject({ error: 'invalid_redirect_uri' });
 	});
 
-	it('registers Perplexity with both .ai and .com callbacks', async () => {
+	it('registers all four standard and Enterprise Perplexity callbacks together', async () => {
 		const redirects = [
 			'https://www.perplexity.ai/rest/connections/oauth_callback',
-			'https://www.perplexity.com/rest/connections/oauth_callback'
+			'https://www.perplexity.com/rest/connections/oauth_callback',
+			'https://enterprise.perplexity.ai/rest/connections/oauth_callback',
+			'https://enterprise.perplexity.com/rest/connections/oauth_callback'
 		];
 		const response = await (registerHandler as any)({
 			request: new Request('https://scrapscache.com/api/mcp/oauth/register', {

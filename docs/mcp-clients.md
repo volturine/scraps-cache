@@ -22,9 +22,10 @@ Supported hosted callbacks follow the [Claude authentication documentation](http
 [Perplexity connector documentation](https://www.perplexity.ai/help-center/en/articles/13915507-adding-custom-remote-connectors),
 and [ChatGPT authentication documentation](https://developers.openai.com/plugins/build/auth).
 Both Perplexity's standard and Enterprise callbacks are supported.
-Perplexity's automatic registration also sends
-`https://www.perplexity.com/rest/connections/oauth_callback` alongside its `.ai` callback.
-Both exact URLs are accepted as the `perplexity` client; no manual client ID is needed.
+Perplexity's automatic registration sends all four callbacks together: the exact
+`/rest/connections/oauth_callback` path on `www.perplexity.ai`, `www.perplexity.com`,
+`enterprise.perplexity.ai`, and `enterprise.perplexity.com`, all over HTTPS.
+All four exact URLs are accepted as the `perplexity` client; no manual client ID is needed.
 
 ## Hermes Agent (Nous Research)
 
