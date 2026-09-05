@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { GROK_OAUTH_REDIRECT_URI, MCP_OAUTH_CLIENT_ID, MCP_OAUTH_SCOPE } from '$lib/mcp/oauth';
+import { oauthClientForRedirect, MCP_OAUTH_SCOPE } from '$lib/mcp/oauth';
 import { InvalidRequestBody, readJsonBody } from '$lib/server/request';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
@@ -53,19 +53,25 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		return registrationError('invalid_client_metadata', 'Unsupported OAuth client metadata');
 	}
 
+	const redirects = metadata.redirect_uris;
+	const clientId = Array.isArray(redirects) ? oauthClientForRedirect(redirects[0]) : null;
 	if (
-		!Array.isArray(metadata.redirect_uris) ||
-		metadata.redirect_uris.length === 0 ||
-		!metadata.redirect_uris.every((uri) => uri === GROK_OAUTH_REDIRECT_URI)
+		!Array.isArray(redirects) ||
+		redirects.length === 0 ||
+		!clientId ||
+		!redirects.every((uri) => oauthClientForRedirect(uri) === clientId)
 	) {
-		return registrationError('invalid_redirect_uri', 'Only the Grok OAuth callback is allowed');
+		return registrationError(
+			'invalid_redirect_uri',
+			'Use supported callbacks belonging to one OAuth client'
+		);
 	}
 
 	return json(
 		{
-			client_id: MCP_OAUTH_CLIENT_ID,
+			client_id: clientId,
 			client_name: metadata.client_name,
-			redirect_uris: [GROK_OAUTH_REDIRECT_URI],
+			redirect_uris: [...new Set(redirects)],
 			token_endpoint_auth_method: 'none',
 			grant_types: ['authorization_code'],
 			response_types: ['code'],

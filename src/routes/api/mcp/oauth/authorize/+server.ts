@@ -1,8 +1,7 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import {
-	GROK_OAUTH_REDIRECT_URI,
-	MCP_OAUTH_CLIENT_ID,
+	isOAuthClientRedirect,
 	MCP_OAUTH_SCOPE,
 	isPkceChallenge,
 	mcpResource
@@ -64,8 +63,9 @@ export const POST: RequestHandler = async ({ request, url, getClientAddress }) =
 	const resource = mcpResource(url.origin);
 	if (
 		body.responseType !== 'code' ||
-		body.clientId !== MCP_OAUTH_CLIENT_ID ||
-		body.redirectUri !== GROK_OAUTH_REDIRECT_URI ||
+		typeof body.clientId !== 'string' ||
+		typeof body.redirectUri !== 'string' ||
+		!isOAuthClientRedirect(body.clientId, body.redirectUri) ||
 		body.scope !== MCP_OAUTH_SCOPE ||
 		body.codeChallengeMethod !== 'S256' ||
 		typeof body.codeChallenge !== 'string' ||
@@ -91,7 +91,7 @@ export const POST: RequestHandler = async ({ request, url, getClientAddress }) =
 		return invalidRequest('Invalid OAuth authorization grant');
 	}
 
-	const redirect = new URL(GROK_OAUTH_REDIRECT_URI);
+	const redirect = new URL(body.redirectUri);
 	redirect.searchParams.set('code', body.code);
 	if (typeof body.state === 'string') redirect.searchParams.set('state', body.state);
 	redirect.searchParams.set('iss', url.origin);

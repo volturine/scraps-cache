@@ -1,6 +1,5 @@
 import {
-	GROK_OAUTH_REDIRECT_URI,
-	MCP_OAUTH_CLIENT_ID,
+	isOAuthClientRedirect,
 	MCP_OAUTH_CODE_TTL_MS,
 	isPkceChallenge,
 	isPkceVerifier,
@@ -39,8 +38,7 @@ export class McpOAuthStore {
 		now = Date.now()
 	): Promise<number> {
 		if (
-			request.clientId !== MCP_OAUTH_CLIENT_ID ||
-			request.redirectUri !== GROK_OAUTH_REDIRECT_URI ||
+			!isOAuthClientRedirect(request.clientId, request.redirectUri) ||
 			!isPkceChallenge(request.codeChallenge) ||
 			!isMcpToken(request.token) ||
 			request.wrappedSyncKey.length > 512
@@ -89,8 +87,7 @@ export class McpOAuthStore {
 		now = Date.now()
 	): Promise<{ accountId: string; syncKey: string } | null> {
 		if (
-			request.clientId !== MCP_OAUTH_CLIENT_ID ||
-			request.redirectUri !== GROK_OAUTH_REDIRECT_URI ||
+			!isOAuthClientRedirect(request.clientId, request.redirectUri) ||
 			!isMcpToken(request.code) ||
 			!isPkceVerifier(request.codeVerifier)
 		) {

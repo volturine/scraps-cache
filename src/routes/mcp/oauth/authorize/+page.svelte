@@ -4,8 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { ArrowLeft, ShieldCheck } from '@lucide/svelte';
 	import {
-		GROK_OAUTH_REDIRECT_URI,
-		MCP_OAUTH_CLIENT_ID,
+		isOAuthClientRedirect,
 		MCP_OAUTH_SCOPE,
 		isPkceChallenge,
 		mcpResource
@@ -15,6 +14,8 @@
 
 	type OAuthRequest = {
 		valid: boolean;
+		clientId: string;
+		redirectUri: string;
 		state: string | null;
 		codeChallenge: string;
 		resource: string;
@@ -25,11 +26,14 @@
 		const state = params.get('state');
 		const codeChallenge = params.get('code_challenge') ?? '';
 		const resource = params.get('resource') ?? mcpResource(url.origin);
+		const clientId = params.get('client_id') ?? '';
+		const redirectUri = params.get('redirect_uri') ?? '';
 		return {
+			clientId,
+			redirectUri,
 			valid:
 				params.get('response_type') === 'code' &&
-				params.get('client_id') === MCP_OAUTH_CLIENT_ID &&
-				params.get('redirect_uri') === GROK_OAUTH_REDIRECT_URI &&
+				isOAuthClientRedirect(clientId, redirectUri) &&
 				params.get('scope') === MCP_OAUTH_SCOPE &&
 				params.get('code_challenge_method') === 'S256' &&
 				isPkceChallenge(codeChallenge) &&
@@ -42,6 +46,7 @@
 	}
 
 	let oauthRequest = $derived(parseRequest(page.url));
+	let clientName = $derived(oauthRequest.clientId === 'chatgpt' ? 'ChatGPT' : 'Grok');
 	let busy = $state(false);
 	let error = $state('');
 	let mcpEntitled = $state<boolean | null>(null);
@@ -72,8 +77,8 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					responseType: 'code',
-					clientId: MCP_OAUTH_CLIENT_ID,
-					redirectUri: GROK_OAUTH_REDIRECT_URI,
+					clientId: oauthRequest.clientId,
+					redirectUri: oauthRequest.redirectUri,
 					scope: MCP_OAUTH_SCOPE,
 					state: oauthRequest.state ?? undefined,
 					codeChallenge: oauthRequest.codeChallenge,
@@ -87,12 +92,12 @@
 			const result = (await response.json()) as { redirectTo?: unknown };
 			if (typeof result.redirectTo !== 'string') throw new Error('Invalid authorization response');
 			const redirect = new URL(result.redirectTo);
-			if (`${redirect.origin}${redirect.pathname}` !== GROK_OAUTH_REDIRECT_URI) {
+			if (`${redirect.origin}${redirect.pathname}` !== oauthRequest.redirectUri) {
 				throw new Error('Invalid authorization redirect');
 			}
 			window.location.replace(redirect.href);
 		} catch {
-			error = 'Could not authorize Grok. Please try again.';
+			error = `Could not authorize ${clientName}. Please try again.`;
 			busy = false;
 		}
 	}
@@ -102,7 +107,8 @@
 			window.location.assign('/');
 			return;
 		}
-		const redirect = new URL(GROK_OAUTH_REDIRECT_URI);
+		const redirect = new URL(oauthRequest.redirectUri);
+		redirect.searchParams.set('iss', page.url.origin);
 		redirect.searchParams.set('error', 'access_denied');
 		redirect.searchParams.set('error_description', 'The user denied the authorization request');
 		if (oauthRequest.state !== null) redirect.searchParams.set('state', oauthRequest.state);
@@ -111,7 +117,7 @@
 </script>
 
 <svelte:head>
-	<title>Authorize Grok · Scraps Cache</title>
+	<title>Authorize {clientName} · Scraps Cache</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
@@ -140,7 +146,7 @@
 				<p class="mb-1 text-xs font-semibold uppercase tracking-wider text-blue-600">
 					Authorization
 				</p>
-				<h1 class="text-2xl font-semibold tracking-tight">Connect Grok to your notes?</h1>
+				<h1 class="text-2xl font-semibold tracking-tight">Connect {clientName} to your notes?</h1>
 			</div>
 
 			<div class="space-y-5 px-6 py-6">
@@ -150,7 +156,7 @@
 					</div>
 				{:else if !syncStore.account?.syncKey}
 					<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-						Set up encrypted sync on this device before connecting Grok.
+						Set up encrypted sync on this device before connecting {clientName}.
 					</div>
 				{:else if mcpEntitled === false}
 					<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
@@ -162,12 +168,12 @@
 					</div>
 				{:else}
 					<div class="space-y-3 text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
-						<p>Grok will be able to search, read, create, update, and delete your notes.</p>
+						<p>{clientName} will be able to search, read, create, update, and delete your notes.</p>
 						<p>
 							Your normal device sync remains end-to-end encrypted. MCP is a separate access path
 							and is not end-to-end encrypted: while access is enabled, this server decrypts
-							requested note data in ephemeral memory, and Grok/xAI can see the note contents
-							returned. Revoke access at any time in Sync.
+							requested note data in ephemeral memory, and {clientName}'s provider can see the note
+							contents returned. Revoke access at any time in Sync.
 						</p>
 					</div>
 				{/if}

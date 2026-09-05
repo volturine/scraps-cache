@@ -7,6 +7,22 @@ export const MCP_OAUTH_SCOPE = 'mcp';
 export const GROK_OAUTH_REDIRECT_URI = 'https://grok.com/connectors-oauth-exchange-code/';
 export const MCP_OAUTH_CODE_TTL_MS = 5 * 60 * 1000;
 
+export function oauthClientForRedirect(uri: unknown): 'grok' | 'chatgpt' | null {
+	if (uri === GROK_OAUTH_REDIRECT_URI) return 'grok';
+	if (typeof uri !== 'string') return null;
+	if (
+		uri === 'https://chatgpt.com/connector_platform_oauth_redirect' ||
+		/^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]+$/.test(uri)
+	)
+		return 'chatgpt';
+	return null;
+}
+
+export function isOAuthClientRedirect(clientId: unknown, uri: unknown): boolean {
+	const client = oauthClientForRedirect(uri);
+	return client !== null && clientId === client;
+}
+
 function bytesToBase64Url(bytes: Uint8Array): string {
 	let binary = '';
 	for (const byte of bytes) binary += String.fromCharCode(byte);

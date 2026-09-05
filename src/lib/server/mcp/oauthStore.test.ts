@@ -9,6 +9,37 @@ import { McpAccessStore } from './accessStore';
 afterEach(cleanupTestDbs);
 
 describe('McpOAuthStore', () => {
+	it('binds ChatGPT codes to the exact callback even when another callback is supported', async () => {
+		const db = testDb();
+		const store = new McpOAuthStore(db);
+		const identity = createSyncIdentity();
+		await new McpAccessStore(db).enable(identity.accountId);
+		const grant = createMcpTokenGrant(identity.syncKey);
+		const verifier = 'a'.repeat(43);
+		const redirectUri = 'https://chatgpt.com/connector/oauth/first';
+		const resource = 'https://scrapscache.com/api/mcp';
+		await store.createCode(identity.accountId, {
+			...grant,
+			clientId: 'chatgpt',
+			redirectUri,
+			resource,
+			codeChallenge: pkceChallenge(verifier)
+		});
+		const exchange = {
+			code: grant.token,
+			clientId: 'chatgpt',
+			redirectUri,
+			resource,
+			codeVerifier: verifier
+		};
+		await expect(
+			store.consumeCode({ ...exchange, redirectUri: 'https://chatgpt.com/connector/oauth/second' })
+		).resolves.toBeNull();
+		await expect(store.consumeCode(exchange)).resolves.toMatchObject({
+			accountId: identity.accountId
+		});
+		await expect(store.consumeCode(exchange)).resolves.toBeNull();
+	});
 	it('stores only a hashed code and consumes it once with the matching PKCE verifier', async () => {
 		const db = testDb();
 		const store = new McpOAuthStore(db);

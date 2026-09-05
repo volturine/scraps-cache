@@ -1,11 +1,6 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import {
-	GROK_OAUTH_REDIRECT_URI,
-	MCP_OAUTH_CLIENT_ID,
-	MCP_OAUTH_SCOPE,
-	mcpResource
-} from '$lib/mcp/oauth';
+import { isOAuthClientRedirect, MCP_OAUTH_SCOPE, mcpResource } from '$lib/mcp/oauth';
 import { createMcpTokenGrant } from '$lib/mcp/token';
 import { getMcpOAuthStore } from '$lib/server/mcp/oauthStore';
 import { getMcpTokenStore, McpAccessDisabledError } from '$lib/server/mcp/tokenStore';
@@ -73,11 +68,7 @@ export const POST: RequestHandler = async ({ request, url, platform, getClientAd
 	const redirectUri = form.get('redirect_uri') ?? '';
 	const codeVerifier = form.get('code_verifier') ?? '';
 	const resource = form.get('resource') ?? mcpResource(url.origin);
-	if (
-		clientId !== MCP_OAUTH_CLIENT_ID ||
-		redirectUri !== GROK_OAUTH_REDIRECT_URI ||
-		resource !== mcpResource(url.origin)
-	) {
+	if (!isOAuthClientRedirect(clientId, redirectUri) || resource !== mcpResource(url.origin)) {
 		return oauthError('invalid_grant', 'Authorization code parameters do not match');
 	}
 

@@ -42,7 +42,25 @@ describe('MCP OAuth routes', () => {
 		cleanupTestDbs();
 	});
 
-	it('exchanges one browser-approved PKCE code without persisting plaintext secrets', async () => {
+	it.each([
+		[MCP_OAUTH_CLIENT_ID, GROK_OAUTH_REDIRECT_URI],
+		['chatgpt', 'https://chatgpt.com/connector_platform_oauth_redirect'],
+		['chatgpt', 'https://chatgpt.com/connector/oauth/test-callback-id']
+	])('exchanges a browser-approved PKCE code for %s at %s', async (clientId, redirectUri) => {
+		const registrationRequest = new Request('https://scrapscache.com/api/mcp/oauth/register', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ redirect_uris: [redirectUri], token_endpoint_auth_method: 'none' })
+		});
+		const registration = await (registerHandler as any)({
+			request: registrationRequest,
+			getClientAddress: () => '127.0.0.1'
+		});
+		expect(registration.status).toBe(201);
+		expect(await registration.json()).toMatchObject({
+			client_id: clientId,
+			redirect_uris: [redirectUri]
+		});
 		const identity = createSyncIdentity();
 		await new McpAccessStore(mockDb).enable(identity.accountId);
 		const existingGrant = createMcpTokenGrant(identity.syncKey);
@@ -59,8 +77,8 @@ describe('MCP OAuth routes', () => {
 			},
 			body: JSON.stringify({
 				responseType: 'code',
-				clientId: MCP_OAUTH_CLIENT_ID,
-				redirectUri: GROK_OAUTH_REDIRECT_URI,
+				clientId,
+				redirectUri,
 				scope: 'mcp',
 				state: 'opaque-state',
 				codeChallenge: pkceChallenge(verifier),
@@ -78,7 +96,7 @@ describe('MCP OAuth routes', () => {
 		expect(authorizeResponse.status).toBe(200);
 		expect(authorizeResponse.headers.get('cache-control')).toBe('no-store');
 		const redirect = new URL((await authorizeResponse.json()).redirectTo);
-		expect(`${redirect.origin}${redirect.pathname}`).toBe(GROK_OAUTH_REDIRECT_URI);
+		expect(`${redirect.origin}${redirect.pathname}`).toBe(redirectUri);
 		expect(redirect.searchParams.get('code')).toBe(codeGrant.token);
 		expect(redirect.searchParams.get('state')).toBe('opaque-state');
 		expect(redirect.searchParams.get('iss')).toBe('https://scrapscache.com');
@@ -90,8 +108,8 @@ describe('MCP OAuth routes', () => {
 		const form = new URLSearchParams({
 			grant_type: 'authorization_code',
 			code: codeGrant.token,
-			client_id: MCP_OAUTH_CLIENT_ID,
-			redirect_uri: GROK_OAUTH_REDIRECT_URI,
+			client_id: clientId,
+			redirect_uri: redirectUri,
 			code_verifier: verifier,
 			resource: 'https://scrapscache.com/api/mcp'
 		});
