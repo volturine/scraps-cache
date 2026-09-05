@@ -13,6 +13,9 @@
 	],
 	"vars": {
 		"SCRAPSCACHE_ORIGIN": "https://scrapscache.com",
+		"SCRAPSCACHE_CF_ACCESS_TEAM_DOMAIN": "https://kripso-world.cloudflareaccess.com",
+		"SCRAPSCACHE_CF_ACCESS_AUD": "scrapscache-admin",
+		"SCRAPSCACHE_CF_ACCESS_EMAIL": "kripsoworld@gmail.com",
 		"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000"
 	},
 	"assets": {
@@ -91,6 +94,9 @@
 			],
 			"vars": {
 				"SCRAPSCACHE_ORIGIN": "https://dev.scrapscache.com",
+				"SCRAPSCACHE_CF_ACCESS_TEAM_DOMAIN": "https://kripso-world.cloudflareaccess.com",
+				"SCRAPSCACHE_CF_ACCESS_AUD": "scrapscache-admin",
+				"SCRAPSCACHE_CF_ACCESS_EMAIL": "kripsoworld@gmail.com",
 				"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000"
 			}
 		}
