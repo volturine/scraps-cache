@@ -76,7 +76,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			grant_types: ['authorization_code'],
 			response_types: ['code'],
 			scope: MCP_OAUTH_SCOPE,
-			application_type: 'web'
+			application_type: clientId === 'hermes' ? 'native' : 'web'
 		},
 		{ status: 201, headers: NO_STORE_HEADERS }
 	);

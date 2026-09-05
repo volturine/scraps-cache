@@ -9,31 +9,37 @@ import { McpAccessStore } from './accessStore';
 afterEach(cleanupTestDbs);
 
 describe('McpOAuthStore', () => {
-	it('binds ChatGPT codes to the exact callback even when another callback is supported', async () => {
+	it.each([
+		[
+			'chatgpt',
+			'https://chatgpt.com/connector/oauth/first',
+			'https://chatgpt.com/connector/oauth/second'
+		],
+		['hermes', 'http://127.0.0.1:27890/callback', 'http://127.0.0.1:27891/callback']
+	])('binds %s codes to the exact callback', async (clientId, redirectUri, otherRedirectUri) => {
 		const db = testDb();
 		const store = new McpOAuthStore(db);
 		const identity = createSyncIdentity();
 		await new McpAccessStore(db).enable(identity.accountId);
 		const grant = createMcpTokenGrant(identity.syncKey);
 		const verifier = 'a'.repeat(43);
-		const redirectUri = 'https://chatgpt.com/connector/oauth/first';
 		const resource = 'https://scrapscache.com/api/mcp';
 		await store.createCode(identity.accountId, {
 			...grant,
-			clientId: 'chatgpt',
+			clientId,
 			redirectUri,
 			resource,
 			codeChallenge: pkceChallenge(verifier)
 		});
 		const exchange = {
 			code: grant.token,
-			clientId: 'chatgpt',
+			clientId,
 			redirectUri,
 			resource,
 			codeVerifier: verifier
 		};
 		await expect(
-			store.consumeCode({ ...exchange, redirectUri: 'https://chatgpt.com/connector/oauth/second' })
+			store.consumeCode({ ...exchange, redirectUri: otherRedirectUri })
 		).resolves.toBeNull();
 		await expect(store.consumeCode(exchange)).resolves.toMatchObject({
 			accountId: identity.accountId

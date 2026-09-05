@@ -5,6 +5,8 @@
 	import { ArrowLeft, ShieldCheck } from '@lucide/svelte';
 	import {
 		isOAuthClientRedirect,
+		oauthClientForRedirect,
+		OAUTH_CLIENT_NAMES,
 		MCP_OAUTH_SCOPE,
 		isPkceChallenge,
 		mcpResource
@@ -46,7 +48,8 @@
 	}
 
 	let oauthRequest = $derived(parseRequest(page.url));
-	let clientName = $derived(oauthRequest.clientId === 'chatgpt' ? 'ChatGPT' : 'Grok');
+	let client = $derived(oauthClientForRedirect(oauthRequest.redirectUri));
+	let clientName = $derived(client ? OAUTH_CLIENT_NAMES[client] : 'AI client');
 	let busy = $state(false);
 	let error = $state('');
 	let mcpEntitled = $state<boolean | null>(null);
@@ -168,12 +171,20 @@
 					</div>
 				{:else}
 					<div class="space-y-3 text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
+						{#if client === 'hermes'}
+							<p class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
+								Return to a local app at <strong class="break-all"
+									>{new URL(oauthRequest.redirectUri).host}</strong
+								>. Only allow this if you started the connection in Hermes on this computer. A local
+								callback does not verify the app's identity.
+							</p>
+						{/if}
 						<p>{clientName} will be able to search, read, create, update, and delete your notes.</p>
 						<p>
 							Your normal device sync remains end-to-end encrypted. MCP is a separate access path
 							and is not end-to-end encrypted: while access is enabled, this server decrypts
-							requested note data in ephemeral memory, and {clientName}'s provider can see the note
-							contents returned. Revoke access at any time in Sync.
+							requested note data in ephemeral memory. {clientName} receives those contents and may share
+							them with its configured AI provider. Revoke access at any time in Sync.
 						</p>
 					</div>
 				{/if}

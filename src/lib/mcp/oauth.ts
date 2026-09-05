@@ -7,9 +7,25 @@ export const MCP_OAUTH_SCOPE = 'mcp';
 export const GROK_OAUTH_REDIRECT_URI = 'https://grok.com/connectors-oauth-exchange-code/';
 export const MCP_OAUTH_CODE_TTL_MS = 5 * 60 * 1000;
 
-export function oauthClientForRedirect(uri: unknown): 'grok' | 'chatgpt' | null {
+export const OAUTH_CLIENT_NAMES = {
+	grok: 'Grok',
+	chatgpt: 'ChatGPT',
+	claude: 'Claude',
+	perplexity: 'Perplexity',
+	hermes: 'Hermes Agent'
+} as const;
+
+export function oauthClientForRedirect(uri: unknown): keyof typeof OAUTH_CLIENT_NAMES | null {
 	if (uri === GROK_OAUTH_REDIRECT_URI) return 'grok';
 	if (typeof uri !== 'string') return null;
+	if (uri === 'https://claude.ai/api/mcp/auth_callback') return 'claude';
+	if (
+		uri === 'https://www.perplexity.ai/rest/connections/oauth_callback' ||
+		uri === 'https://enterprise.perplexity.ai/rest/connections/oauth_callback'
+	)
+		return 'perplexity';
+	const loopback = /^http:\/\/(?:127\.0\.0\.1|localhost):([1-9][0-9]{0,4})\/callback$/.exec(uri);
+	if (loopback && Number(loopback[1]) <= 65535) return 'hermes';
 	if (
 		uri === 'https://chatgpt.com/connector_platform_oauth_redirect' ||
 		/^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]+$/.test(uri)
