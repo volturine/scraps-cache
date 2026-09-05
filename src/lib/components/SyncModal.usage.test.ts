@@ -5,6 +5,7 @@ import { createSyncIdentity } from '$lib/syncPairing';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { notesStore } from '$lib/stores/notes.svelte';
 import SyncModal from './SyncModal.svelte';
+import { createMcpTokenGrant, MCP_TOKEN_STORAGE_PREFIX } from '$lib/mcp/token';
 
 const MB = 1_000_000;
 
@@ -39,9 +40,36 @@ describe('SyncModal storage usage', () => {
 	it('discloses the separate MCP trust path', () => {
 		renderUsage(5 * MB);
 
-		expect(screen.getByText(/MCP opens a separate access path/).textContent).toMatch(
-			/this server can decrypt notes.*AI provider can see any note contents returned/s
+		expect(screen.getByText(/MCP is not end-to-end encrypted/).textContent).toMatch(
+			/this server decrypts requested notes.*AI provider can read and change them/s
 		);
+	});
+
+	it('opens connection details above the canvas without displaying the bearer token', async () => {
+		const host = document.createElement('div');
+		host.setAttribute('data-app-overlay', '');
+		document.body.appendChild(host);
+		const identity = createSyncIdentity();
+		const { token } = createMcpTokenGrant(identity.syncKey);
+		const key = `${MCP_TOKEN_STORAGE_PREFIX}${identity.accountId}`;
+		syncStore.account = identity;
+		localStorage.setItem(key, token);
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(Response.json({ enabled: true }));
+		const component = render(SyncModal, { props: { onClose: vi.fn() } });
+		try {
+			const toggle = await screen.findByRole('button', { name: 'Show details' });
+			expect(host.contains(screen.getByRole('dialog'))).toBe(true);
+			await fireEvent.click(toggle);
+			expect(toggle.getAttribute('aria-expanded')).toBe('true');
+			expect(screen.getByText('Manual setup').closest('details')?.open).toBe(false);
+			expect(host.textContent).not.toContain(token);
+			await fireEvent.click(toggle);
+			expect(toggle.getAttribute('aria-expanded')).toBe('false');
+		} finally {
+			component.unmount();
+			host.remove();
+			localStorage.removeItem(key);
+		}
 	});
 
 	it('shows current storage usage without warning below 80 percent', () => {

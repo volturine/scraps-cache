@@ -6,7 +6,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { unregisterReminderDevice } from '$lib/reminderWake';
 	import { Cloud, X, Sparkles, Copy, Check } from '@lucide/svelte';
-	import { portalToAppFloat } from '$lib/appViewport';
+	import { portalToAppOverlay } from '$lib/appViewport';
 	import { PairingRole } from '$lib/pairingProtocol';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
 	import { createMcpTokenGrant, isMcpToken, MCP_TOKEN_STORAGE_PREFIX } from '$lib/mcp/token';
@@ -62,7 +62,6 @@
 		const saved = localStorage.getItem(`${MCP_TOKEN_STORAGE_PREFIX}${accountId}`);
 		if (saved && isMcpToken(saved)) {
 			mcpToken = saved;
-			mcpOpen = true;
 		} else if (saved) {
 			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${accountId}`);
 		}
@@ -429,8 +428,8 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div
-	{@attach portalToAppFloat}
-	class="fixed inset-0 z-50 flex items-center justify-center p-4"
+	{@attach portalToAppOverlay}
+	class="absolute inset-0 z-50 flex items-center justify-center p-4"
 	transition:fade={{ duration: 150 }}
 >
 	<button
@@ -440,14 +439,16 @@
 		aria-label="Close sync dialog"
 	></button>
 	<div
-		class="scrapscache-dialog relative w-full max-w-md p-6"
+		class="scrapscache-dialog relative flex max-h-full min-h-0 w-full min-w-0 max-w-md flex-col overflow-hidden"
 		role="dialog"
 		tabindex="-1"
 		aria-modal="true"
 		aria-labelledby="sync-title"
 		transition:fly={{ y: 20, duration: 200 }}
 	>
-		<div class="mb-4 flex items-center justify-between">
+		<div
+			class="flex shrink-0 items-center justify-between border-b border-[var(--scrapscache-border)] px-5 py-3"
+		>
 			<h2
 				id="sync-title"
 				class="flex items-center gap-2 text-lg font-medium text-[var(--scrapscache-text)]"
@@ -460,406 +461,418 @@
 			</button>
 		</div>
 
-		{#if mode === SyncModalMode.Linked && syncStore.account}
-			<div class="space-y-4">
-				<p class="text-sm text-[var(--scrapscache-text-muted)]">
-					This device is linked. Connect another device with a one-time code that expires in 60
-					seconds.
-				</p>
-				{#if syncStore.progress}
-					{@const progress = syncStore.progress}
-					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-					<div
-						class="rounded-[var(--scrapscache-radius-md)] bg-[var(--scrapscache-interactive-hover)] p-3 text-sm"
-					>
-						<div class="mb-1 flex justify-between text-[var(--scrapscache-text-muted)]">
-							<span
-								>{progress.phase === 'upload'
-									? 'Encrypting & uploading'
-									: 'Downloading encrypted sync'}</span
-							><span
-								>{formatBytes(progress.loadedBytes)}{progress.totalBytes
-									? ` / ${formatBytes(progress.totalBytes)} (${percent}%)`
-									: ''}</span
-							>
+		<div class="min-h-0 overflow-y-auto overscroll-contain p-5">
+			{#if mode === SyncModalMode.Linked && syncStore.account}
+				<div class="space-y-4">
+					<p class="text-sm text-[var(--scrapscache-text-muted)]">
+						This device is linked. Your notes sync with your other devices.
+					</p>
+					{#if syncStore.progress}
+						{@const progress = syncStore.progress}
+						{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
+						<div
+							class="rounded-[var(--scrapscache-radius-md)] bg-[var(--scrapscache-interactive-hover)] p-3 text-sm"
+						>
+							<div class="mb-1 flex justify-between text-[var(--scrapscache-text-muted)]">
+								<span
+									>{progress.phase === 'upload'
+										? 'Encrypting & uploading'
+										: 'Downloading encrypted sync'}</span
+								><span
+									>{formatBytes(progress.loadedBytes)}{progress.totalBytes
+										? ` / ${formatBytes(progress.totalBytes)} (${percent}%)`
+										: ''}</span
+								>
+							</div>
+							<div class="scrapscache-progress-track h-2 overflow-hidden rounded-full">
+								<div
+									class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
+									style={`width: ${progress.totalBytes ? percent : 100}%`}
+								></div>
+							</div>
 						</div>
-						<div class="scrapscache-progress-track h-2 overflow-hidden rounded-full">
-							<div
-								class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
-								style={`width: ${progress.totalBytes ? percent : 100}%`}
-							></div>
-						</div>
-					</div>
-				{:else if syncing}<p class="text-sm text-[var(--scrapscache-text-muted)]">Syncing…</p>{/if}
-				{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]">{info}</p>{/if}
-				{#if error}
-					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{error}</p>
-				{:else if syncError}
-					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{syncError}</p>
-				{/if}
-				<button
-					type="button"
-					onclick={() => void syncNow()}
-					disabled={loading || syncing}
-					class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
-					>{syncing ? 'Syncing…' : '🔄 Sync now'}</button
-				>
-				<button
-					type="button"
-					onclick={() => void startExistingConnection()}
-					disabled={loading || syncing}
-					class="scrapscache-button scrapscache-button-secondary w-full px-3 py-2.5 text-sm"
-					>Connect another device</button
-				>
-				{#if syncStore.usage}
-					<div
-						aria-label="Sync storage usage"
-						class={[
-							'rounded-[var(--scrapscache-radius-md)] p-3 text-xs',
-							SYNC_STATUS_CLASS[quotaStatus]
-						]}
-					>
-						<div class="flex items-center justify-between gap-3">
-							<span class="font-medium">Sync storage</span>
-							<span>
-								{formatBytes(syncStore.usage.storageBytes)} of
-								{formatLimit(syncStore.usage.maxBytes)}
-							</span>
-						</div>
-					</div>
-				{/if}
-				<div
-					class="flex items-center justify-between gap-3 rounded-[var(--scrapscache-radius-md)] border border-[var(--scrapscache-border)] p-3 text-xs"
-				>
-					<div class="min-w-0">
-						<div class="font-medium text-[var(--scrapscache-text)]">Sync account ID</div>
-						<div class="truncate font-mono text-[10px] text-[var(--scrapscache-text-muted)]">
-							{syncStore.account.accountId}
-						</div>
-					</div>
+					{:else if syncing}<p class="text-sm text-[var(--scrapscache-text-muted)]">
+							Syncing…
+						</p>{/if}
+					{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]">{info}</p>{/if}
+					{#if error}
+						<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{error}</p>
+					{:else if syncError}
+						<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{syncError}</p>
+					{/if}
 					<button
 						type="button"
-						onclick={() => syncStore.account && copyMcpText(syncStore.account.accountId, 'account')}
-						class="flex shrink-0 items-center gap-1 font-medium text-[var(--scrapscache-accent)] hover:underline"
+						onclick={() => void syncNow()}
+						disabled={loading || syncing}
+						class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
+						>{syncing ? 'Syncing…' : '🔄 Sync now'}</button
 					>
-						{#if accountIdCopied}<Check class="h-3 w-3" /> Copied{:else}<Copy class="h-3 w-3" /> Copy{/if}
-					</button>
-				</div>
-
-				<!-- Mobile & AI Access (MCP) Section -->
-				<div
-					class="rounded-[var(--scrapscache-radius-md)] border border-[var(--scrapscache-border)] bg-[var(--scrapscache-interactive-hover)] p-3 text-xs space-y-2.5"
-				>
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-1.5 font-medium text-[var(--scrapscache-text)]">
-							<Sparkles class="h-3.5 w-3.5 text-amber-500" />
-							<span>Mobile & AI Access (MCP)</span>
-							{#if mcpToken && mcpEntitled}
-								<span
-									class="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded"
-								>
-									<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-									Enabled
-								</span>
-							{/if}
-						</div>
-						{#if mcpToken && mcpEntitled}
-							<button
-								type="button"
-								onclick={() => (mcpOpen = !mcpOpen)}
-								class="text-[var(--scrapscache-text-muted)] hover:text-[var(--scrapscache-text)] text-[11px] underline"
-							>
-								{mcpOpen ? 'Hide' : 'Show details'}
-							</button>
-						{/if}
-					</div>
-
-					<p class="text-[var(--scrapscache-text-muted)] leading-relaxed">
-						Connect AI assistants (Grok, Perplexity, Claude, Cursor) to your notes via Model Context
-						Protocol. Device sync remains end-to-end encrypted, but MCP opens a separate access
-						path. Until you revoke access, this server can decrypt notes in ephemeral memory for
-						authenticated AI requests, and your AI provider can see any note contents returned.
-					</p>
-
-					{#if mcpEntitled === false}
+					<button
+						type="button"
+						onclick={() => void startExistingConnection()}
+						disabled={loading || syncing}
+						class="scrapscache-button scrapscache-button-secondary w-full px-3 py-2.5 text-sm"
+						>Connect another device</button
+					>
+					{#if syncStore.usage}
 						<div
-							class="rounded border border-amber-500/30 bg-amber-500/10 p-2.5 text-[var(--scrapscache-text-muted)]"
+							aria-label="Sync storage usage"
+							class={[
+								'rounded-[var(--scrapscache-radius-md)] p-3 text-xs',
+								SYNC_STATUS_CLASS[quotaStatus]
+							]}
 						>
-							Hosted MCP is a premium feature. Ask the service operator to enable it for this sync
-							account.
-						</div>
-					{:else if mcpEntitled === null}
-						<p class="text-[var(--scrapscache-text-muted)]">
-							MCP availability could not be verified.
-						</p>
-					{:else if !mcpToken}
-						<button
-							type="button"
-							onclick={() => void generateMcpToken()}
-							disabled={mcpIssuing || mcpRevoking}
-							class="scrapscache-button scrapscache-button-secondary w-full px-2 py-2 text-xs font-medium"
-						>
-							{mcpIssuing ? 'Enabling…' : '✨ Enable Mobile AI Access'}
-						</button>
-					{:else if mcpOpen}
-						<div class="space-y-3 pt-1 border-t border-[var(--scrapscache-border)]">
-							<div>
-								<div
-									class="flex items-center justify-between text-[11px] text-[var(--scrapscache-text-muted)] mb-1"
-								>
-									<span class="font-medium text-[var(--scrapscache-text)]">Server URL</span>
-									<button
-										type="button"
-										onclick={() => copyMcpText(`${window.location.origin}/api/mcp`, 'url')}
-										class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline font-medium"
-									>
-										{#if mcpCopiedUrl}
-											<Check class="h-3 w-3" /> Copied
-										{:else}
-											<Copy class="h-3 w-3" /> Copy URL
-										{/if}
-									</button>
-								</div>
-								<div
-									class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[11px] select-all"
-								>
-									{typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : `/api/mcp`}
-								</div>
-								<p class="text-[10px] text-[var(--scrapscache-text-muted)] mt-1">
-									Configure the token below as the <b>Authorization: Bearer</b> credential.
-								</p>
-							</div>
-
-							<div>
-								<div class="flex items-center justify-between text-[10px] mb-1">
-									<span>Bearer Token</span>
-									<button
-										type="button"
-										onclick={() => copyMcpText(mcpToken, 'token')}
-										class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
-									>
-										{#if mcpCopiedToken}
-											<Check class="h-3 w-3" /> Copied
-										{:else}
-											<Copy class="h-3 w-3" /> Copy Token
-										{/if}
-									</button>
-								</div>
-								<div
-									class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[10px] select-all"
-								>
-									{mcpToken}
-								</div>
-							</div>
-
-							<div
-								class="flex items-center justify-between pt-1 border-t border-[var(--scrapscache-border)]/50"
-							>
-								<button
-									type="button"
-									onclick={() => void generateMcpToken()}
-									disabled={mcpIssuing || mcpRevoking}
-									class="text-[10px] text-[var(--scrapscache-text-muted)] hover:text-[var(--scrapscache-text)] underline"
-								>
-									{mcpIssuing ? 'Regenerating…' : 'Regenerate token'}
-								</button>
-								<button
-									type="button"
-									onclick={() => void revokeMcpAccess()}
-									disabled={mcpRevoking || mcpIssuing}
-									class="text-[11px] text-[var(--scrapscache-danger)] hover:underline"
-								>
-									{mcpRevoking ? 'Revoking…' : 'Revoke Access'}
-								</button>
+							<div class="flex items-center justify-between gap-3">
+								<span class="font-medium">Sync storage</span>
+								<span>
+									{formatBytes(syncStore.usage.storageBytes)} of
+									{formatLimit(syncStore.usage.maxBytes)}
+								</span>
 							</div>
 						</div>
 					{/if}
-				</div>
-
-				<button
-					type="button"
-					onclick={unlinkDevice}
-					class="scrapscache-button scrapscache-button-destructive w-full text-sm"
-					>Unlink this device</button
-				>
-				{#if deleteConfirm}
-					<div class="scrapscache-status-danger rounded-[var(--scrapscache-radius-md)] p-3">
-						<p class="text-xs leading-relaxed">
-							Delete all encrypted cloud records? Notes stored on this device will remain.
-						</p>
-						<div class="mt-2 flex gap-2">
-							<button
-								type="button"
-								onclick={() => {
-									deleteConfirm = false;
-								}}
-								disabled={loading}
-								class="flex-1 rounded border border-[var(--scrapscache-border)] px-2 py-1.5 text-xs"
-								>Cancel</button
-							>
-							<button
-								type="button"
-								onclick={() => void deleteCloudData()}
-								disabled={loading}
-								class="scrapscache-button scrapscache-button-destructive-solid flex-1 px-2 py-1.5 text-xs font-medium"
-								>{loading ? 'Deleting…' : 'Delete cloud data'}</button
-							>
+					<div
+						class="flex items-center justify-between gap-3 rounded-[var(--scrapscache-radius-md)] border border-[var(--scrapscache-border)] p-3 text-xs"
+					>
+						<div class="min-w-0">
+							<div class="font-medium text-[var(--scrapscache-text)]">Sync account ID</div>
+							<div class="truncate font-mono text-[10px] text-[var(--scrapscache-text-muted)]">
+								{syncStore.account.accountId}
+							</div>
 						</div>
+						<button
+							type="button"
+							onclick={() =>
+								syncStore.account && copyMcpText(syncStore.account.accountId, 'account')}
+							class="flex shrink-0 items-center gap-1 font-medium text-[var(--scrapscache-accent)] hover:underline"
+						>
+							{#if accountIdCopied}<Check class="h-3 w-3" /> Copied{:else}<Copy class="h-3 w-3" /> Copy{/if}
+						</button>
 					</div>
-				{:else}
+
+					<!-- Mobile & AI Access (MCP) Section -->
+					<div
+						class="rounded-[var(--scrapscache-radius-md)] border border-[var(--scrapscache-border)] bg-[var(--scrapscache-interactive-hover)] p-3 text-xs space-y-2.5"
+					>
+						<div class="flex flex-wrap items-center justify-between gap-2">
+							<div
+								class="flex flex-wrap items-center gap-1.5 font-medium text-[var(--scrapscache-text)]"
+							>
+								<Sparkles class="h-3.5 w-3.5 text-amber-500" />
+								<span>AI access (MCP)</span>
+								{#if mcpToken && mcpEntitled}
+									<span
+										class="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded"
+									>
+										<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+										Enabled
+									</span>
+								{/if}
+							</div>
+							{#if mcpToken && mcpEntitled}
+								<button
+									type="button"
+									onclick={() => (mcpOpen = !mcpOpen)}
+									aria-expanded={mcpOpen}
+									class="text-[var(--scrapscache-text-muted)] hover:text-[var(--scrapscache-text)] text-[11px] underline"
+								>
+									{mcpOpen ? 'Hide' : 'Show details'}
+								</button>
+							{/if}
+						</div>
+
+						<p class="text-[var(--scrapscache-text-muted)] leading-relaxed">
+							MCP is not end-to-end encrypted: until revoked, this server decrypts requested notes
+							in memory and your AI provider can read and change them. Device sync remains
+							encrypted.
+						</p>
+
+						{#if mcpEntitled === false}
+							<div
+								class="rounded border border-amber-500/30 bg-amber-500/10 p-2.5 text-[var(--scrapscache-text-muted)]"
+							>
+								Hosted MCP is a premium feature. Ask the service operator to enable it for this sync
+								account.
+							</div>
+						{:else if mcpEntitled === null}
+							<p class="text-[var(--scrapscache-text-muted)]">
+								MCP availability could not be verified.
+							</p>
+						{:else if !mcpToken}
+							<button
+								type="button"
+								onclick={() => void generateMcpToken()}
+								disabled={mcpIssuing || mcpRevoking}
+								class="scrapscache-button scrapscache-button-secondary w-full px-2 py-2 text-xs font-medium"
+							>
+								{mcpIssuing ? 'Enabling…' : 'Enable AI access'}
+							</button>
+						{:else if mcpOpen}
+							<div class="space-y-3 pt-1 border-t border-[var(--scrapscache-border)]">
+								<div>
+									<div
+										class="flex items-center justify-between text-[11px] text-[var(--scrapscache-text-muted)] mb-1"
+									>
+										<span class="font-medium text-[var(--scrapscache-text)]">Server URL</span>
+										<button
+											type="button"
+											onclick={() => copyMcpText(`${window.location.origin}/api/mcp`, 'url')}
+											class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline font-medium"
+										>
+											{#if mcpCopiedUrl}
+												<Check class="h-3 w-3" /> Copied
+											{:else}
+												<Copy class="h-3 w-3" /> Copy URL
+											{/if}
+										</button>
+									</div>
+									<div
+										class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[11px] select-all"
+									>
+										{typeof window !== 'undefined'
+											? `${window.location.origin}/api/mcp`
+											: `/api/mcp`}
+									</div>
+								</div>
+
+								<details>
+									<summary class="cursor-pointer py-2 font-medium">Manual setup</summary>
+									<p class="mb-2 text-[var(--scrapscache-text-muted)]">
+										For clients that require an Authorization: Bearer token. Keep this token
+										private.
+									</p>
+									<div class="flex items-center justify-between text-[10px] mb-1">
+										<span>Bearer Token</span>
+										<button
+											type="button"
+											onclick={() => copyMcpText(mcpToken, 'token')}
+											class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
+										>
+											{#if mcpCopiedToken}
+												<Check class="h-3 w-3" /> Copied
+											{:else}
+												<Copy class="h-3 w-3" /> Copy Token
+											{/if}
+										</button>
+									</div>
+									<div
+										class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[10px] select-all"
+									>
+										••••••••••••••••
+									</div>
+								</details>
+
+								<div
+									class="flex items-center justify-between pt-1 border-t border-[var(--scrapscache-border)]/50"
+								>
+									<button
+										type="button"
+										onclick={() => void generateMcpToken()}
+										disabled={mcpIssuing || mcpRevoking}
+										class="text-[10px] text-[var(--scrapscache-text-muted)] hover:text-[var(--scrapscache-text)] underline"
+									>
+										{mcpIssuing ? 'Regenerating…' : 'Regenerate token'}
+									</button>
+									<button
+										type="button"
+										onclick={() => void revokeMcpAccess()}
+										disabled={mcpRevoking || mcpIssuing}
+										class="text-[11px] text-[var(--scrapscache-danger)] hover:underline"
+									>
+										{mcpRevoking ? 'Revoking…' : 'Revoke Access'}
+									</button>
+								</div>
+							</div>
+						{/if}
+					</div>
+
+					<button
+						type="button"
+						onclick={unlinkDevice}
+						class="scrapscache-button scrapscache-button-destructive w-full text-sm"
+						>Unlink this device</button
+					>
+					{#if deleteConfirm}
+						<div class="scrapscache-status-danger rounded-[var(--scrapscache-radius-md)] p-3">
+							<p class="text-xs leading-relaxed">
+								Delete all encrypted cloud records? Notes stored on this device will remain.
+							</p>
+							<div class="mt-2 flex gap-2">
+								<button
+									type="button"
+									onclick={() => {
+										deleteConfirm = false;
+									}}
+									disabled={loading}
+									class="flex-1 rounded border border-[var(--scrapscache-border)] px-2 py-1.5 text-xs"
+									>Cancel</button
+								>
+								<button
+									type="button"
+									onclick={() => void deleteCloudData()}
+									disabled={loading}
+									class="scrapscache-button scrapscache-button-destructive-solid flex-1 px-2 py-1.5 text-xs font-medium"
+									>{loading ? 'Deleting…' : 'Delete cloud data'}</button
+								>
+							</div>
+						</div>
+					{:else}
+						<button
+							type="button"
+							onclick={() => {
+								deleteConfirm = true;
+							}}
+							class="scrapscache-button scrapscache-button-destructive w-full text-xs"
+							>Delete cloud data</button
+						>
+					{/if}
+				</div>
+			{:else if mode === SyncModalMode.Menu}
+				<div class="space-y-3">
+					<p class="text-sm text-[var(--scrapscache-text-muted)]">
+						Create one private sync key, then connect your own devices by starting the connection on
+						both within 60 seconds.
+					</p>
 					<button
 						type="button"
 						onclick={() => {
-							deleteConfirm = true;
+							mode = SyncModalMode.Register;
+							error = '';
+							info = '';
 						}}
-						class="scrapscache-button scrapscache-button-destructive w-full text-xs"
-						>Delete cloud data</button
+						class="scrapscache-button scrapscache-button-primary w-full px-3 py-3 text-sm font-medium"
+						>Create sync key</button
+					><button
+						type="button"
+						onclick={() => {
+							mode = SyncModalMode.Link;
+							error = '';
+							info = '';
+						}}
+						class="w-full rounded-lg border border-[var(--scrapscache-border)] px-3 py-3 text-sm touch-manipulation"
+						>Connect to an existing sync</button
 					>
-				{/if}
-			</div>
-		{:else if mode === SyncModalMode.Menu}
-			<div class="space-y-3">
-				<p class="text-sm text-[var(--scrapscache-text-muted)]">
-					Create one private sync key, then connect your own devices by starting the connection on
-					both within 60 seconds.
-				</p>
-				<button
-					type="button"
-					onclick={() => {
-						mode = SyncModalMode.Register;
-						error = '';
-						info = '';
-					}}
-					class="scrapscache-button scrapscache-button-primary w-full px-3 py-3 text-sm font-medium"
-					>Create sync key</button
-				><button
-					type="button"
-					onclick={() => {
-						mode = SyncModalMode.Link;
-						error = '';
-						info = '';
-					}}
-					class="w-full rounded-lg border border-[var(--scrapscache-border)] px-3 py-3 text-sm touch-manipulation"
-					>Connect to an existing sync</button
-				>
-				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
-			</div>
-		{:else if mode === SyncModalMode.Register}
-			<div class="space-y-3">
-				<p class="text-sm text-[var(--scrapscache-text-muted)]">
-					Creates a private account on this device. Other devices join with a one-time code, not a
-					lifetime password.
-				</p>
-				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
-					type="button"
-					onclick={() => void create()}
-					disabled={loading}
-					class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
-					>{loading ? 'Creating…' : 'Create my sync key'}</button
-				><button
-					type="button"
-					onclick={() => (mode = SyncModalMode.Menu)}
-					class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-					>← Back</button
-				>
-			</div>
-		{:else if mode === SyncModalMode.Link}
-			<div class="space-y-3">
-				<p class="text-sm text-[var(--scrapscache-text-muted)]">
-					On your other device open Sync and choose Connect another device. Enter the one-time code
-					shown there.
-				</p>
-				<input
-					value={code}
-					oninput={formatInput}
-					autocomplete="one-time-code"
-					placeholder="XXXX-XXXX-XXXX-XXXX"
-					maxlength="19"
-					spellcheck="false"
-					class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
-					onkeydown={(event) => event.key === 'Enter' && void beginLink()}
-				/>{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
-					type="button"
-					onclick={() => void beginLink()}
-					disabled={loading}
-					class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
-					>{loading ? 'Starting…' : 'Start connection'}</button
-				><button
-					type="button"
-					onclick={() => (mode = SyncModalMode.Menu)}
-					class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-					>← Back</button
-				>
-			</div>
-		{:else if mode === SyncModalMode.Waiting}
-			<div class="space-y-5">
-				{#if waiting?.role === PairingRole.Existing}
-					<div>
-						<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
-							On the new device
-						</p>
-						<p class="mt-1 text-sm text-[var(--scrapscache-text)]">Open Sync and type this code</p>
-					</div>
-					<div
-						class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] px-2 py-5"
-						aria-label="One-time pairing code"
+					{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
+				</div>
+			{:else if mode === SyncModalMode.Register}
+				<div class="space-y-3">
+					<p class="text-sm text-[var(--scrapscache-text-muted)]">
+						Creates a private account on this device. Other devices join with a one-time code, not a
+						lifetime password.
+					</p>
+					{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
+						type="button"
+						onclick={() => void create()}
+						disabled={loading}
+						class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
+						>{loading ? 'Creating…' : 'Create my sync key'}</button
+					><button
+						type="button"
+						onclick={() => (mode = SyncModalMode.Menu)}
+						class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
+						>← Back</button
 					>
-						<div class="flex items-center justify-center gap-1">
-							{#each pairingGroups(waiting.syncCode) as group, index (index)}
-								{#if index > 0}
-									<span class="px-0.5 text-[var(--scrapscache-text-muted)]" aria-hidden="true"
-										>·</span
+				</div>
+			{:else if mode === SyncModalMode.Link}
+				<div class="space-y-3">
+					<p class="text-sm text-[var(--scrapscache-text-muted)]">
+						On your other device open Sync and choose Connect another device. Enter the one-time
+						code shown there.
+					</p>
+					<input
+						value={code}
+						oninput={formatInput}
+						autocomplete="one-time-code"
+						placeholder="XXXX-XXXX-XXXX-XXXX"
+						maxlength="19"
+						spellcheck="false"
+						class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
+						onkeydown={(event) => event.key === 'Enter' && void beginLink()}
+					/>{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
+						type="button"
+						onclick={() => void beginLink()}
+						disabled={loading}
+						class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
+						>{loading ? 'Starting…' : 'Start connection'}</button
+					><button
+						type="button"
+						onclick={() => (mode = SyncModalMode.Menu)}
+						class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
+						>← Back</button
+					>
+				</div>
+			{:else if mode === SyncModalMode.Waiting}
+				<div class="space-y-5">
+					{#if waiting?.role === PairingRole.Existing}
+						<div>
+							<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
+								On the new device
+							</p>
+							<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
+								Open Sync and type this code
+							</p>
+						</div>
+						<div
+							class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] px-2 py-5"
+							aria-label="One-time pairing code"
+						>
+							<div class="flex items-center justify-center gap-1">
+								{#each pairingGroups(waiting.syncCode) as group, index (index)}
+									{#if index > 0}
+										<span class="px-0.5 text-[var(--scrapscache-text-muted)]" aria-hidden="true"
+											>·</span
+										>
+									{/if}
+									<span
+										class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--scrapscache-text)]"
+										>{group}</span
 									>
-								{/if}
-								<span
-									class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--scrapscache-text)]"
-									>{group}</span
-								>
-							{/each}
+								{/each}
+							</div>
+						</div>
+						<button
+							type="button"
+							onclick={() => void copyCode()}
+							class="scrapscache-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
+								? 'border-[var(--scrapscache-success)] bg-[var(--scrapscache-success)] text-[var(--scrapscache-success-foreground)]'
+								: 'scrapscache-button-secondary'}">{copyFlash ? 'Copied' : 'Copy code'}</button
+						>
+					{:else}
+						<div>
+							<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
+								On the other device
+							</p>
+							<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
+								Open Sync and choose Connect another device
+							</p>
+						</div>
+					{/if}
+					<div class="space-y-1.5">
+						<div
+							class="flex items-center justify-between text-xs text-[var(--scrapscache-text-muted)]"
+						>
+							<span>Expires in</span>
+							<span class="tabular-nums text-[var(--scrapscache-text)]">{secondsLeft()}s</span>
+						</div>
+						<div class="scrapscache-progress-track h-1 overflow-hidden rounded-full">
+							<div
+								class="scrapscache-progress-value h-full rounded-full transition-[width] duration-1000 ease-linear"
+								style={`width: ${expiryRatio() * 100}%`}
+							></div>
 						</div>
 					</div>
 					<button
 						type="button"
-						onclick={() => void copyCode()}
-						class="scrapscache-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
-							? 'border-[var(--scrapscache-success)] bg-[var(--scrapscache-success)] text-[var(--scrapscache-success-foreground)]'
-							: 'scrapscache-button-secondary'}">{copyFlash ? 'Copied' : 'Copy code'}</button
+						onclick={() => {
+							stopWaiting();
+							waiting = null;
+							mode = syncStore.isLoggedIn ? 'linked' : 'link';
+						}}
+						class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
+						>Cancel</button
 					>
-				{:else}
-					<div>
-						<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
-							On the other device
-						</p>
-						<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
-							Open Sync and choose Connect another device
-						</p>
-					</div>
-				{/if}
-				<div class="space-y-1.5">
-					<div
-						class="flex items-center justify-between text-xs text-[var(--scrapscache-text-muted)]"
-					>
-						<span>Expires in</span>
-						<span class="tabular-nums text-[var(--scrapscache-text)]">{secondsLeft()}s</span>
-					</div>
-					<div class="scrapscache-progress-track h-1 overflow-hidden rounded-full">
-						<div
-							class="scrapscache-progress-value h-full rounded-full transition-[width] duration-1000 ease-linear"
-							style={`width: ${expiryRatio() * 100}%`}
-						></div>
-					</div>
 				</div>
-				<button
-					type="button"
-					onclick={() => {
-						stopWaiting();
-						waiting = null;
-						mode = syncStore.isLoggedIn ? 'linked' : 'link';
-					}}
-					class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
-					>Cancel</button
-				>
-			</div>
-		{/if}
+			{/if}
+		</div>
 	</div>
 </div>
