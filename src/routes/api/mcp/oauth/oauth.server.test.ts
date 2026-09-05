@@ -51,6 +51,8 @@ describe('MCP OAuth routes', () => {
 		['perplexity', 'https://www.perplexity.com/rest/connections/oauth_callback'],
 		['perplexity', 'https://enterprise.perplexity.ai/rest/connections/oauth_callback'],
 		['perplexity', 'https://enterprise.perplexity.com/rest/connections/oauth_callback'],
+		['perplexity', 'https://staging.perplexity.ai/rest/connections/oauth_callback'],
+		['perplexity', 'https://staging.perplexity.com/rest/connections/oauth_callback'],
 		['hermes', 'http://127.0.0.1:27890/callback'],
 		['hermes', 'http://localhost:54321/callback']
 	])('exchanges a browser-approved PKCE code for %s at %s', async (clientId, redirectUri) => {
