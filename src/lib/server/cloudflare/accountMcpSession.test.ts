@@ -14,7 +14,8 @@ describe('AccountMcpSession Durable Object', () => {
 			tokenHash: hashMcpToken(token),
 			accountId: identity.accountId,
 			syncKey: identity.syncKey,
-			createdAt: Date.now()
+			createdAt: Date.now(),
+			expiresAt: Date.now() + 60_000
 		};
 	});
 
@@ -31,8 +32,28 @@ describe('AccountMcpSession Durable Object', () => {
 		expect(sseResponse.status).toBe(200);
 		const reader = sseResponse.body!.getReader();
 		const text = new TextDecoder().decode((await reader.read()).value);
+		expect(text).toContain('event: endpoint');
 		expect(text).toContain('data: https://scrapscache.com/api/mcp/messages');
 		expect(text).not.toContain('token=');
+
+		const streamResponse = await durableObject.fetch(
+			new Request('https://scrapscache.com/api/mcp', {
+				headers: { Authorization: `Bearer ${token}` }
+			})
+		);
+		expect(streamResponse.status).toBe(200);
+		expect(streamResponse.headers.get('content-type')).toContain('text/event-stream');
+		await streamResponse.body!.cancel();
+		expect(
+			(
+				await durableObject.fetch(
+					new Request('https://scrapscache.com/api/mcp', {
+						method: 'HEAD',
+						headers: { Authorization: `Bearer ${token}` }
+					})
+				)
+			).status
+		).toBe(405);
 
 		const unauthenticated = await durableObject.fetch(
 			new Request('https://scrapscache.com/api/mcp/messages?sessionId=guessed', {
@@ -44,7 +65,8 @@ describe('AccountMcpSession Durable Object', () => {
 		expect(unauthenticated.status).toBe(401);
 		expect(storage.get).not.toHaveBeenCalled();
 		expect(storage.put).not.toHaveBeenCalled();
-		expect(storage.setAlarm).not.toHaveBeenCalled();
+		expect(storage.deleteAll).not.toHaveBeenCalled();
+		expect(storage.setAlarm).toHaveBeenCalled();
 
 		expect(
 			(await durableObject.fetch(new Request('https://mcp-session/revoke', { method: 'DELETE' })))
@@ -121,6 +143,83 @@ describe('AccountMcpSession Durable Object', () => {
 		for (const reader of readers) {
 			expect(new TextDecoder().decode((await reader.read()).value)).toContain('"id":3');
 			await reader.cancel();
+		}
+	});
+
+	it('syncs through the shared coordinator client using the default quota', async () => {
+		let captured = '';
+		const coordinatorFetch = vi.fn(async (request: Request) => {
+			captured = await request.clone().text();
+			return Response.json({
+				cursor: 0,
+				envelopes: [],
+				conflicts: [],
+				hasMore: false,
+				reset: false,
+				writesAccepted: true
+			});
+		});
+		const durableObject = new AccountMcpSession(
+			{ storage: { setAlarm: vi.fn() } } as any,
+			{
+				ACCOUNT_COORDINATOR: {
+					idFromName: (name: string) => name,
+					get: () => ({ fetch: coordinatorFetch })
+				},
+				SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES: '100000000'
+			} as any,
+			async (candidate) => (candidate === token ? resolved : null)
+		);
+		const response = await durableObject.fetch(
+			new Request('https://scrapscache.com/api/mcp', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${token}`
+				},
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 1,
+					method: 'tools/call',
+					params: { name: 'list_notes', arguments: {} }
+				})
+			})
+		);
+		expect(response.status).toBe(200);
+		expect(coordinatorFetch).toHaveBeenCalledOnce();
+		expect(JSON.parse(captured).maxAccountBytes).toBe(100_000_000);
+	});
+
+	it('drops an idle in-memory session when the alarm fires', async () => {
+		const setAlarm = vi.fn();
+		const deleteAlarm = vi.fn();
+		const durableObject = new AccountMcpSession(
+			{ storage: { setAlarm, deleteAlarm } } as any,
+			undefined,
+			async (candidate) => (candidate === token ? resolved : null)
+		);
+		let now = 5_000_000;
+		vi.spyOn(Date, 'now').mockImplementation(() => now);
+		const ping = () =>
+			durableObject.fetch(
+				new Request('https://scrapscache.com/api/mcp', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${token}`
+					},
+					body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' })
+				})
+			);
+		try {
+			expect((await ping()).status).toBe(200);
+			expect(setAlarm).toHaveBeenCalled();
+			now += 5 * 60 * 1000 + 1;
+			await durableObject.alarm();
+			expect(deleteAlarm).toHaveBeenCalled();
+			expect((await ping()).status).toBe(200);
+		} finally {
+			vi.restoreAllMocks();
 		}
 	});
 });

@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Db } from '$lib/server/db';
 import { GROK_OAUTH_REDIRECT_URI, MCP_OAUTH_CLIENT_ID, pkceChallenge } from '$lib/mcp/oauth';
-import { createMcpTokenGrant, isMcpToken } from '$lib/mcp/token';
+import {
+	createMcpTokenGrant,
+	isMcpRefreshToken,
+	isMcpToken,
+	MCP_TOKEN_TTL_MS
+} from '$lib/mcp/token';
 import { closeMcpOAuthStore } from '$lib/server/mcp/oauthStore';
 import { closeMcpTokenStore, McpTokenStore } from '$lib/server/mcp/tokenStore';
 import { closePublicApiLimiter } from '$lib/server/rateLimit';
@@ -134,11 +139,45 @@ describe('MCP OAuth routes', () => {
 			getClientAddress: () => '127.0.0.1'
 		});
 		expect(tokenResponse.status).toBe(200);
-		expect(tokenResponse.headers.get('access-control-allow-origin')).toBe('https://grok.com');
+		expect(tokenResponse.headers.get('access-control-allow-origin')).toBeNull();
 		const token = await tokenResponse.json();
-		expect(token).toMatchObject({ token_type: 'Bearer', scope: 'mcp' });
+		expect(token).toMatchObject({
+			token_type: 'Bearer',
+			scope: 'mcp',
+			expires_in: Math.floor(MCP_TOKEN_TTL_MS / 1000)
+		});
 		expect(isMcpToken(token.access_token)).toBe(true);
+		expect(isMcpRefreshToken(token.refresh_token)).toBe(true);
 		await expect(tokenStore.resolve(token.access_token)).resolves.toMatchObject({
+			accountId: identity.accountId,
+			syncKey: identity.syncKey
+		});
+		await expect(tokenStore.resolve(existingGrant.token)).resolves.toMatchObject({
+			accountId: identity.accountId
+		});
+
+		const refreshed = await (tokenHandler as any)({
+			request: new Request(tokenRequest.url, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: new URLSearchParams({
+					grant_type: 'refresh_token',
+					refresh_token: token.refresh_token,
+					client_id: clientId,
+					resource: 'https://scrapscache.com/api/mcp'
+				})
+			}),
+			url: new URL(tokenRequest.url),
+			platform: undefined,
+			getClientAddress: () => '127.0.0.1'
+		});
+		expect(refreshed.status).toBe(200);
+		const next = await refreshed.json();
+		expect(isMcpToken(next.access_token)).toBe(true);
+		expect(next.access_token).not.toBe(token.access_token);
+		expect(isMcpRefreshToken(next.refresh_token)).toBe(true);
+		await expect(tokenStore.resolve(token.access_token)).resolves.toBeNull();
+		await expect(tokenStore.resolve(next.access_token)).resolves.toMatchObject({
 			accountId: identity.accountId,
 			syncKey: identity.syncKey
 		});
@@ -170,6 +209,7 @@ describe('MCP OAuth routes', () => {
 			token_endpoint: 'https://scrapscache.com/api/mcp/oauth/token',
 			registration_endpoint: 'https://scrapscache.com/api/mcp/oauth/register',
 			code_challenge_methods_supported: ['S256'],
+			grant_types_supported: ['authorization_code', 'refresh_token'],
 			token_endpoint_auth_methods_supported: ['none'],
 			authorization_response_iss_parameter_supported: true
 		});
@@ -184,7 +224,12 @@ describe('MCP OAuth routes', () => {
 	});
 
 	it('allows Grok to read browser token-exchange responses', async () => {
-		const response = await (tokenOptionsHandler as any)();
+		const response = await (tokenOptionsHandler as any)({
+			request: new Request('https://scrapscache.com/api/mcp/oauth/token', {
+				method: 'OPTIONS',
+				headers: { Origin: 'https://grok.com' }
+			})
+		});
 		expect(response.status).toBe(204);
 		expect(response.headers.get('access-control-allow-origin')).toBe('https://grok.com');
 		expect(response.headers.get('access-control-allow-methods')).toBe('POST');
@@ -214,7 +259,7 @@ describe('MCP OAuth routes', () => {
 			client_id: MCP_OAUTH_CLIENT_ID,
 			redirect_uris: [GROK_OAUTH_REDIRECT_URI],
 			token_endpoint_auth_method: 'none',
-			grant_types: ['authorization_code'],
+			grant_types: ['authorization_code', 'refresh_token'],
 			response_types: ['code'],
 			scope: 'mcp',
 			application_type: 'web'

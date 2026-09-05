@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createMcpTokenGrant } from '$lib/mcp/token';
+import { createMcpTokenGrant, MCP_TOKEN_TTL_MS } from '$lib/mcp/token';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { cleanupTestDbs, testDb } from '$lib/server/testDb';
 import { McpTokenStore } from './tokenStore';
@@ -38,38 +38,78 @@ describe('McpTokenStore', () => {
 		).rejects.toThrow('does not belong');
 	});
 
-	it('rotates the previous account token', async () => {
+	it('rotates only the same client grant', async () => {
 		const db = testDb();
 		const store = new McpTokenStore(db);
 		const identity = createSyncIdentity();
 		await new McpAccessStore(db).enable(identity.accountId);
-		const first = createMcpTokenGrant(identity.syncKey);
-		const second = createMcpTokenGrant(identity.syncKey);
-		await store.issue(identity.accountId, first.token, first.wrappedSyncKey);
-		await store.issue(identity.accountId, second.token, second.wrappedSyncKey);
-		await expect(store.resolve(first.token)).resolves.toBeNull();
-		await expect(store.resolve(second.token)).resolves.toMatchObject({
+		const manual = createMcpTokenGrant(identity.syncKey);
+		const grok = createMcpTokenGrant(identity.syncKey);
+		const grokReplacement = createMcpTokenGrant(identity.syncKey);
+		await store.issue(identity.accountId, manual.token, manual.wrappedSyncKey);
+		await store.issue(identity.accountId, grok.token, grok.wrappedSyncKey, 'grok');
+		await store.issue(
+			identity.accountId,
+			grokReplacement.token,
+			grokReplacement.wrappedSyncKey,
+			'grok'
+		);
+		await expect(store.resolve(manual.token)).resolves.toMatchObject({
 			accountId: identity.accountId
 		});
+		await expect(store.resolve(grok.token)).resolves.toBeNull();
+		await expect(store.resolve(grokReplacement.token)).resolves.toMatchObject({
+			accountId: identity.accountId
+		});
+		await expect(store.listGrants(identity.accountId)).resolves.toEqual([
+			expect.objectContaining({ clientId: 'manual' }),
+			expect.objectContaining({ clientId: 'grok' })
+		]);
 	});
 
-	it('can issue an additional client token without invalidating existing clients', async () => {
+	it('stops resolving expired tokens', async () => {
 		const db = testDb();
 		const store = new McpTokenStore(db);
 		const identity = createSyncIdentity();
 		await new McpAccessStore(db).enable(identity.accountId);
-		const first = createMcpTokenGrant(identity.syncKey);
-		const second = createMcpTokenGrant(identity.syncKey);
-		await store.issue(identity.accountId, first.token, first.wrappedSyncKey);
+		const grant = createMcpTokenGrant(identity.syncKey);
+		const issued = await store.issue(
+			identity.accountId,
+			grant.token,
+			grant.wrappedSyncKey,
+			'manual',
+			1_000
+		);
+		expect(issued.expiresAt).toBe(1_000 + MCP_TOKEN_TTL_MS);
+		await expect(store.resolve(grant.token, 1_000 + MCP_TOKEN_TTL_MS)).resolves.toBeNull();
+		await expect(store.listGrants(identity.accountId, 1_000 + MCP_TOKEN_TTL_MS)).resolves.toEqual([
+			expect.objectContaining({ clientId: 'manual' })
+		]);
+	});
+
+	it('issues a new access token from a still-valid refresh grant after access expiry', async () => {
+		const db = testDb();
+		const store = new McpTokenStore(db);
+		const identity = createSyncIdentity();
+		await new McpAccessStore(db).enable(identity.accountId);
+		const grant = createMcpTokenGrant(identity.syncKey);
+		const issued = await store.issue(
+			identity.accountId,
+			grant.token,
+			grant.wrappedSyncKey,
+			'grok',
+			1_000
+		);
+		await expect(store.resolve(grant.token, 1_000 + MCP_TOKEN_TTL_MS)).resolves.toBeNull();
+		const rotated = await store.refresh(issued.refreshToken, 'grok', 1_000 + MCP_TOKEN_TTL_MS);
+		expect(rotated?.token).not.toBe(grant.token);
+		await expect(store.resolve(rotated!.token, 1_000 + MCP_TOKEN_TTL_MS)).resolves.toMatchObject({
+			accountId: identity.accountId,
+			syncKey: identity.syncKey
+		});
 		await expect(
-			store.issue(identity.accountId, second.token, second.wrappedSyncKey, false)
-		).resolves.toMatchObject({ replacedTokenHashes: [] });
-		await expect(store.resolve(first.token)).resolves.toMatchObject({
-			accountId: identity.accountId
-		});
-		await expect(store.resolve(second.token)).resolves.toMatchObject({
-			accountId: identity.accountId
-		});
+			store.refresh(issued.refreshToken, 'grok', 1_000 + MCP_TOKEN_TTL_MS)
+		).resolves.toBeNull();
 	});
 
 	it('rejects issuance by default and stops resolving tokens after access is disabled', async () => {

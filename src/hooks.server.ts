@@ -1,6 +1,9 @@
 import type { Handle } from '@sveltejs/kit';
 import { recordHttpRequest } from '$lib/server/metrics';
+import { isAdminAuthorized } from '$lib/server/adminAuth';
 import { authenticateCloudflareAdmin } from '$lib/server/cloudflareAccess';
+import { isOAuthBrowserOrigin } from '$lib/mcp/oauth';
+import { OAUTH_TOKEN_PATH } from '$lib/server/mcp/oauthCsrf';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
@@ -9,8 +12,6 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['x-frame-options', 'DENY'],
 	['permissions-policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()']
 ];
-const GROK_ORIGIN = 'https://grok.com';
-const OAUTH_TOKEN_PATH = '/api/mcp/oauth/token';
 const FORM_CONTENT_TYPES = new Set([
 	'application/x-www-form-urlencoded',
 	'multipart/form-data',
@@ -24,7 +25,19 @@ export function rejectsCrossSiteForm(request: Request, url: URL): boolean {
 
 	const origin = request.headers.get('origin');
 	if (origin === url.origin) return false;
-	return url.pathname !== OAUTH_TOKEN_PATH || (origin !== null && origin !== GROK_ORIGIN);
+	// Token exchange is form-encoded; originless clients and OAUTH_BROWSER_ORIGINS
+	// are allowed on that path only.
+	return url.pathname !== OAUTH_TOKEN_PATH || (origin !== null && !isOAuthBrowserOrigin(origin));
+}
+
+export function isAdminApiPath(pathname: string): boolean {
+	return pathname === '/admin/api' || pathname.startsWith('/admin/api/');
+}
+
+export async function rejectsAdminRequest(request: Request, pathname: string): Promise<boolean> {
+	if (pathname !== '/admin' && !pathname.startsWith('/admin/')) return false;
+	if (await authenticateCloudflareAdmin(request)) return false;
+	return !isAdminApiPath(pathname) || !isAdminAuthorized(request);
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
@@ -36,10 +49,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	let response: Response;
 	if (rejectsCrossSiteForm(event.request, event.url)) {
 		response = new Response('Cross-site form submissions are forbidden', { status: 403 });
-	} else if (
-		(event.url.pathname === '/admin' || event.url.pathname.startsWith('/admin/')) &&
-		!(await authenticateCloudflareAdmin(event.request))
-	) {
+	} else if (await rejectsAdminRequest(event.request, event.url.pathname)) {
 		response = new Response('Not found\n', {
 			status: 404,
 			headers: { 'cache-control': 'no-store' }

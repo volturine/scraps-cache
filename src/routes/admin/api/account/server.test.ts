@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('$lib/server/adminAccounts', () => ({ getManagedAccount: mocks.getManagedAccount }));
+vi.mock('$lib/server/cloudflareAccess', () => ({
+	authenticateCloudflareAdmin: async () => 'owner@example.com'
+}));
 vi.mock('$lib/server/syncStore', () => ({
 	getSyncStore: () => ({
 		setAccountByteQuota: mocks.setAccountByteQuota,
@@ -28,7 +31,10 @@ const managed = {
 	mcp: { enabled: false, enabledAt: null, updatedAt: null }
 };
 
-type Handler = (event: { request: Request }) => Response | Promise<Response>;
+type Handler = (event: {
+	request: Request;
+	getClientAddress(): string;
+}) => Response | Promise<Response>;
 
 function invoke(method: 'POST' | 'PUT' | 'DELETE', body: unknown): Promise<Response> {
 	const handler = { POST, PUT, DELETE }[method] as unknown as Handler;
@@ -38,7 +44,8 @@ function invoke(method: 'POST' | 'PUT' | 'DELETE', body: unknown): Promise<Respo
 				method,
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(body)
-			})
+			}),
+			getClientAddress: () => '127.0.0.1'
 		})
 	);
 }

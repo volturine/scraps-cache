@@ -2,8 +2,11 @@ import { McpSession, type McpStorage } from './engine';
 import { getMcpTokenStore, type McpTokenStore } from './tokenStore';
 import { getSyncStore } from '$lib/server/syncStore';
 import { hashMcpToken, isMcpToken } from '$lib/mcp/token';
+import { MCP_SESSION_IDLE_MS } from './idle';
 
-const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+export { MCP_SESSION_IDLE_MS };
+
+const DEFAULT_IDLE_TIMEOUT_MS = MCP_SESSION_IDLE_MS;
 
 export class McpSessionManager {
 	private sessions = new Map<string, McpSession>();

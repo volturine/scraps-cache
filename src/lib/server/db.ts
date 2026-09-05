@@ -131,11 +131,20 @@ const OPS_DDL = `
 	CREATE TABLE IF NOT EXISTS mcp_tokens (
 		token_hash TEXT PRIMARY KEY,
 		account_id TEXT NOT NULL,
+		client_id TEXT NOT NULL DEFAULT 'manual',
 		wrapped_sync_key TEXT NOT NULL,
-		created_at INTEGER NOT NULL
+		created_at INTEGER NOT NULL,
+		expires_at INTEGER NOT NULL DEFAULT 0,
+		refresh_hash TEXT NOT NULL DEFAULT '',
+		refresh_wrapped_sync_key TEXT NOT NULL DEFAULT '',
+		refresh_expires_at INTEGER NOT NULL DEFAULT 0
 	);
 	CREATE INDEX IF NOT EXISTS mcp_tokens_account
 		ON mcp_tokens(account_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS mcp_tokens_account_client
+		ON mcp_tokens(account_id, client_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS mcp_tokens_refresh_hash
+		ON mcp_tokens(refresh_hash);
 	CREATE TABLE IF NOT EXISTS mcp_oauth_codes (
 		code_hash TEXT PRIMARY KEY,
 		account_id TEXT NOT NULL,

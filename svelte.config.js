@@ -1,6 +1,32 @@
 import adapterNode from '@sveltejs/adapter-node';
 import adapterCloudflare from '@sveltejs/adapter-cloudflare';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { OAUTH_BROWSER_ORIGINS } from './src/lib/mcp/oauth.ts';
+import { withOriginlessOAuthTokenStamp } from './src/lib/server/mcp/oauthCsrf.ts';
+
+function injectOriginlessOAuthTokenSkip() {
+	const chunkDir = path.join('build', 'server', 'chunks');
+	const targets = fs
+		.readdirSync(chunkDir)
+		.filter((name) => name.endsWith('.js'))
+		.map((name) => path.join(chunkDir, name))
+		.filter((file) =>
+			fs.readFileSync(file, 'utf8').includes('const response = await server.respond(request,')
+		);
+	if (targets.length !== 1) {
+		throw new Error(
+			`expected one adapter-node handler chunk to stamp OAuth CSRF, found ${targets.length}`
+		);
+	}
+	fs.copyFileSync(
+		fileURLToPath(new URL('./src/lib/server/mcp/oauthCsrf.ts', import.meta.url)),
+		path.join(chunkDir, 'oauthCsrf.ts')
+	);
+	fs.writeFileSync(targets[0], withOriginlessOAuthTokenStamp(fs.readFileSync(targets[0], 'utf8')));
+}
 
 function nodeAdapter() {
 	const adapter = adapterNode();
@@ -16,6 +42,7 @@ function nodeAdapter() {
 			};
 			try {
 				await adapter.adapt(builder);
+				injectOriginlessOAuthTokenSkip();
 			} finally {
 				console.warn = warn;
 			}
@@ -33,9 +60,9 @@ const config = {
 				? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
 				: nodeAdapter(),
 		csrf: {
-			// The route-aware check in hooks.server.ts preserves the default protection while
-			// allowing originless OAuth clients to call only the token endpoint.
-			trustedOrigins: ['*']
+			// Browser OAuth clients that POST the token endpoint from a page.
+			// Originless server/native clients are stamped on that route only.
+			trustedOrigins: [...OAUTH_BROWSER_ORIGINS]
 		},
 		csp: {
 			mode: 'nonce',

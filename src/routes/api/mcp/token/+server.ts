@@ -30,13 +30,16 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	}
 
 	try {
-		const { createdAt, replacedTokenHashes } = await getMcpTokenStore().issue(
+		const { createdAt, expiresAt, replacedTokenHashes } = await getMcpTokenStore().issue(
 			accountId,
 			body.token,
 			body.wrappedSyncKey
 		);
 		await endMcpSessions(accountId, replacedTokenHashes, platform);
-		return json({ success: true, createdAt }, { headers: { 'Cache-Control': 'no-store' } });
+		return json(
+			{ success: true, createdAt, expiresAt },
+			{ headers: { 'Cache-Control': 'no-store' } }
+		);
 	} catch {
 		return json({ error: 'Invalid MCP token grant' }, { status: 400 });
 	}

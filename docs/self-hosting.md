@@ -27,8 +27,8 @@ Edit `docker/.env` at minimum:
 | `SCRAPSCACHE_TICK_SECRET` | Generate with `openssl rand -hex 32`; used to protect the cron endpoint           |
 
 Optionally set `SCRAPSCACHE_ADMIN_TOKEN` (long random secret, e.g.
-`openssl rand -hex 32`) to enable `/metrics` and the admin API; leaving it unset
-disables them entirely.
+`openssl rand -hex 32`) to enable the admin API when Cloudflare Access is not
+used; leaving it unset disables bearer access.
 
 ```sh
 docker compose --project-directory . -f docker/compose.yaml --env-file docker/.env pull
@@ -191,16 +191,16 @@ may override them.
 
 ## Health, metrics, and administration
 
-| Endpoint                                   | Auth                                             | Purpose                                             |
-| ------------------------------------------ | ------------------------------------------------ | --------------------------------------------------- |
-| `GET /health/live`                         | none                                             | Process liveness                                    |
-| `GET /health/ready`                        | none                                             | Database readiness                                  |
-| `GET /metrics`                             | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                            |
-| `GET /api/admin/status`                    | same bearer token                                | Anonymous JSON: storage, users, activity, retention |
-| `POST /api/admin/retention`                | same bearer token                                | Run the inactive-account sweeper now                |
-| `POST/PUT/DELETE /api/admin/account-quota` | same bearer token                                | Inspect, set, or clear one account's byte quota     |
-| `POST/PUT/DELETE /api/admin/account-mcp`   | same bearer token                                | Inspect, enable, or disable hosted MCP              |
-| `POST /api/cron/tick`                      | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                 |
+| Endpoint                                 | Auth                                             | Purpose                                             |
+| ---------------------------------------- | ------------------------------------------------ | --------------------------------------------------- |
+| `GET /health/live`                       | none                                             | Process liveness                                    |
+| `GET /health/ready`                      | none                                             | Database readiness                                  |
+| `GET /admin/api/metrics`                 | operator bearer token, or Cloudflare Access      | Prometheus-style metrics                            |
+| `GET /admin/api/status`                  | same                                             | Anonymous JSON: storage, users, activity, retention |
+| `POST /admin/api/retention`              | same                                             | Run the inactive-account sweeper now                |
+| `POST/PUT/DELETE /admin/api/account`     | same                                             | Inspect an account, set, or clear its byte quota    |
+| `POST/PUT/DELETE /admin/api/account-mcp` | same                                             | Inspect, enable, or disable hosted MCP              |
+| `POST /api/cron/tick`                    | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                 |
 
 With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the token-protected
 endpoints return 404 — the admin API is disabled.
@@ -226,9 +226,9 @@ The console intentionally returns `404` until Cloudflare Access is configured:
 4. Open `/admin`. Cloudflare performs the login and the Worker independently validates the
    signed Access assertion, application audience, issuer, and email.
 
-Protect the complete `/admin*` path, including its data endpoints. The existing
-`/api/admin/*` bearer-token API remains available for automation, and the admin token is never
-sent to the dashboard browser.
+Protect the complete `/admin*` path, including its data endpoints. Automation uses the same
+`/admin/api/*` routes with the operator bearer token. The admin token is never sent to the
+dashboard browser.
 
 The cron endpoint (`/api/cron/tick`) is the scheduler entry point. The included
 Cloudflare scheduler Worker calls it through a private service binding every
@@ -238,7 +238,7 @@ minute. For self-hosted deployments, add a crontab entry:
 * * * * * curl -sf -X POST -H "Authorization: Bearer $SCRAPSCACHE_TICK_SECRET" http://localhost:3000/api/cron/tick || echo "cron tick failed" >&2
 ```
 
-`GET /api/admin/status` is the JSON companion to `/metrics`. It reports
+`GET /admin/api/status` is the JSON companion to `/admin/api/metrics`. It reports
 ciphertext bytes and decimal GB, account totals, activity in the last 1 / 7 / 30
 days, process-lifetime sync counters, and the retention policy. Counts are
 aggregates only — no account IDs, ciphertext, or credentials.
@@ -253,7 +253,7 @@ never account IDs.
 
 ```sh
 curl -fsS -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
-  http://localhost:3000/api/admin/status
+  http://localhost:3000/admin/api/status
 ```
 
 The environment value is the default for every account. An authenticated admin
@@ -265,19 +265,19 @@ curl -fsS -X PUT \
   -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"accountId\":\"$ACCOUNT_ID\",\"maxBytes\":2147483648}" \
-  "http://localhost:3000/api/admin/account-quota"
+  "http://localhost:3000/admin/api/account"
 
 curl -fsS -X DELETE \
 	-H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d "{\"accountId\":\"$ACCOUNT_ID\"}" \
-	"http://localhost:3000/api/admin/account-quota"
+	"http://localhost:3000/admin/api/account"
 
 curl -fsS -X PUT \
 	-H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d "{\"accountId\":\"$ACCOUNT_ID\"}" \
-	"http://localhost:3000/api/admin/account-mcp"
+	"http://localhost:3000/admin/api/account-mcp"
 ```
 
 ## Images and CI

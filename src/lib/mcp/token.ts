@@ -7,7 +7,13 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const TOKEN_PREFIX = 'sc_mcp_v2_';
 const TOKEN_PATTERN = /^sc_mcp_v2_[A-Za-z0-9_-]{43}$/;
+const REFRESH_PREFIX = 'sc_mcp_rt_';
+const REFRESH_PATTERN = /^sc_mcp_rt_[A-Za-z0-9_-]{43}$/;
+const ACCESS_WRAP_DOMAIN = 'scraps-cache-mcp-wrap:v2:';
+const REFRESH_WRAP_DOMAIN = 'scraps-cache-mcp-refresh-wrap:v2:';
 const NONCE_BYTES = 24;
+export const MCP_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const MCP_REFRESH_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 export const MCP_TOKEN_STORAGE_PREFIX = 'scrapscache_mcp_token_';
 
@@ -17,11 +23,17 @@ export type McpTokenGrant = {
 	wrappedSyncKey: string;
 };
 
+export type McpRefreshGrant = {
+	refreshToken: string;
+	wrappedRefreshKey: string;
+};
+
 export type ResolvedMcpToken = {
 	tokenHash: string;
 	accountId: string;
 	syncKey: string;
 	createdAt: number;
+	expiresAt: number;
 };
 
 export type StoredMcpToken = {
@@ -29,6 +41,7 @@ export type StoredMcpToken = {
 	accountId: string;
 	wrappedSyncKey: string;
 	createdAt: number;
+	expiresAt: number;
 };
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -50,13 +63,36 @@ function randomBytes(length: number): Uint8Array {
 	return bytes;
 }
 
-function wrappingKey(token: string): Uint8Array {
-	if (!isMcpToken(token)) throw new Error('Invalid MCP token');
-	return sha256(encoder.encode(`scraps-cache-mcp-wrap:v2:${token}`));
+function wrapSyncKey(syncKey: string, secret: string, domain: string): string {
+	const nonce = randomBytes(NONCE_BYTES);
+	const ciphertext = xchacha20poly1305(sha256(encoder.encode(`${domain}${secret}`)), nonce).encrypt(
+		encoder.encode(syncKey)
+	);
+	const packed = new Uint8Array(nonce.length + ciphertext.length);
+	packed.set(nonce);
+	packed.set(ciphertext, nonce.length);
+	return bytesToBase64Url(packed);
+}
+
+function unwrapSecret(secret: string, wrappedSyncKey: string, domain: string): string {
+	const packed = base64UrlToBytes(wrappedSyncKey);
+	if (packed.length <= NONCE_BYTES) throw new Error('Invalid wrapped MCP key');
+	const syncKey = decoder.decode(
+		xchacha20poly1305(
+			sha256(encoder.encode(`${domain}${secret}`)),
+			packed.slice(0, NONCE_BYTES)
+		).decrypt(packed.slice(NONCE_BYTES))
+	);
+	identityFromSyncKey(syncKey);
+	return syncKey;
 }
 
 export function isMcpToken(token: string): boolean {
 	return TOKEN_PATTERN.test(token);
+}
+
+export function isMcpRefreshToken(token: string): boolean {
+	return REFRESH_PATTERN.test(token);
 }
 
 export function hashMcpToken(token: string): string {
@@ -64,31 +100,38 @@ export function hashMcpToken(token: string): string {
 	return bytesToHex(sha256(encoder.encode(`scraps-cache-mcp-token-hash:v2:${token}`)));
 }
 
+export function hashMcpRefreshToken(token: string): string {
+	if (!isMcpRefreshToken(token)) throw new Error('Invalid MCP refresh token');
+	return bytesToHex(sha256(encoder.encode(`scraps-cache-mcp-refresh-hash:v2:${token}`)));
+}
+
 export function createMcpTokenGrant(syncKey: string): McpTokenGrant {
 	const identity = identityFromSyncKey(syncKey);
 	const token = `${TOKEN_PREFIX}${bytesToBase64Url(randomBytes(32))}`;
-	const nonce = randomBytes(NONCE_BYTES);
-	const ciphertext = xchacha20poly1305(wrappingKey(token), nonce).encrypt(encoder.encode(syncKey));
-	const packed = new Uint8Array(nonce.length + ciphertext.length);
-	packed.set(nonce);
-	packed.set(ciphertext, nonce.length);
 	return {
 		token,
 		accountId: identity.accountId,
-		wrappedSyncKey: bytesToBase64Url(packed)
+		wrappedSyncKey: wrapSyncKey(syncKey, token, ACCESS_WRAP_DOMAIN)
+	};
+}
+
+export function createMcpRefreshGrant(syncKey: string): McpRefreshGrant {
+	identityFromSyncKey(syncKey);
+	const refreshToken = `${REFRESH_PREFIX}${bytesToBase64Url(randomBytes(32))}`;
+	return {
+		refreshToken,
+		wrappedRefreshKey: wrapSyncKey(syncKey, refreshToken, REFRESH_WRAP_DOMAIN)
 	};
 }
 
 export function unwrapMcpSyncKey(token: string, wrappedSyncKey: string): string {
-	const packed = base64UrlToBytes(wrappedSyncKey);
-	if (packed.length <= NONCE_BYTES) throw new Error('Invalid wrapped MCP key');
-	const syncKey = decoder.decode(
-		xchacha20poly1305(wrappingKey(token), packed.slice(0, NONCE_BYTES)).decrypt(
-			packed.slice(NONCE_BYTES)
-		)
-	);
-	identityFromSyncKey(syncKey);
-	return syncKey;
+	if (!isMcpToken(token)) throw new Error('Invalid MCP token');
+	return unwrapSecret(token, wrappedSyncKey, ACCESS_WRAP_DOMAIN);
+}
+
+export function unwrapMcpRefreshKey(token: string, wrappedRefreshKey: string): string {
+	if (!isMcpRefreshToken(token)) throw new Error('Invalid MCP refresh token');
+	return unwrapSecret(token, wrappedRefreshKey, REFRESH_WRAP_DOMAIN);
 }
 
 export function resolveStoredMcpToken(token: string, row: StoredMcpToken): ResolvedMcpToken | null {
@@ -97,7 +140,13 @@ export function resolveStoredMcpToken(token: string, row: StoredMcpToken): Resol
 		if (tokenHash !== row.tokenHash) return null;
 		const syncKey = unwrapMcpSyncKey(token, row.wrappedSyncKey);
 		if (identityFromSyncKey(syncKey).accountId !== row.accountId) return null;
-		return { tokenHash, accountId: row.accountId, syncKey, createdAt: row.createdAt };
+		return {
+			tokenHash,
+			accountId: row.accountId,
+			syncKey,
+			createdAt: row.createdAt,
+			expiresAt: row.expiresAt
+		};
 	} catch {
 		return null;
 	}

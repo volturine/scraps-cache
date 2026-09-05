@@ -2,45 +2,127 @@ import { sha256 } from '@noble/hashes/sha2.js';
 
 const encoder = new TextEncoder();
 
-export const MCP_OAUTH_CLIENT_ID = 'grok';
 export const MCP_OAUTH_SCOPE = 'mcp';
-export const GROK_OAUTH_REDIRECT_URI = 'https://grok.com/connectors-oauth-exchange-code/';
 export const MCP_OAUTH_CODE_TTL_MS = 5 * 60 * 1000;
+export const MCP_MANUAL_CLIENT_ID = 'manual';
+export const MCP_OAUTH_CLIENT_ID = 'grok';
+export const GROK_OAUTH_REDIRECT_URI = 'https://grok.com/connectors-oauth-exchange-code/';
 
-export const OAUTH_CLIENT_NAMES = {
-	grok: 'Grok',
-	chatgpt: 'ChatGPT',
-	claude: 'Claude',
-	perplexity: 'Perplexity',
-	hermes: 'Hermes Agent'
-} as const;
+export type OAuthClientId = 'grok' | 'chatgpt' | 'claude' | 'perplexity' | 'hermes';
+export type McpGrantClientId = OAuthClientId | typeof MCP_MANUAL_CLIENT_ID;
 
-export function oauthClientForRedirect(uri: unknown): keyof typeof OAUTH_CLIENT_NAMES | null {
-	if (uri === GROK_OAUTH_REDIRECT_URI) return 'grok';
+type RedirectRule =
+	| { readonly kind: 'exact'; readonly uri: string }
+	| { readonly kind: 'pattern'; readonly test: (uri: string) => boolean };
+
+export type OAuthClient = {
+	readonly id: OAuthClientId;
+	readonly name: string;
+	readonly applicationType: 'web' | 'native';
+	readonly browserOrigins: readonly string[];
+	readonly redirects: readonly RedirectRule[];
+};
+
+const CHATGPT_CONNECTOR = /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]+$/;
+const HERMES_LOOPBACK = /^http:\/\/(?:127\.0\.0\.1|localhost):([1-9][0-9]{0,4})\/callback$/;
+
+export const OAUTH_CLIENTS: readonly OAuthClient[] = [
+	{
+		id: 'grok',
+		name: 'Grok',
+		applicationType: 'web',
+		browserOrigins: ['https://grok.com'],
+		redirects: [{ kind: 'exact', uri: GROK_OAUTH_REDIRECT_URI }]
+	},
+	{
+		id: 'claude',
+		name: 'Claude',
+		applicationType: 'web',
+		browserOrigins: [],
+		redirects: [{ kind: 'exact', uri: 'https://claude.ai/api/mcp/auth_callback' }]
+	},
+	{
+		id: 'perplexity',
+		name: 'Perplexity',
+		applicationType: 'web',
+		browserOrigins: [],
+		redirects: [
+			'https://www.perplexity.ai/rest/connections/oauth_callback',
+			'https://www.perplexity.com/rest/connections/oauth_callback',
+			'https://enterprise.perplexity.ai/rest/connections/oauth_callback',
+			'https://enterprise.perplexity.com/rest/connections/oauth_callback',
+			'https://staging.perplexity.ai/rest/connections/oauth_callback',
+			'https://staging.perplexity.com/rest/connections/oauth_callback'
+		].map((uri) => ({ kind: 'exact', uri }))
+	},
+	{
+		id: 'chatgpt',
+		name: 'ChatGPT',
+		applicationType: 'web',
+		browserOrigins: [],
+		redirects: [
+			{ kind: 'exact', uri: 'https://chatgpt.com/connector_platform_oauth_redirect' },
+			{ kind: 'pattern', test: (uri) => CHATGPT_CONNECTOR.test(uri) }
+		]
+	},
+	{
+		id: 'hermes',
+		name: 'Hermes Agent',
+		applicationType: 'native',
+		browserOrigins: [],
+		redirects: [
+			{
+				kind: 'pattern',
+				test: (uri) => {
+					const loopback = HERMES_LOOPBACK.exec(uri);
+					return loopback !== null && Number(loopback[1]) <= 65535;
+				}
+			}
+		]
+	}
+];
+
+export const OAUTH_CLIENT_NAMES = Object.fromEntries(
+	OAUTH_CLIENTS.map((client) => [client.id, client.name])
+) as { readonly [K in OAuthClientId]: string };
+
+export const OAUTH_BROWSER_ORIGINS: readonly string[] = [
+	...new Set(OAUTH_CLIENTS.flatMap((client) => client.browserOrigins))
+];
+
+function matchesRedirect(client: OAuthClient, uri: string): boolean {
+	return client.redirects.some((rule) =>
+		rule.kind === 'exact' ? rule.uri === uri : rule.test(uri)
+	);
+}
+
+export function oauthClientById(id: unknown): OAuthClient | null {
+	if (typeof id !== 'string') return null;
+	return OAUTH_CLIENTS.find((client) => client.id === id) ?? null;
+}
+
+export function oauthClientForRedirect(uri: unknown): OAuthClientId | null {
 	if (typeof uri !== 'string') return null;
-	if (uri === 'https://claude.ai/api/mcp/auth_callback') return 'claude';
-	if (
-		uri === 'https://www.perplexity.ai/rest/connections/oauth_callback' ||
-		uri === 'https://www.perplexity.com/rest/connections/oauth_callback' ||
-		uri === 'https://enterprise.perplexity.ai/rest/connections/oauth_callback' ||
-		uri === 'https://enterprise.perplexity.com/rest/connections/oauth_callback' ||
-		uri === 'https://staging.perplexity.ai/rest/connections/oauth_callback' ||
-		uri === 'https://staging.perplexity.com/rest/connections/oauth_callback'
-	)
-		return 'perplexity';
-	const loopback = /^http:\/\/(?:127\.0\.0\.1|localhost):([1-9][0-9]{0,4})\/callback$/.exec(uri);
-	if (loopback && Number(loopback[1]) <= 65535) return 'hermes';
-	if (
-		uri === 'https://chatgpt.com/connector_platform_oauth_redirect' ||
-		/^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]+$/.test(uri)
-	)
-		return 'chatgpt';
-	return null;
+	return OAUTH_CLIENTS.find((client) => matchesRedirect(client, uri))?.id ?? null;
 }
 
 export function isOAuthClientRedirect(clientId: unknown, uri: unknown): boolean {
-	const client = oauthClientForRedirect(uri);
-	return client !== null && clientId === client;
+	if (typeof uri !== 'string') return false;
+	const client = oauthClientById(clientId);
+	return client !== null && matchesRedirect(client, uri);
+}
+
+export function isOAuthBrowserOrigin(origin: string): boolean {
+	return OAUTH_BROWSER_ORIGINS.includes(origin);
+}
+
+export function isMcpGrantClientId(value: unknown): value is McpGrantClientId {
+	return value === MCP_MANUAL_CLIENT_ID || oauthClientById(value) !== null;
+}
+
+export function mcpGrantName(clientId: string): string {
+	if (clientId === MCP_MANUAL_CLIENT_ID) return 'Manual setup';
+	return oauthClientById(clientId)?.name ?? 'AI client';
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {

@@ -6,7 +6,7 @@
 	import {
 		isOAuthClientRedirect,
 		oauthClientForRedirect,
-		OAUTH_CLIENT_NAMES,
+		mcpGrantName,
 		MCP_OAUTH_SCOPE,
 		isPkceChallenge,
 		mcpResource
@@ -49,7 +49,7 @@
 
 	let oauthRequest = $derived(parseRequest(page.url));
 	let client = $derived(oauthClientForRedirect(oauthRequest.redirectUri));
-	let clientName = $derived(client ? OAUTH_CLIENT_NAMES[client] : 'AI client');
+	let clientName = $derived(mcpGrantName(client ?? ''));
 	let busy = $state(false);
 	let error = $state('');
 	let mcpEntitled = $state<boolean | null>(null);
@@ -161,13 +161,9 @@
 					<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
 						Set up encrypted sync on this device before connecting {clientName}.
 					</div>
-				{:else if mcpEntitled === false}
-					<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-						Hosted MCP is not enabled for this sync account.
-					</div>
-				{:else if mcpEntitled === null}
-					<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-						Checking whether this account can use hosted MCP…
+				{:else if mcpEntitled !== true}
+					<div class="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+						This authorization request is invalid. No access was granted.
 					</div>
 				{:else}
 					<div class="space-y-3 text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">

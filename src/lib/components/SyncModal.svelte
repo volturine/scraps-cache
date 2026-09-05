@@ -1,15 +1,16 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { unregisterReminderDevice } from '$lib/reminderWake';
-	import { Cloud, X, Sparkles, Copy, Check } from '@lucide/svelte';
+	import { Cloud, X, Copy, Check } from '@lucide/svelte';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { PairingRole } from '$lib/pairingProtocol';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
-	import { createMcpTokenGrant, isMcpToken, MCP_TOKEN_STORAGE_PREFIX } from '$lib/mcp/token';
+	import { MCP_TOKEN_STORAGE_PREFIX } from '$lib/mcp/token';
+	import McpAccessPanel from './McpAccessPanel.svelte';
 
 	const SyncModalMode = {
 		Menu: 'menu',
@@ -45,48 +46,7 @@
 	let syncError = $derived(syncStore.lastError ?? '');
 	let quotaStatus = $derived(resolveSyncStatus(syncError, syncStore.usage));
 
-	let mcpOpen = $state(false);
-	let mcpToken = $state('');
-	let mcpCopiedUrl = $state(false);
-	let mcpCopiedToken = $state(false);
 	let accountIdCopied = $state(false);
-	let mcpIssuing = $state(false);
-	let mcpRevoking = $state(false);
-	let mcpEntitled = $state<boolean | null>(null);
-
-	onMount(() => {
-		void refreshMcpAccess();
-		if (typeof localStorage === 'undefined') return;
-		const accountId = syncStore.account?.accountId;
-		if (!accountId) return;
-		const saved = localStorage.getItem(`${MCP_TOKEN_STORAGE_PREFIX}${accountId}`);
-		if (saved && isMcpToken(saved)) {
-			mcpToken = saved;
-		} else if (saved) {
-			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${accountId}`);
-		}
-	});
-
-	async function refreshMcpAccess() {
-		const account = syncStore.account;
-		if (!account) {
-			mcpEntitled = null;
-			return;
-		}
-		try {
-			const response = await syncStore.authorizedFetch('/api/mcp/access');
-			if (!response.ok) throw new Error('Could not check MCP access');
-			const result = (await response.json()) as { enabled?: unknown };
-			mcpEntitled = result.enabled === true;
-			if (!mcpEntitled && typeof localStorage !== 'undefined') {
-				localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`);
-				mcpToken = '';
-				mcpOpen = false;
-			}
-		} catch {
-			mcpEntitled = null;
-		}
-	}
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -127,7 +87,6 @@
 		syncing = true;
 		const ok = await notesStore.syncWithCloudManual();
 		syncing = false;
-		void refreshMcpAccess();
 		if (!ok)
 			error = friendlyError(
 				syncStore.lastError || notesStore.lastPersistError,
@@ -190,7 +149,6 @@
 					syncStore.logout();
 					mode = SyncModalMode.Link;
 				}
-				void refreshMcpAccess();
 			}
 			return;
 		}
@@ -237,8 +195,6 @@
 		if (account?.accountId && typeof localStorage !== 'undefined') {
 			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`);
 		}
-		mcpToken = '';
-		mcpOpen = false;
 		syncStore.logout();
 		mode = SyncModalMode.Menu;
 		error = '';
@@ -298,42 +254,14 @@
 		if (account?.accountId && typeof localStorage !== 'undefined') {
 			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`);
 		}
-		mcpToken = '';
-		mcpOpen = false;
 		deleteConfirm = false;
 		mode = SyncModalMode.Menu;
 		info = 'Cloud data deleted. Notes on this device were kept.';
 	}
 
-	async function generateMcpToken() {
-		const account = syncStore.account;
-		if (!account?.syncKey || mcpEntitled !== true || mcpIssuing || mcpRevoking) return;
-		mcpIssuing = true;
-		error = '';
-		try {
-			const grant = createMcpTokenGrant(account.syncKey);
-			const response = await syncStore.authorizedFetch('/api/mcp/token', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ token: grant.token, wrappedSyncKey: grant.wrappedSyncKey })
-			});
-			if (!response.ok) {
-				if (response.status === 403) mcpEntitled = false;
-				throw new Error('Issue failed');
-			}
-			mcpToken = grant.token;
-			mcpOpen = true;
-			if (typeof localStorage !== 'undefined') {
-				localStorage.setItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`, mcpToken);
-			}
-		} catch {
-			error = 'Failed to enable Mobile AI access.';
-		} finally {
-			mcpIssuing = false;
-		}
-	}
-
-	async function copyMcpText(text: string, which: 'url' | 'token' | 'account') {
+	async function copyAccountId() {
+		const text = syncStore.account?.accountId;
+		if (!text) return;
 		let copied = false;
 		try {
 			if (navigator.clipboard?.writeText) {
@@ -356,35 +284,8 @@
 			document.body.removeChild(ta);
 		}
 		if (!copied) return;
-		if (which === 'account') {
-			accountIdCopied = true;
-			setTimeout(() => (accountIdCopied = false), 1500);
-		} else if (which === 'url') {
-			mcpCopiedUrl = true;
-			setTimeout(() => (mcpCopiedUrl = false), 1500);
-		} else if (which === 'token') {
-			mcpCopiedToken = true;
-			setTimeout(() => (mcpCopiedToken = false), 1500);
-		}
-	}
-
-	async function revokeMcpAccess() {
-		if (mcpRevoking || mcpIssuing) return;
-		mcpRevoking = true;
-		try {
-			const res = await syncStore.authorizedFetch('/api/mcp/revoke', { method: 'POST' });
-			if (!res.ok) throw new Error('Revoke failed');
-			if (typeof localStorage !== 'undefined' && syncStore.account?.accountId) {
-				localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${syncStore.account.accountId}`);
-			}
-			mcpToken = '';
-			mcpOpen = false;
-			info = 'Mobile AI (MCP) access revoked successfully.';
-		} catch {
-			error = 'Failed to revoke Mobile AI access.';
-		} finally {
-			mcpRevoking = false;
-		}
+		accountIdCopied = true;
+		setTimeout(() => (accountIdCopied = false), 1500);
 	}
 
 	function secondsLeft() {
@@ -542,149 +443,14 @@
 						</div>
 						<button
 							type="button"
-							onclick={() =>
-								syncStore.account && copyMcpText(syncStore.account.accountId, 'account')}
+							onclick={() => void copyAccountId()}
 							class="flex shrink-0 items-center gap-1 font-medium text-[var(--scrapscache-accent)] hover:underline"
 						>
 							{#if accountIdCopied}<Check class="h-3 w-3" /> Copied{:else}<Copy class="h-3 w-3" /> Copy{/if}
 						</button>
 					</div>
 
-					<!-- Mobile & AI Access (MCP) Section -->
-					<div
-						class="rounded-[var(--scrapscache-radius-md)] border border-[var(--scrapscache-border)] bg-[var(--scrapscache-interactive-hover)] p-3 text-xs space-y-2.5"
-					>
-						<div class="flex flex-wrap items-center justify-between gap-2">
-							<div
-								class="flex flex-wrap items-center gap-1.5 font-medium text-[var(--scrapscache-text)]"
-							>
-								<Sparkles class="h-3.5 w-3.5 text-amber-500" />
-								<span>AI access (MCP)</span>
-								{#if mcpToken && mcpEntitled}
-									<span
-										class="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded"
-									>
-										<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-										Enabled
-									</span>
-								{/if}
-							</div>
-							{#if mcpToken && mcpEntitled}
-								<button
-									type="button"
-									onclick={() => (mcpOpen = !mcpOpen)}
-									aria-expanded={mcpOpen}
-									class="text-[var(--scrapscache-text-muted)] hover:text-[var(--scrapscache-text)] text-[11px] underline"
-								>
-									{mcpOpen ? 'Hide' : 'Show details'}
-								</button>
-							{/if}
-						</div>
-
-						<p class="text-[var(--scrapscache-text-muted)] leading-relaxed">
-							MCP is not end-to-end encrypted: until revoked, this server decrypts requested notes
-							in memory and your AI provider can read and change them. Device sync remains
-							encrypted.
-						</p>
-
-						{#if mcpEntitled === false}
-							<div
-								class="rounded border border-amber-500/30 bg-amber-500/10 p-2.5 text-[var(--scrapscache-text-muted)]"
-							>
-								Hosted MCP is a premium feature. Ask the service operator to enable it for this sync
-								account.
-							</div>
-						{:else if mcpEntitled === null}
-							<p class="text-[var(--scrapscache-text-muted)]">
-								MCP availability could not be verified.
-							</p>
-						{:else if !mcpToken}
-							<button
-								type="button"
-								onclick={() => void generateMcpToken()}
-								disabled={mcpIssuing || mcpRevoking}
-								class="scrapscache-button scrapscache-button-secondary w-full px-2 py-2 text-xs font-medium"
-							>
-								{mcpIssuing ? 'Enabling…' : 'Enable AI access'}
-							</button>
-						{:else if mcpOpen}
-							<div class="space-y-3 pt-1 border-t border-[var(--scrapscache-border)]">
-								<div>
-									<div
-										class="flex items-center justify-between text-[11px] text-[var(--scrapscache-text-muted)] mb-1"
-									>
-										<span class="font-medium text-[var(--scrapscache-text)]">Server URL</span>
-										<button
-											type="button"
-											onclick={() => copyMcpText(`${window.location.origin}/api/mcp`, 'url')}
-											class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline font-medium"
-										>
-											{#if mcpCopiedUrl}
-												<Check class="h-3 w-3" /> Copied
-											{:else}
-												<Copy class="h-3 w-3" /> Copy URL
-											{/if}
-										</button>
-									</div>
-									<div
-										class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[11px] select-all"
-									>
-										{typeof window !== 'undefined'
-											? `${window.location.origin}/api/mcp`
-											: `/api/mcp`}
-									</div>
-								</div>
-
-								<details>
-									<summary class="cursor-pointer py-2 font-medium">Manual setup</summary>
-									<p class="mb-2 text-[var(--scrapscache-text-muted)]">
-										For clients that require an Authorization: Bearer token. Keep this token
-										private.
-									</p>
-									<div class="flex items-center justify-between text-[10px] mb-1">
-										<span>Bearer Token</span>
-										<button
-											type="button"
-											onclick={() => copyMcpText(mcpToken, 'token')}
-											class="flex items-center gap-1 text-[var(--scrapscache-accent)] hover:underline"
-										>
-											{#if mcpCopiedToken}
-												<Check class="h-3 w-3" /> Copied
-											{:else}
-												<Copy class="h-3 w-3" /> Copy Token
-											{/if}
-										</button>
-									</div>
-									<div
-										class="truncate font-mono rounded bg-[var(--scrapscache-bg)] p-1.5 border border-[var(--scrapscache-border)] text-[10px] select-all"
-									>
-										••••••••••••••••
-									</div>
-								</details>
-
-								<div
-									class="flex items-center justify-between pt-1 border-t border-[var(--scrapscache-border)]/50"
-								>
-									<button
-										type="button"
-										onclick={() => void generateMcpToken()}
-										disabled={mcpIssuing || mcpRevoking}
-										class="text-[10px] text-[var(--scrapscache-text-muted)] hover:text-[var(--scrapscache-text)] underline"
-									>
-										{mcpIssuing ? 'Regenerating…' : 'Regenerate token'}
-									</button>
-									<button
-										type="button"
-										onclick={() => void revokeMcpAccess()}
-										disabled={mcpRevoking || mcpIssuing}
-										class="text-[11px] text-[var(--scrapscache-danger)] hover:underline"
-									>
-										{mcpRevoking ? 'Revoking…' : 'Revoke Access'}
-									</button>
-								</div>
-							</div>
-						{/if}
-					</div>
+					<McpAccessPanel />
 
 					<button
 						type="button"

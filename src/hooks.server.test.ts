@@ -10,12 +10,20 @@ function formRequest(origin?: string, pathname = url.pathname): Request {
 }
 
 describe('cross-site form protection', () => {
-	it('allows Grok and originless OAuth clients only on the token endpoint', () => {
+	it('allows registered browser OAuth clients and originless token exchange', () => {
 		expect(rejectsCrossSiteForm(formRequest('https://grok.com'), url)).toBe(false);
 		expect(rejectsCrossSiteForm(formRequest(), url)).toBe(false);
+		expect(rejectsCrossSiteForm(formRequest('https://chatgpt.com'), url)).toBe(true);
+		expect(rejectsCrossSiteForm(formRequest('https://claude.ai'), url)).toBe(true);
 		expect(
 			rejectsCrossSiteForm(
 				formRequest(undefined, '/api/sync/register'),
+				new URL('https://scrapscache.com/api/sync/register')
+			)
+		).toBe(true);
+		expect(
+			rejectsCrossSiteForm(
+				formRequest('https://grok.com', '/api/sync/register'),
 				new URL('https://scrapscache.com/api/sync/register')
 			)
 		).toBe(true);

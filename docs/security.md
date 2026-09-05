@@ -77,11 +77,17 @@ the long-term attachment format.
 - **Headers** in `hooks.server.ts`: `Referrer-Policy: no-referrer`,
   `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, restrictive
   `Permissions-Policy`
+- **CSRF** — SvelteKit checks form POSTs in production. `trustedOrigins` is
+  `OAUTH_BROWSER_ORIGINS` (currently `https://grok.com`). Originless OAuth token
+  POSTs are stamped same-origin on `/api/mcp/oauth/token` only. `hooks.server.ts`
+  still rejects cross-site forms on every other path, including Grok. Other MCP
+  websites are not trusted form origins.
 - **Rate limiting** — in-memory token buckets for register, pairing, and sync
-- **Admin token** — required for `/metrics`, `GET /api/admin/status`, and
-  `POST /api/admin/retention` in production Compose
-- **Cloudflare Access console** — `/admin*` fails closed and requires a valid Access JWT for
-  the configured application audience, issuer, and exact operator email
+- **Admin token** — required for `/admin/api/*` when Cloudflare Access is not in use. In
+  production Compose the token protects metrics, status, retention, quota, and MCP
+- **Cloudflare Access console** — `/admin` fails closed and requires a valid Access JWT for
+  the configured application audience, issuer, and exact operator email. `/admin/api/*`
+  accepts that assertion or the operator bearer token
 - **Operator status** — anonymous aggregates only (storage, account counts,
   activity windows). No account IDs, ciphertext, or credentials
 - **Account retention** — optional; a daily sweep deletes unused relay accounts
@@ -164,4 +170,4 @@ sessions. It does not change the trust model for accounts that never enable MCP.
 | Operator status          | `src/lib/server/operatorMonitor.ts`             |
 | Account retention        | `src/lib/server/retentionManager.ts`            |
 | CSP                      | `svelte.config.js`                              |
-| Security headers         | `src/hooks.server.ts`                           |
+| CSRF + security headers  | `src/hooks.server.ts`, `oauthCsrf.ts`           |

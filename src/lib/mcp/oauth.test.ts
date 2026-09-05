@@ -1,7 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { isOAuthClientRedirect, oauthClientForRedirect } from './oauth';
+import {
+	GROK_OAUTH_REDIRECT_URI,
+	OAUTH_BROWSER_ORIGINS,
+	OAUTH_CLIENTS,
+	isOAuthBrowserOrigin,
+	isOAuthClientRedirect,
+	oauthClientById,
+	oauthClientForRedirect
+} from './oauth';
 
 describe('OAuth callback boundaries', () => {
+	it('accepts every registered callback and no others', () => {
+		expect(oauthClientForRedirect(GROK_OAUTH_REDIRECT_URI)).toBe('grok');
+		expect(oauthClientForRedirect('https://claude.ai/api/mcp/auth_callback')).toBe('claude');
+		expect(
+			oauthClientForRedirect('https://www.perplexity.com/rest/connections/oauth_callback')
+		).toBe('perplexity');
+		expect(oauthClientForRedirect('https://chatgpt.com/connector/oauth/id')).toBe('chatgpt');
+		expect(oauthClientForRedirect('http://127.0.0.1:27890/callback')).toBe('hermes');
+		expect(oauthClientById('hermes')?.applicationType).toBe('native');
+		expect(OAUTH_BROWSER_ORIGINS).toEqual(['https://grok.com']);
+		expect(isOAuthBrowserOrigin('https://grok.com')).toBe(true);
+		expect(isOAuthBrowserOrigin('https://chatgpt.com')).toBe(false);
+		expect(isOAuthBrowserOrigin('https://claude.ai')).toBe(false);
+		expect(OAUTH_CLIENTS.map((client) => client.id)).toEqual([
+			'grok',
+			'claude',
+			'perplexity',
+			'chatgpt',
+			'hermes'
+		]);
+	});
+
 	it.each([
 		'https://claude.ai.evil.example/api/mcp/auth_callback',
 		'https://claude.ai/api/mcp/auth_callback?redirect=elsewhere',

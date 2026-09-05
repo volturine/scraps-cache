@@ -20,8 +20,8 @@ vi.mock('$lib/server/db', async (importOriginal) => {
 	};
 });
 
+import { GET as mcpGetHandler, POST as messagesHandler } from './+server';
 import { GET as sseHandler } from './sse/+server';
-import { POST as messagesHandler } from './messages/+server';
 import { POST as revokeHandler } from './revoke/+server';
 import { POST as tokenHandler } from './token/+server';
 import { GET as accessHandler } from './access/+server';
@@ -61,8 +61,21 @@ describe('mcp api routes', () => {
 		expect(sseResponse.status).toBe(200);
 		const reader = sseResponse.body.getReader();
 		const firstChunk = new TextDecoder().decode((await reader.read()).value);
+		expect(firstChunk).toContain('event: endpoint');
 		expect(firstChunk).toContain('data: http://localhost:5173/api/mcp/messages');
 		expect(firstChunk).not.toContain('token=');
+
+		const streamRequest = new Request('http://localhost:5173/api/mcp', {
+			headers: { Accept: 'text/event-stream', Authorization: `Bearer ${token}` }
+		});
+		const streamResponse = await (mcpGetHandler as any)({
+			request: streamRequest,
+			url: new URL(streamRequest.url),
+			platform: undefined
+		});
+		expect(streamResponse.status).toBe(200);
+		expect(streamResponse.headers.get('content-type')).toContain('text/event-stream');
+		await streamResponse.body.getReader().cancel();
 
 		const legacyRequest = new Request('http://localhost:5173/api/mcp/messages', {
 			method: 'POST',

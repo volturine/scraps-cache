@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createSyncIdentity } from '$lib/syncPairing';
 import {
+	createMcpRefreshGrant,
 	createMcpTokenGrant,
 	hashMcpToken,
+	isMcpRefreshToken,
 	isMcpToken,
 	resolveStoredMcpToken,
+	unwrapMcpRefreshKey,
 	unwrapMcpSyncKey
 } from './token';
 
@@ -31,12 +34,14 @@ describe('mcp token', () => {
 			tokenHash: hashMcpToken(grant.token),
 			accountId: identity.accountId,
 			wrappedSyncKey: grant.wrappedSyncKey,
-			createdAt: 123
+			createdAt: 123,
+			expiresAt: 456
 		};
 		expect(resolveStoredMcpToken(grant.token, row)).toMatchObject({
 			accountId: identity.accountId,
 			syncKey: identity.syncKey,
-			createdAt: 123
+			createdAt: 123,
+			expiresAt: 456
 		});
 		expect(resolveStoredMcpToken(grant.token, { ...row, accountId: 'other' })).toBeNull();
 	});
@@ -45,5 +50,17 @@ describe('mcp token', () => {
 		expect(isMcpToken('')).toBe(false);
 		expect(isMcpToken('bearer 123')).toBe(false);
 		expect(isMcpToken('sc_mcp_v2_abc')).toBe(false);
+	});
+
+	it('wraps a separate refresh secret that cannot be used as a bearer', () => {
+		const identity = createSyncIdentity();
+		const refresh = createMcpRefreshGrant(identity.syncKey);
+		expect(isMcpRefreshToken(refresh.refreshToken)).toBe(true);
+		expect(isMcpToken(refresh.refreshToken)).toBe(false);
+		expect(unwrapMcpRefreshKey(refresh.refreshToken, refresh.wrappedRefreshKey)).toBe(
+			identity.syncKey
+		);
+		const other = createMcpRefreshGrant(identity.syncKey);
+		expect(() => unwrapMcpRefreshKey(other.refreshToken, refresh.wrappedRefreshKey)).toThrow();
 	});
 });

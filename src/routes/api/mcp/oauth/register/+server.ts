@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { oauthClientForRedirect, MCP_OAUTH_SCOPE } from '$lib/mcp/oauth';
+import { oauthClientById, oauthClientForRedirect, MCP_OAUTH_SCOPE } from '$lib/mcp/oauth';
 import { InvalidRequestBody, readJsonBody } from '$lib/server/request';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
@@ -79,8 +79,8 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			`Unsupported redirect_uris[${unsupportedIndex}]: ${callbackDescription(redirects[unsupportedIndex])}`
 		);
 	}
-	const clientId = oauthClientForRedirect(redirects[0]);
-	if (!redirects.every((uri) => oauthClientForRedirect(uri) === clientId)) {
+	const client = oauthClientById(oauthClientForRedirect(redirects[0]));
+	if (!client || !redirects.every((uri) => oauthClientForRedirect(uri) === client.id)) {
 		return registrationError(
 			'invalid_redirect_uri',
 			'Use supported callbacks belonging to one OAuth client'
@@ -89,14 +89,14 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 
 	return json(
 		{
-			client_id: clientId,
+			client_id: client.id,
 			client_name: metadata.client_name,
 			redirect_uris: [...new Set(redirects)],
 			token_endpoint_auth_method: 'none',
-			grant_types: ['authorization_code'],
+			grant_types: ['authorization_code', 'refresh_token'],
 			response_types: ['code'],
 			scope: MCP_OAUTH_SCOPE,
-			application_type: clientId === 'hermes' ? 'native' : 'web'
+			application_type: client.applicationType
 		},
 		{ status: 201, headers: NO_STORE_HEADERS }
 	);

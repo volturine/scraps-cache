@@ -37,10 +37,19 @@ afterEach(() => {
 });
 
 describe('SyncModal storage usage', () => {
-	it('discloses the separate MCP trust path', () => {
+	it('hides MCP until the account is entitled and still shows the sync account ID', async () => {
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(Response.json({ enabled: false }));
 		renderUsage(5 * MB);
+		await tick();
+		expect(screen.queryByText(/AI access \(MCP\)/)).toBeNull();
+		expect(screen.queryByText(/MCP is not end-to-end encrypted/)).toBeNull();
+		expect(screen.getByText('Sync account ID')).toBeTruthy();
+	});
 
-		expect(screen.getByText(/MCP is not end-to-end encrypted/).textContent).toMatch(
+	it('discloses the separate MCP trust path once entitled', async () => {
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(Response.json({ enabled: true }));
+		renderUsage(5 * MB);
+		expect((await screen.findByText(/MCP is not end-to-end encrypted/)).textContent).toMatch(
 			/this server decrypts requested notes.*AI provider can read and change them/s
 		);
 	});
