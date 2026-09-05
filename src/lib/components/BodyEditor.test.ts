@@ -759,4 +759,62 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelector('[data-focus-group]')).toBeNull();
 		expect(container.querySelector('[data-add-subtask]')).toBeNull();
 	});
+
+	it('aligns Add sub-task with subtask indentation and avoids double indenting under existing subtasks', async () => {
+		const { container: c1 } = render(BodyEditor, {
+			props: { body: '[ ] Avocados\n[ ] Dark chocolate', focusLine: 0 }
+		});
+		await tick();
+
+		const buttonNoSub = c1.querySelector('[data-add-subtask]') as HTMLButtonElement;
+		expect(buttonNoSub).not.toBeNull();
+		expect(buttonNoSub.className).toContain('pl-6');
+		expect(buttonNoSub.className).not.toContain('pl-1');
+
+		const { container: c2 } = render(BodyEditor, {
+			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate', focusLine: 0 }
+		});
+		await tick();
+
+		const buttonWithSub = c2.querySelector('[data-add-subtask]') as HTMLButtonElement;
+		expect(buttonWithSub).not.toBeNull();
+		expect(buttonWithSub.className).toContain('pl-1');
+		expect(buttonWithSub.className).not.toContain('pl-6');
+	});
+
+	it('preserves the subtask draft across mobile pointerdown and blur cycles', async () => {
+		const onFocusTask = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate', focusLine: 0, onFocusTask }
+		});
+		await tick();
+
+		const addBtn = container.querySelector('[data-add-subtask]') as HTMLButtonElement;
+		expect(addBtn).not.toBeNull();
+
+		await fireEvent.pointerDown(addBtn, { pointerId: 42, pointerType: 'touch' });
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
+
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		await fireEvent.blur(editor, { relatedTarget: null });
+
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
+
+		await fireEvent.pointerUp(editor, { pointerId: 42, pointerType: 'touch' });
+	});
+
+	it('ignores editor click when target is the add subtask button', async () => {
+		const onFocusTask = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate', focusLine: 0, onFocusTask }
+		});
+		await tick();
+
+		const addBtn = container.querySelector('[data-add-subtask]') as HTMLButtonElement;
+		onFocusTask.mockClear();
+
+		// Clicking the button directly should not trigger container's handleEditorClick row refocus
+		await fireEvent.click(addBtn);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
+	});
 });

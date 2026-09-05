@@ -96,6 +96,7 @@
 	let draftTaskId = $state<number | null>(null);
 	let ignoredFocusLine = $state<number | null>(null);
 	let checklistPointerId: number | null = null;
+	let subtaskPointerId: number | null = null;
 	let composing = false;
 	let applyingEdit = false;
 	const undoStack: HistoryEntry[] = [];
@@ -406,7 +407,8 @@
 		// A touch can start on the checkbox and finish over the editable label. In
 		// that case Safari may retarget its synthetic click to the task row. Keep
 		// the whole gesture owned by the checkbox so it cannot open the keyboard.
-		if (checklistPointerId !== null) return;
+		if (checklistPointerId !== null || subtaskPointerId !== null) return;
+		if ((event.target as Element)?.closest?.('[data-add-subtask]')) return;
 		const row = closestLineElement(event.target as Node);
 		if (!row) return;
 		const index = Number(row.dataset.editorLine);
@@ -693,15 +695,22 @@
 		}
 	}
 
-	function finishChecklistPointer(event: PointerEvent) {
-		if (event.pointerId !== checklistPointerId) return;
-		queueMicrotask(() => {
-			if (checklistPointerId === event.pointerId) checklistPointerId = null;
-		});
+	function finishPointer(event: PointerEvent) {
+		if (event.pointerId === checklistPointerId) {
+			queueMicrotask(() => {
+				if (checklistPointerId === event.pointerId) checklistPointerId = null;
+			});
+		}
+		if (event.pointerId === subtaskPointerId) {
+			queueMicrotask(() => {
+				if (subtaskPointerId === event.pointerId) subtaskPointerId = null;
+			});
+		}
 	}
 
-	function cancelChecklistPointer(event: PointerEvent) {
+	function cancelPointer(event: PointerEvent) {
 		if (event.pointerId === checklistPointerId) checklistPointerId = null;
+		if (event.pointerId === subtaskPointerId) subtaskPointerId = null;
 	}
 
 	function indentLine(index: number, delta: number): { changed: boolean; offsetDelta: number } {
@@ -939,7 +948,11 @@
 	}
 
 	function addSubtask(rootIndex: number) {
-		const root = lines[rootIndex];
+		let resolvedRoot = rootIndex;
+		if (resolvedRoot < 0 && focusedRootId !== null) {
+			resolvedRoot = lines.findIndex((line) => line.id === focusedRootId);
+		}
+		const root = lines[resolvedRoot];
 		if (!root?.isCheck || root.indent !== 0) return;
 		if (draftTaskId !== null) {
 			const existing = lines.findIndex((line) => line.id === draftTaskId);
@@ -949,7 +962,7 @@
 			}
 			draftTaskId = null;
 		}
-		let insertAt = rootIndex + 1;
+		let insertAt = resolvedRoot + 1;
 		while (insertAt < lines.length && lines[insertAt].isCheck && lines[insertAt].indent > 0)
 			insertAt++;
 		const draft = newLine('', true, false, 1);
@@ -966,6 +979,20 @@
 		// plaintext-only editing host. Activate on pointerdown and keep focus in the host.
 		event.preventDefault();
 		event.stopPropagation();
+		subtaskPointerId = event.pointerId;
+		const button = event.currentTarget as HTMLElement;
+		try {
+			button.setPointerCapture?.(event.pointerId);
+		} catch {
+			// Best-effort on older Safari versions.
+		}
+		addSubtask(rootIndex);
+	}
+
+	function handleAddSubtaskClick(event: MouseEvent, rootIndex: number) {
+		event.preventDefault();
+		event.stopPropagation();
+		if (subtaskPointerId !== null) return;
 		addSubtask(rootIndex);
 	}
 
@@ -982,6 +1009,7 @@
 	}
 
 	function handleEditorBlur(event: FocusEvent) {
+		if (subtaskPointerId !== null) return;
 		discardEmptyDraft();
 		if (event.relatedTarget instanceof Node && container?.contains(event.relatedTarget)) return;
 		dropTaskFocus();
@@ -1040,8 +1068,8 @@
 	oncut={handleCut}
 	onpaste={handlePaste}
 	onkeydown={handleKeydown}
-	onpointerup={finishChecklistPointer}
-	onpointercancel={cancelChecklistPointer}
+	onpointerup={finishPointer}
+	onpointercancel={cancelPointer}
 	onclick={handleEditorClick}
 	oncompositionstart={() => (composing = true)}
 	oncompositionend={() => {
@@ -1105,8 +1133,12 @@
 					contenteditable="false"
 					data-add-subtask
 					aria-label="Add sub-task"
-					class="flex basis-full select-none items-center rounded px-1 py-1 pl-6 text-left text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
+					class="flex basis-full select-none items-center rounded py-1 text-left text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10 touch-manipulation min-h-[32px] sm:min-h-0 {line.indent >
+					0
+						? 'pl-1'
+						: 'pl-6'}"
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
+					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>
 					<span class="add-subtask-label" aria-hidden="true"></span>
 				</button>
