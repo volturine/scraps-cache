@@ -5,10 +5,12 @@
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { unregisterReminderDevice } from '$lib/reminderWake';
-	import { Cloud, X } from '@lucide/svelte';
-	import { portalToAppFloat } from '$lib/appViewport';
+	import { Cloud, X, Copy, Check } from '@lucide/svelte';
+	import { portalToAppOverlay } from '$lib/appViewport';
 	import { PairingRole } from '$lib/pairingProtocol';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
+	import { MCP_TOKEN_STORAGE_PREFIX } from '$lib/mcp/token';
+	import McpAccessPanel from './McpAccessPanel.svelte';
 
 	const SyncModalMode = {
 		Menu: 'menu',
@@ -43,6 +45,8 @@
 	let deleteConfirm = $state(false);
 	let syncError = $derived(syncStore.lastError ?? '');
 	let quotaStatus = $derived(resolveSyncStatus(syncError, syncStore.usage));
+
+	let accountIdCopied = $state(false);
 
 	function stopWaiting() {
 		if (timer) clearInterval(timer);
@@ -84,7 +88,10 @@
 		const ok = await notesStore.syncWithCloudManual();
 		syncing = false;
 		if (!ok)
-			error = friendlyError(syncStore.lastError, 'Created, but the first sync did not finish');
+			error = friendlyError(
+				syncStore.lastError || notesStore.lastPersistError,
+				'Created, but the first sync did not finish'
+			);
 	}
 
 	async function beginLink() {
@@ -173,20 +180,6 @@
 		void pollLink();
 	}
 
-	function formatBytes(bytes: number): string {
-		if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} KB`;
-		const megabytes = bytes / 1_000_000;
-		return `${Number.isInteger(megabytes) ? megabytes : megabytes.toFixed(1)} MB`;
-	}
-
-	function formatLimit(bytes: number): string {
-		return formatBytes(bytes);
-	}
-
-	function progressPercent(loaded: number, total: number | null): number {
-		return total && total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
-	}
-
 	async function syncNow() {
 		if (syncing) return;
 		syncing = true;
@@ -199,12 +192,13 @@
 
 	function unlinkDevice() {
 		const account = syncStore.account;
+		if (account?.accountId && typeof localStorage !== 'undefined') {
+			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`);
+		}
 		syncStore.logout();
 		mode = SyncModalMode.Menu;
 		error = '';
 		info = '';
-		// Sign-out is local and immediate; a failed server-side unsubscribe must
-		// stay visible so the user knows this browser lingers in wake delivery.
 		unregisterReminderDevice(account).catch(() => {
 			error =
 				'Signed out, but the relay could not remove this device from reminder push. It will age out of delivery on its own.';
@@ -237,7 +231,6 @@
 			}
 			document.body.removeChild(ta);
 		}
-		// Only confirm when the write actually landed; never claim a copy that failed.
 		if (!copied) return;
 		copyFlash = true;
 		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
@@ -249,6 +242,7 @@
 
 	async function deleteCloudData() {
 		if (!deleteConfirm || loading) return;
+		const account = syncStore.account;
 		loading = true;
 		error = '';
 		const result = await syncStore.deleteCloudAccount();
@@ -257,9 +251,41 @@
 			error = friendlyError(result.error, 'Could not delete synced data');
 			return;
 		}
+		if (account?.accountId && typeof localStorage !== 'undefined') {
+			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`);
+		}
 		deleteConfirm = false;
 		mode = SyncModalMode.Menu;
 		info = 'Cloud data deleted. Notes on this device were kept.';
+	}
+
+	async function copyAccountId() {
+		const text = syncStore.account?.accountId;
+		if (!text) return;
+		let copied = false;
+		try {
+			if (navigator.clipboard?.writeText) {
+				await navigator.clipboard.writeText(text);
+				copied = true;
+			}
+		} catch {
+			const ta = document.createElement('textarea');
+			ta.value = text;
+			ta.setAttribute('readonly', '');
+			ta.style.position = 'fixed';
+			ta.style.left = '-9999px';
+			document.body.appendChild(ta);
+			ta.select();
+			try {
+				copied = document.execCommand('copy');
+			} catch {
+				/* best effort */
+			}
+			document.body.removeChild(ta);
+		}
+		if (!copied) return;
+		accountIdCopied = true;
+		setTimeout(() => (accountIdCopied = false), 1500);
 	}
 
 	function secondsLeft() {
@@ -280,11 +306,31 @@
 		stopWaiting();
 		onClose();
 	}
+	function progressPercent(loaded: number, total: number | null) {
+		if (!total || total <= 0) return 100;
+		return Math.min(100, Math.max(0, Math.round((loaded / total) * 100)));
+	}
+	function formatBytes(bytes: number): string {
+		if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} KB`;
+		const megabytes = bytes / 1_000_000;
+		return `${Number.isInteger(megabytes) ? megabytes : megabytes.toFixed(1)} MB`;
+	}
+	function formatLimit(bytes: number): string {
+		return formatBytes(bytes);
+	}
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			event.stopPropagation();
+			close();
+		}
+	}
 </script>
 
+<svelte:window onkeydown={handleKeydown} />
+
 <div
-	{@attach portalToAppFloat}
-	class="fixed inset-0 z-50 flex items-center justify-center p-4"
+	{@attach portalToAppOverlay}
+	class="absolute inset-0 z-50 flex items-center justify-center p-4"
 	transition:fade={{ duration: 150 }}
 >
 	<button
@@ -294,14 +340,16 @@
 		aria-label="Close sync dialog"
 	></button>
 	<div
-		class="scrapscache-dialog relative w-full max-w-md p-6"
+		class="scrapscache-dialog relative flex max-h-full min-h-0 w-full min-w-0 max-w-md flex-col overflow-hidden"
 		role="dialog"
 		tabindex="-1"
 		aria-modal="true"
 		aria-labelledby="sync-title"
 		transition:fly={{ y: 20, duration: 200 }}
 	>
-		<div class="mb-4 flex items-center justify-between">
+		<div
+			class="flex shrink-0 items-center justify-between border-b border-[var(--scrapscache-border)] px-5 py-3"
+		>
 			<h2
 				id="sync-title"
 				class="flex items-center gap-2 text-lg font-medium text-[var(--scrapscache-text)]"
@@ -314,258 +362,283 @@
 			</button>
 		</div>
 
-		{#if mode === SyncModalMode.Linked && syncStore.account}
-			<div class="space-y-4">
-				<p class="text-sm text-[var(--scrapscache-text-muted)]">
-					This device is linked. Connect another device with a one-time code that expires in 60
-					seconds.
-				</p>
-				{#if syncStore.progress}
-					{@const progress = syncStore.progress}
-					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-					<div
-						class="rounded-[var(--scrapscache-radius-md)] bg-[var(--scrapscache-interactive-hover)] p-3 text-sm"
+		<div class="min-h-0 overflow-y-auto overscroll-contain p-5">
+			{#if mode === SyncModalMode.Linked && syncStore.account}
+				<div class="space-y-4">
+					<p class="text-sm text-[var(--scrapscache-text-muted)]">
+						This device is linked. Your notes sync with your other devices.
+					</p>
+					{#if syncStore.progress}
+						{@const progress = syncStore.progress}
+						{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
+						<div
+							class="rounded-[var(--scrapscache-radius-md)] bg-[var(--scrapscache-interactive-hover)] p-3 text-sm"
+						>
+							<div class="mb-1 flex justify-between text-[var(--scrapscache-text-muted)]">
+								<span
+									>{progress.phase === 'upload'
+										? 'Encrypting & uploading'
+										: 'Downloading encrypted sync'}</span
+								><span
+									>{formatBytes(progress.loadedBytes)}{progress.totalBytes
+										? ` / ${formatBytes(progress.totalBytes)} (${percent}%)`
+										: ''}</span
+								>
+							</div>
+							<div class="scrapscache-progress-track h-2 overflow-hidden rounded-full">
+								<div
+									class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
+									style={`width: ${progress.totalBytes ? percent : 100}%`}
+								></div>
+							</div>
+						</div>
+					{:else if syncing}<p class="text-sm text-[var(--scrapscache-text-muted)]">
+							Syncing…
+						</p>{/if}
+					{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]">{info}</p>{/if}
+					{#if error}
+						<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{error}</p>
+					{:else if syncError}
+						<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{syncError}</p>
+					{/if}
+					<button
+						type="button"
+						onclick={() => void syncNow()}
+						disabled={loading || syncing}
+						class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
+						>{syncing ? 'Syncing…' : '🔄 Sync now'}</button
 					>
-						<div class="mb-1 flex justify-between text-[var(--scrapscache-text-muted)]">
-							<span
-								>{progress.phase === 'upload'
-									? 'Encrypting & uploading'
-									: 'Downloading encrypted sync'}</span
-							><span
-								>{formatBytes(progress.loadedBytes)}{progress.totalBytes
-									? ` / ${formatBytes(progress.totalBytes)} (${percent}%)`
-									: ''}</span
-							>
-						</div>
-						<div class="scrapscache-progress-track h-2 overflow-hidden rounded-full">
-							<div
-								class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
-								style={`width: ${progress.totalBytes ? percent : 100}%`}
-							></div>
-						</div>
-					</div>
-				{:else if syncing}<p class="text-sm text-[var(--scrapscache-text-muted)]">Syncing…</p>{/if}
-				{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]">{info}</p>{/if}
-				{#if error}
-					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{error}</p>
-				{:else if syncError}
-					<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{syncError}</p>
-				{/if}
-				<button
-					type="button"
-					onclick={() => void syncNow()}
-					disabled={loading || syncing}
-					class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
-					>{syncing ? 'Syncing…' : '🔄 Sync now'}</button
-				>
-				<button
-					type="button"
-					onclick={() => void startExistingConnection()}
-					disabled={loading || syncing}
-					class="scrapscache-button scrapscache-button-secondary w-full px-3 py-2.5 text-sm"
-					>Connect another device</button
-				>
-				{#if syncStore.usage}
-					<div
-						aria-label="Sync storage usage"
-						class={[
-							'rounded-[var(--scrapscache-radius-md)] p-3 text-xs',
-							SYNC_STATUS_CLASS[quotaStatus]
-						]}
+					<button
+						type="button"
+						onclick={() => void startExistingConnection()}
+						disabled={loading || syncing}
+						class="scrapscache-button scrapscache-button-secondary w-full px-3 py-2.5 text-sm"
+						>Connect another device</button
 					>
-						<div class="flex items-center justify-between gap-3">
-							<span class="font-medium">Sync storage</span>
-							<span>
-								{formatBytes(syncStore.usage.storageBytes)} of
-								{formatLimit(syncStore.usage.maxBytes)}
-							</span>
+					{#if syncStore.usage}
+						<div
+							aria-label="Sync storage usage"
+							class={[
+								'rounded-[var(--scrapscache-radius-md)] p-3 text-xs',
+								SYNC_STATUS_CLASS[quotaStatus]
+							]}
+						>
+							<div class="flex items-center justify-between gap-3">
+								<span class="font-medium">Sync storage</span>
+								<span>
+									{formatBytes(syncStore.usage.storageBytes)} of
+									{formatLimit(syncStore.usage.maxBytes)}
+								</span>
+							</div>
 						</div>
-					</div>
-				{/if}
-				<button
-					type="button"
-					onclick={unlinkDevice}
-					class="scrapscache-button scrapscache-button-destructive w-full text-sm"
-					>Unlink this device</button
-				>
-				{#if deleteConfirm}
-					<div class="scrapscache-status-danger rounded-[var(--scrapscache-radius-md)] p-3">
-						<p class="text-xs leading-relaxed">
-							Delete all encrypted cloud records? Notes stored on this device will remain.
-						</p>
-						<div class="mt-2 flex gap-2">
-							<button
-								type="button"
-								onclick={() => {
-									deleteConfirm = false;
-								}}
-								disabled={loading}
-								class="flex-1 rounded border border-[var(--scrapscache-border)] px-2 py-1.5 text-xs"
-								>Cancel</button
-							>
-							<button
-								type="button"
-								onclick={() => void deleteCloudData()}
-								disabled={loading}
-								class="scrapscache-button scrapscache-button-destructive-solid flex-1 px-2 py-1.5 text-xs font-medium"
-								>{loading ? 'Deleting…' : 'Delete cloud data'}</button
-							>
+					{/if}
+					<div
+						class="flex items-center justify-between gap-3 rounded-[var(--scrapscache-radius-md)] border border-[var(--scrapscache-border)] p-3 text-xs"
+					>
+						<div class="min-w-0">
+							<div class="font-medium text-[var(--scrapscache-text)]">Sync account ID</div>
+							<div class="truncate font-mono text-[10px] text-[var(--scrapscache-text-muted)]">
+								{syncStore.account.accountId}
+							</div>
 						</div>
+						<button
+							type="button"
+							onclick={() => void copyAccountId()}
+							class="flex shrink-0 items-center gap-1 font-medium text-[var(--scrapscache-accent)] hover:underline"
+						>
+							{#if accountIdCopied}<Check class="h-3 w-3" /> Copied{:else}<Copy class="h-3 w-3" /> Copy{/if}
+						</button>
 					</div>
-				{:else}
+
+					<McpAccessPanel />
+
+					<button
+						type="button"
+						onclick={unlinkDevice}
+						class="scrapscache-button scrapscache-button-destructive w-full text-sm"
+						>Unlink this device</button
+					>
+					{#if deleteConfirm}
+						<div class="scrapscache-status-danger rounded-[var(--scrapscache-radius-md)] p-3">
+							<p class="text-xs leading-relaxed">
+								Delete all encrypted cloud records? Notes stored on this device will remain.
+							</p>
+							<div class="mt-2 flex gap-2">
+								<button
+									type="button"
+									onclick={() => {
+										deleteConfirm = false;
+									}}
+									disabled={loading}
+									class="flex-1 rounded border border-[var(--scrapscache-border)] px-2 py-1.5 text-xs"
+									>Cancel</button
+								>
+								<button
+									type="button"
+									onclick={() => void deleteCloudData()}
+									disabled={loading}
+									class="scrapscache-button scrapscache-button-destructive-solid flex-1 px-2 py-1.5 text-xs font-medium"
+									>{loading ? 'Deleting…' : 'Delete cloud data'}</button
+								>
+							</div>
+						</div>
+					{:else}
+						<button
+							type="button"
+							onclick={() => {
+								deleteConfirm = true;
+							}}
+							class="scrapscache-button scrapscache-button-destructive w-full text-xs"
+							>Delete cloud data</button
+						>
+					{/if}
+				</div>
+			{:else if mode === SyncModalMode.Menu}
+				<div class="space-y-3">
+					<p class="text-sm text-[var(--scrapscache-text-muted)]">
+						Create one private sync key, then connect your own devices by starting the connection on
+						both within 60 seconds.
+					</p>
 					<button
 						type="button"
 						onclick={() => {
-							deleteConfirm = true;
+							mode = SyncModalMode.Register;
+							error = '';
+							info = '';
 						}}
-						class="scrapscache-button scrapscache-button-destructive w-full text-xs"
-						>Delete cloud data</button
+						class="scrapscache-button scrapscache-button-primary w-full px-3 py-3 text-sm font-medium"
+						>Create sync key</button
+					><button
+						type="button"
+						onclick={() => {
+							mode = SyncModalMode.Link;
+							error = '';
+							info = '';
+						}}
+						class="w-full rounded-lg border border-[var(--scrapscache-border)] px-3 py-3 text-sm touch-manipulation"
+						>Connect to an existing sync</button
 					>
-				{/if}
-			</div>
-		{:else if mode === SyncModalMode.Menu}
-			<div class="space-y-3">
-				<p class="text-sm text-[var(--scrapscache-text-muted)]">
-					Create one private sync key, then connect your own devices by starting the connection on
-					both within 60 seconds.
-				</p>
-				<button
-					type="button"
-					onclick={() => {
-						mode = SyncModalMode.Register;
-						error = '';
-						info = '';
-					}}
-					class="scrapscache-button scrapscache-button-primary w-full px-3 py-3 text-sm font-medium"
-					>Create sync key</button
-				><button
-					type="button"
-					onclick={() => {
-						mode = SyncModalMode.Link;
-						error = '';
-						info = '';
-					}}
-					class="w-full rounded-lg border border-[var(--scrapscache-border)] px-3 py-3 text-sm touch-manipulation"
-					>Connect to an existing sync</button
-				>
-				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
-			</div>
-		{:else if mode === SyncModalMode.Register}
-			<div class="space-y-3">
-				<p class="text-sm text-[var(--scrapscache-text-muted)]">
-					Creates a private account on this device. Other devices join with a one-time code, not a
-					lifetime password.
-				</p>
-				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
-					type="button"
-					onclick={() => void create()}
-					disabled={loading}
-					class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
-					>{loading ? 'Creating…' : 'Create my sync key'}</button
-				><button
-					type="button"
-					onclick={() => (mode = SyncModalMode.Menu)}
-					class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-					>← Back</button
-				>
-			</div>
-		{:else if mode === SyncModalMode.Link}
-			<div class="space-y-3">
-				<p class="text-sm text-[var(--scrapscache-text-muted)]">
-					On your other device open Sync and choose Connect another device. Enter the one-time code
-					shown there.
-				</p>
-				<input
-					value={code}
-					oninput={formatInput}
-					autocomplete="one-time-code"
-					placeholder="XXXX-XXXX-XXXX-XXXX"
-					maxlength="19"
-					spellcheck="false"
-					class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
-					onkeydown={(event) => event.key === 'Enter' && void beginLink()}
-				/>{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
-					type="button"
-					onclick={() => void beginLink()}
-					disabled={loading}
-					class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
-					>{loading ? 'Starting…' : 'Start connection'}</button
-				><button
-					type="button"
-					onclick={() => (mode = SyncModalMode.Menu)}
-					class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-					>← Back</button
-				>
-			</div>
-		{:else if mode === SyncModalMode.Waiting}
-			<div class="space-y-5">
-				{#if waiting?.role === PairingRole.Existing}
-					<div>
-						<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
-							On the new device
-						</p>
-						<p class="mt-1 text-sm text-[var(--scrapscache-text)]">Open Sync and type this code</p>
-					</div>
-					<div
-						class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] px-2 py-5"
-						aria-label="One-time pairing code"
+					{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
+				</div>
+			{:else if mode === SyncModalMode.Register}
+				<div class="space-y-3">
+					<p class="text-sm text-[var(--scrapscache-text-muted)]">
+						Creates a private account on this device. Other devices join with a one-time code, not a
+						lifetime password.
+					</p>
+					{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
+						type="button"
+						onclick={() => void create()}
+						disabled={loading}
+						class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
+						>{loading ? 'Creating…' : 'Create my sync key'}</button
+					><button
+						type="button"
+						onclick={() => (mode = SyncModalMode.Menu)}
+						class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
+						>← Back</button
 					>
-						<div class="flex items-center justify-center gap-1">
-							{#each pairingGroups(waiting.syncCode) as group, index (index)}
-								{#if index > 0}
-									<span class="px-0.5 text-[var(--scrapscache-text-muted)]" aria-hidden="true"
-										>·</span
+				</div>
+			{:else if mode === SyncModalMode.Link}
+				<div class="space-y-3">
+					<p class="text-sm text-[var(--scrapscache-text-muted)]">
+						On your other device open Sync and choose Connect another device. Enter the one-time
+						code shown there.
+					</p>
+					<input
+						value={code}
+						oninput={formatInput}
+						autocomplete="one-time-code"
+						placeholder="XXXX-XXXX-XXXX-XXXX"
+						maxlength="19"
+						spellcheck="false"
+						class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
+						onkeydown={(event) => event.key === 'Enter' && void beginLink()}
+					/>{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
+						type="button"
+						onclick={() => void beginLink()}
+						disabled={loading}
+						class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
+						>{loading ? 'Starting…' : 'Start connection'}</button
+					><button
+						type="button"
+						onclick={() => (mode = SyncModalMode.Menu)}
+						class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
+						>← Back</button
+					>
+				</div>
+			{:else if mode === SyncModalMode.Waiting}
+				<div class="space-y-5">
+					{#if waiting?.role === PairingRole.Existing}
+						<div>
+							<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
+								On the new device
+							</p>
+							<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
+								Open Sync and type this code
+							</p>
+						</div>
+						<div
+							class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] px-2 py-5"
+							aria-label="One-time pairing code"
+						>
+							<div class="flex items-center justify-center gap-1">
+								{#each pairingGroups(waiting.syncCode) as group, index (index)}
+									{#if index > 0}
+										<span class="px-0.5 text-[var(--scrapscache-text-muted)]" aria-hidden="true"
+											>·</span
+										>
+									{/if}
+									<span
+										class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--scrapscache-text)]"
+										>{group}</span
 									>
-								{/if}
-								<span
-									class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--scrapscache-text)]"
-									>{group}</span
-								>
-							{/each}
+								{/each}
+							</div>
+						</div>
+						<button
+							type="button"
+							onclick={() => void copyCode()}
+							class="scrapscache-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
+								? 'border-[var(--scrapscache-success)] bg-[var(--scrapscache-success)] text-[var(--scrapscache-success-foreground)]'
+								: 'scrapscache-button-secondary'}">{copyFlash ? 'Copied' : 'Copy code'}</button
+						>
+					{:else}
+						<div>
+							<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
+								On the other device
+							</p>
+							<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
+								Open Sync and choose Connect another device
+							</p>
+						</div>
+					{/if}
+					<div class="space-y-1.5">
+						<div
+							class="flex items-center justify-between text-xs text-[var(--scrapscache-text-muted)]"
+						>
+							<span>Expires in</span>
+							<span class="tabular-nums text-[var(--scrapscache-text)]">{secondsLeft()}s</span>
+						</div>
+						<div class="scrapscache-progress-track h-1 overflow-hidden rounded-full">
+							<div
+								class="scrapscache-progress-value h-full rounded-full transition-[width] duration-1000 ease-linear"
+								style={`width: ${expiryRatio() * 100}%`}
+							></div>
 						</div>
 					</div>
 					<button
 						type="button"
-						onclick={() => void copyCode()}
-						class="scrapscache-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
-							? 'border-[var(--scrapscache-success)] bg-[var(--scrapscache-success)] text-[var(--scrapscache-success-foreground)]'
-							: 'scrapscache-button-secondary'}">{copyFlash ? 'Copied' : 'Copy code'}</button
+						onclick={() => {
+							stopWaiting();
+							waiting = null;
+							mode = syncStore.isLoggedIn ? 'linked' : 'link';
+						}}
+						class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
+						>Cancel</button
 					>
-				{:else}
-					<div>
-						<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
-							On the other device
-						</p>
-						<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
-							Open Sync and choose Connect another device
-						</p>
-					</div>
-				{/if}
-				<div class="space-y-1.5">
-					<div
-						class="flex items-center justify-between text-xs text-[var(--scrapscache-text-muted)]"
-					>
-						<span>Expires in</span>
-						<span class="tabular-nums text-[var(--scrapscache-text)]">{secondsLeft()}s</span>
-					</div>
-					<div class="scrapscache-progress-track h-1 overflow-hidden rounded-full">
-						<div
-							class="scrapscache-progress-value h-full rounded-full transition-[width] duration-1000 ease-linear"
-							style={`width: ${expiryRatio() * 100}%`}
-						></div>
-					</div>
 				</div>
-				<button
-					type="button"
-					onclick={() => {
-						stopWaiting();
-						waiting = null;
-						mode = syncStore.isLoggedIn ? 'linked' : 'link';
-					}}
-					class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
-					>Cancel</button
-				>
-			</div>
-		{/if}
+			{/if}
+		</div>
 	</div>
 </div>

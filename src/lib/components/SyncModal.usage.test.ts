@@ -1,9 +1,11 @@
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { syncStore } from '$lib/stores/sync.svelte';
+import { notesStore } from '$lib/stores/notes.svelte';
 import SyncModal from './SyncModal.svelte';
+import { createMcpTokenGrant, MCP_TOKEN_STORAGE_PREFIX } from '$lib/mcp/token';
 
 const MB = 1_000_000;
 
@@ -27,6 +29,7 @@ function renderUsage(ciphertextBytes: number, maxBytes = 10 * MB): HTMLElement {
 }
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	delete (Element.prototype as Partial<Element>).animate;
 	syncStore.account = null;
 	syncStore.usage = null;
@@ -34,6 +37,50 @@ afterEach(() => {
 });
 
 describe('SyncModal storage usage', () => {
+	it('hides MCP until the account is entitled and still shows the sync account ID', async () => {
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(Response.json({ enabled: false }));
+		renderUsage(5 * MB);
+		await tick();
+		expect(screen.queryByText(/AI access \(MCP\)/)).toBeNull();
+		expect(screen.queryByText(/MCP is not end-to-end encrypted/)).toBeNull();
+		expect(screen.getByText('Sync account ID')).toBeTruthy();
+	});
+
+	it('discloses the separate MCP trust path once entitled', async () => {
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(Response.json({ enabled: true }));
+		renderUsage(5 * MB);
+		expect((await screen.findByText(/MCP is not end-to-end encrypted/)).textContent).toMatch(
+			/this server decrypts requested notes.*AI provider can read and change them/s
+		);
+	});
+
+	it('opens connection details above the canvas without displaying the bearer token', async () => {
+		const host = document.createElement('div');
+		host.setAttribute('data-app-overlay', '');
+		document.body.appendChild(host);
+		const identity = createSyncIdentity();
+		const { token } = createMcpTokenGrant(identity.syncKey);
+		const key = `${MCP_TOKEN_STORAGE_PREFIX}${identity.accountId}`;
+		syncStore.account = identity;
+		localStorage.setItem(key, token);
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(Response.json({ enabled: true }));
+		const component = render(SyncModal, { props: { onClose: vi.fn() } });
+		try {
+			const toggle = await screen.findByRole('button', { name: 'Show details' });
+			expect(host.contains(screen.getByRole('dialog'))).toBe(true);
+			await fireEvent.click(toggle);
+			expect(toggle.getAttribute('aria-expanded')).toBe('true');
+			expect(screen.getByText('Manual setup').closest('details')?.open).toBe(false);
+			expect(host.textContent).not.toContain(token);
+			await fireEvent.click(toggle);
+			expect(toggle.getAttribute('aria-expanded')).toBe('false');
+		} finally {
+			component.unmount();
+			host.remove();
+			localStorage.removeItem(key);
+		}
+	});
+
 	it('shows current storage usage without warning below 80 percent', () => {
 		const usage = renderUsage(7 * MB);
 		const text = usage.textContent?.replace(/\s+/g, ' ');
@@ -68,5 +115,29 @@ describe('SyncModal storage usage', () => {
 	it('displays the default 100 MB decimal-byte limit', () => {
 		const usage = renderUsage(5_000, 100_000_000);
 		expect(usage.textContent?.replace(/\s+/g, ' ')).toContain('5 KB of 100 MB');
+	});
+
+	it('uploads local notes after creating a new sync account instead of replacing them', async () => {
+		const identity = createSyncIdentity();
+		const register = vi.spyOn(syncStore, 'register').mockImplementation(async () => {
+			syncStore.account = identity;
+			return { success: true };
+		});
+		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+		const replace = vi.spyOn(notesStore, 'replaceWithCloudManual').mockResolvedValue(true);
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(
+			new Response(JSON.stringify({ enabled: false }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
+
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Create sync key' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Create my sync key' }));
+
+		await waitFor(() => expect(sync).toHaveBeenCalledOnce());
+		expect(register).toHaveBeenCalledOnce();
+		expect(replace).not.toHaveBeenCalled();
 	});
 });

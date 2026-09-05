@@ -7,8 +7,10 @@ from scripts.reset_cloudflare_dev import (
     delete_worker,
     drop_sql,
     is_missing_worker,
+    is_transient_d1_failure,
     parse_d1_rows,
     quote_ident,
+    run_d1,
 )
 
 
@@ -59,7 +61,57 @@ class ParseAndMissingTests(unittest.TestCase):
     def test_missing_worker_message(self):
         self.assertTrue(is_missing_worker("Cannot find script 'scrapscache-dev'"))
         self.assertTrue(is_missing_worker("Could not find that Workers Service [code: 10007]"))
+        self.assertTrue(
+            is_missing_worker("This Worker does not exist on this account. [code: 10090]")
+        )
         self.assertFalse(is_missing_worker("Unauthorized"))
+
+    def test_transient_d1_failure(self):
+        self.assertTrue(is_transient_d1_failure("storage operation exceeded timeout [code: 7429]"))
+        self.assertFalse(is_transient_d1_failure("Unauthorized [code: 10000]"))
+
+
+class D1RetryTests(unittest.TestCase):
+    @patch("scripts.reset_cloudflare_dev.time.sleep")
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_retries_storage_timeout(self, wrangler, _echo, sleep):
+        wrangler.side_effect = [
+            SimpleNamespace(returncode=1, stdout="", stderr="timeout [code: 7429]"),
+            SimpleNamespace(returncode=0, stdout="[]", stderr=""),
+        ]
+
+        result = run_d1(["d1", "execute"])
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(wrangler.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+    @patch("scripts.reset_cloudflare_dev.time.sleep")
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_does_not_retry_other_failures(self, wrangler, _echo, sleep):
+        wrangler.return_value = SimpleNamespace(returncode=1, stdout="", stderr="Unauthorized")
+
+        result = run_d1(["d1", "execute"])
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(wrangler.call_count, 1)
+        sleep.assert_not_called()
+
+    @patch("scripts.reset_cloudflare_dev.time.sleep")
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_stops_after_bounded_transient_retries(self, wrangler, _echo, sleep):
+        wrangler.return_value = SimpleNamespace(
+            returncode=1, stdout="", stderr="timeout [code: 7429]"
+        )
+
+        result = run_d1(["d1", "execute"])
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(wrangler.call_count, 3)
+        self.assertEqual([call.args for call in sleep.call_args_list], [(1,), (2,)])
 
 
 class DeleteWorkerTests(unittest.TestCase):

@@ -12,11 +12,13 @@ import json
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Mapping, Sequence
 
 
 DATABASE = "SCRAPSCACHE_DB"
 DEV_ENV = "dev"
+D1_RETRY_ATTEMPTS = 3
 LIST_OBJECTS = (
     "SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view') "
     "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'"
@@ -60,7 +62,17 @@ def drop_sql(objects: Sequence[Mapping[str, object]]) -> str | None:
 
 def is_missing_worker(output: str) -> bool:
     lowered = output.lower()
-    return "cannot find" in lowered or "could not find" in lowered or "code: 10007" in lowered
+    return (
+        "cannot find" in lowered
+        or "could not find" in lowered
+        or "does not exist" in lowered
+        or "code: 10007" in lowered
+        or "code: 10090" in lowered
+    )
+
+
+def is_transient_d1_failure(output: str) -> bool:
+    return "code: 7429" in output.lower()
 
 
 def wrangler(args: Sequence[str], env: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -77,6 +89,17 @@ def echo(result: subprocess.CompletedProcess[str]) -> None:
     sys.stderr.write(result.stderr)
 
 
+def run_d1(args: Sequence[str], env: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    for attempt in range(D1_RETRY_ATTEMPTS):
+        result = wrangler(args, env)
+        echo(result)
+        if result.returncode == 0 or not is_transient_d1_failure(result.stdout + result.stderr):
+            return result
+        if attempt + 1 < D1_RETRY_ATTEMPTS:
+            time.sleep(2**attempt)
+    return result
+
+
 def delete_worker(args: Sequence[str], env: Mapping[str, str] | None = None) -> None:
     result = wrangler(["delete", *args], env)
     echo(result)
@@ -86,7 +109,7 @@ def delete_worker(args: Sequence[str], env: Mapping[str, str] | None = None) -> 
 
 
 def wipe_d1(env: Mapping[str, str] | None = None) -> None:
-    listed = wrangler(
+    listed = run_d1(
         [
             "d1",
             "execute",
@@ -111,7 +134,7 @@ def wipe_d1(env: Mapping[str, str] | None = None) -> None:
     sql = drop_sql(parse_d1_rows(payload))
     if sql is None:
         return
-    dropped = wrangler(
+    dropped = run_d1(
         [
             "d1",
             "execute",

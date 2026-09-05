@@ -5,7 +5,7 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 
 ## Goals
 
-- Keep **note content private** from the sync server and from passive network
+- Keep **ordinary device-sync content private** from the sync server and from passive network
   observers when TLS is used.
 - Make **multi-device sync** possible without uploading plaintext.
 - Provide **user-controlled encrypted backups** independent of the relay.
@@ -13,12 +13,14 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 
 ## Trust boundaries
 
-| Component                      | You trust it with                                                         | You should not trust it with                          |
-| ------------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Your browser / device          | Local note plaintext, sync key, backup passphrase while entered           | Malware, hostile extensions, shared unlocked sessions |
-| Self-hosted relay              | Ciphertext, auth material hashes, metadata (sizes, timing, IPs if logged) | Note plaintext, sync key, backup passphrase           |
-| Reverse proxy / TLS terminator | TLS keys, request metadata                                                | Application secrets if misconfigured                  |
-| Client backup file             | Ciphertext at rest                                                        | Passphrase (never stored in the file)                 |
+| Component                      | You trust it with                                                                  | You should not trust it with                           |
+| ------------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Your browser / device          | Local note plaintext, sync key, backup passphrase while entered                    | Malware, hostile extensions, shared unlocked sessions  |
+| Ordinary sync relay            | Ciphertext, auth material hashes, metadata (sizes, timing, IPs if logged)          | Note plaintext, sync key, backup passphrase            |
+| Enabled hosted MCP path        | Sync key and requested note plaintext in ephemeral memory; authenticated mutations | Durable plaintext storage or undisclosed secondary use |
+| Connected AI provider          | Note contents returned through MCP and the user's requested actions                | The privacy guarantees of ordinary device sync         |
+| Reverse proxy / TLS terminator | TLS keys, request metadata                                                         | Application secrets if misconfigured                   |
+| Client backup file             | Ciphertext at rest                                                                 | Passphrase (never stored in the file)                  |
 
 ## Cryptography overview
 
@@ -75,9 +77,17 @@ the long-term attachment format.
 - **Headers** in `hooks.server.ts`: `Referrer-Policy: no-referrer`,
   `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, restrictive
   `Permissions-Policy`
+- **CSRF** — SvelteKit checks form POSTs in production. `trustedOrigins` is
+  `OAUTH_BROWSER_ORIGINS` (currently `https://grok.com`). Originless OAuth token
+  POSTs are stamped same-origin on `/api/mcp/oauth/token` only. `hooks.server.ts`
+  still rejects cross-site forms on every other path, including Grok. Other MCP
+  websites are not trusted form origins.
 - **Rate limiting** — in-memory token buckets for register, pairing, and sync
-- **Admin token** — required for `/metrics`, `GET /api/admin/status`, and
-  `POST /api/admin/retention` in production Compose
+- **Admin token** — required for `/admin/api/*` when Cloudflare Access is not in use. In
+  production Compose the token protects metrics, status, retention, quota, and MCP
+- **Cloudflare Access console** — `/admin` fails closed and requires a valid Access JWT for
+  the configured application audience, issuer, and exact operator email. `/admin/api/*`
+  accepts that assertion or the operator bearer token
 - **Operator status** — anonymous aggregates only (storage, account counts,
   activity windows). No account IDs, ciphertext, or credentials
 - **Account retention** — optional; a daily sweep deletes unused relay accounts
@@ -129,6 +139,16 @@ Structured logs use request IDs; prefer redacted identifiers.
 Local live notes are **not** wrapped in an extra “vault passphrase” while the
 app is in use; browser storage isolation is the boundary.
 
+### Optional hosted MCP
+
+Hosted MCP is disabled per account by default and is not end-to-end encrypted while in use.
+After the operator enables the feature and the user authorizes a client, the server persists a
+hash of the bearer token plus a sync key wrapped by that token. For each authenticated MCP
+request, it unwraps the key and decrypts the requested note data in process or isolate memory.
+The AI provider receives returned plaintext and may search, read, create, update, and delete
+notes. Disabling MCP removes the entitlement and revokes tokens, pending OAuth codes, and live
+sessions. It does not change the trust model for accounts that never enable MCP.
+
 ## Operator checklist
 
 1. Terminate **HTTPS** at a reverse proxy; set `SCRAPSCACHE_ORIGIN` to the public URL.
@@ -150,4 +170,4 @@ app is in use; browser storage isolation is the boundary.
 | Operator status          | `src/lib/server/operatorMonitor.ts`             |
 | Account retention        | `src/lib/server/retentionManager.ts`            |
 | CSP                      | `svelte.config.js`                              |
-| Security headers         | `src/hooks.server.ts`                           |
+| CSRF + security headers  | `src/hooks.server.ts`, `oauthCsrf.ts`           |

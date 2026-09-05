@@ -1,14 +1,10 @@
 import { createClient, type Client, type Transaction } from '@libsql/client/web';
 import { env } from '$env/dynamic/private';
 
-/** Server-side storage split: the relay DB holds account-scoped sync state worth
- * backing up (credentials, ciphertext envelopes); the ops DB holds disposable
- * high-churn operational state (rate limits, auth sessions, pairing rendezvous,
- * wake queue, operator config). */
 export type Db = {
-	readonly relay: Client;
-	readonly ops: Client;
-	/** Resolves once both schemas exist; rejects (and retries on next access) while unreachable. */
+	relay: Client;
+	ops: Client;
+	/** Resolves when initial migrations have completed on both databases. */
 	readonly ready: Promise<void>;
 };
 
@@ -132,6 +128,43 @@ const OPS_DDL = `
 	);
 	CREATE INDEX IF NOT EXISTS reminder_wake_deliveries_account
 		ON reminder_wake_deliveries(account_id);
+	CREATE TABLE IF NOT EXISTS mcp_tokens (
+		token_hash TEXT PRIMARY KEY,
+		account_id TEXT NOT NULL,
+		client_id TEXT NOT NULL DEFAULT 'manual',
+		wrapped_sync_key TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		expires_at INTEGER NOT NULL DEFAULT 0,
+		refresh_hash TEXT NOT NULL DEFAULT '',
+		refresh_wrapped_sync_key TEXT NOT NULL DEFAULT '',
+		refresh_expires_at INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE INDEX IF NOT EXISTS mcp_tokens_account
+		ON mcp_tokens(account_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS mcp_tokens_account_client
+		ON mcp_tokens(account_id, client_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS mcp_tokens_refresh_hash
+		ON mcp_tokens(refresh_hash);
+	CREATE TABLE IF NOT EXISTS mcp_oauth_codes (
+		code_hash TEXT PRIMARY KEY,
+		account_id TEXT NOT NULL,
+		wrapped_sync_key TEXT NOT NULL,
+		client_id TEXT NOT NULL,
+		redirect_uri TEXT NOT NULL,
+		code_challenge TEXT NOT NULL,
+		resource TEXT NOT NULL,
+		expires_at INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS mcp_oauth_codes_account
+		ON mcp_oauth_codes(account_id);
+	CREATE INDEX IF NOT EXISTS mcp_oauth_codes_expires
+		ON mcp_oauth_codes(expires_at);
+	CREATE TABLE IF NOT EXISTS account_mcp_access (
+		account_id TEXT PRIMARY KEY,
+		enabled_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	DROP TABLE IF EXISTS mcp_revocations;
 `;
 
 /** Wrap pre-built clients (any libsql transport) with lazy idempotent schema setup. */

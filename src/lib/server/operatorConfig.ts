@@ -1,15 +1,9 @@
 import { env } from '$env/dynamic/private';
 
+export { DEFAULT_MAX_ACCOUNT_BYTES, parseMaxAccountBytes } from '$lib/server/syncQuota';
 export const BYTES_PER_GIGABYTE = 1_000_000_000;
-/** Default relay quota for self-host and Workers. Keep Docker and wrangler vars in lockstep. */
-export const DEFAULT_MAX_ACCOUNT_BYTES = 100_000_000;
 export const ACTIVITY_WINDOWS_DAYS = [1, 7, 30] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-export function parseMaxAccountBytes(value: string | undefined): number {
-	const parsed = Number(value);
-	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_ACCOUNT_BYTES;
-}
 
 export function parseRetentionInactiveDays(
 	value = env.SCRAPSCACHE_RETENTION_INACTIVE_DAYS

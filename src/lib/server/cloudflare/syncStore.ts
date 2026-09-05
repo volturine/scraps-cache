@@ -1,6 +1,10 @@
-import { ACTIVITY_WINDOWS_DAYS, parseMaxAccountBytes } from '$lib/server/operatorConfig';
+import { ACTIVITY_WINDOWS_DAYS } from '$lib/server/operatorConfig';
+import { parseMaxAccountBytes } from '$lib/server/syncQuota';
 import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
+import { syncThroughCoordinator, SyncQuotaExceededError } from './coordinatorSync';
+
+export { SyncQuotaExceededError };
 
 export type EncryptedEnvelope = { seq: number; id: string; ciphertext: string; slot: string };
 export type OpaqueUpload = Omit<EncryptedEnvelope, 'seq'> & { expectedId?: string | null };
@@ -15,6 +19,11 @@ export type SyncResult = {
 };
 export type SyncQuotas = { maxAccountBytes: number };
 export type AccountByteQuota = { maxBytes: number; overridden: boolean };
+export type AccountUsage = AccountByteQuota & {
+	envelopeCount: number;
+	ciphertextBytes: number;
+	storageBytes: number;
+};
 export type OperatorUsage = {
 	accounts: number;
 	envelopeCount: number;
@@ -41,13 +50,6 @@ export const WAKE_CLAIM_LEASE_MS = 60_000;
 export const DELETED_SLOT_GRACE_MS = 14 * 86_400_000;
 /** Keeps D1 parameters and R2 subrequests safely inside Workers limits. */
 export const MAX_SYNC_MUTATIONS_PER_REQUEST = 8;
-
-export class SyncQuotaExceededError extends Error {
-	constructor() {
-		super('Sync account storage quota exceeded');
-		this.name = 'SyncQuotaExceededError';
-	}
-}
 
 export class SyncStore {
 	private readonly bindings = cloudflareBindings();
@@ -108,6 +110,24 @@ export class SyncStore {
 			overridden: row.maxBytes != null
 		};
 	}
+	async getAccountUsage(accountId: string): Promise<AccountUsage | null> {
+		const row = (
+			await execute(this.db, {
+				sql: 'SELECT a.envelope_count AS envelopeCount,a.ciphertext_bytes AS ciphertextBytes,q.max_bytes AS maxBytes FROM accounts a LEFT JOIN account_quotas q USING(account_id) WHERE a.account_id=?',
+				args: [accountId]
+			})
+		).rows[0];
+		if (!row) return null;
+		const envelopeCount = Number(row.envelopeCount);
+		const ciphertextBytes = Number(row.ciphertextBytes);
+		return {
+			envelopeCount,
+			ciphertextBytes,
+			storageBytes: ciphertextBytes + envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
+			maxBytes: row.maxBytes == null ? this.maxAccountBytes : Number(row.maxBytes),
+			overridden: row.maxBytes != null
+		};
+	}
 	async setAccountByteQuota(accountId: string, maxBytes: number): Promise<boolean> {
 		if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0)
 			throw new RangeError('Account byte quota must be a positive safe integer');
@@ -144,23 +164,21 @@ export class SyncStore {
 			};
 		}
 	> {
-		const stub = this.bindings.ACCOUNT_COORDINATOR.get(
-			this.bindings.ACCOUNT_COORDINATOR.idFromName(accountId)
-		);
-		const response = await stub.fetch('https://coordinator/sync', {
-			method: 'POST',
-			body: JSON.stringify({
-				accountId,
-				cursor,
-				uploads,
-				deletions,
-				downloadLimit,
-				maxAccountBytes: this.maxAccountBytes
-			})
-		});
-		if (response.status === 507) throw new SyncQuotaExceededError();
-		if (!response.ok) throw new Error(`Account coordinator failed (${response.status})`);
-		return response.json();
+		return (await syncThroughCoordinator(this.bindings.ACCOUNT_COORDINATOR, {
+			accountId,
+			cursor,
+			uploads,
+			deletions,
+			downloadLimit,
+			maxAccountBytes: this.maxAccountBytes
+		})) as SyncResult & {
+			usage: {
+				envelopeCount: number;
+				ciphertextBytes: number;
+				storageBytes: number;
+				maxBytes: number;
+			};
+		};
 	}
 	async deleteAccount(accountId: string): Promise<boolean> {
 		const namespace = this.bindings.ACCOUNT_COORDINATOR;

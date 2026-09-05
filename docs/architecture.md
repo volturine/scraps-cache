@@ -29,8 +29,9 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 ## Design principles
 
 1. **Offline-first** — IndexedDB is the durable source of truth on each device.
-2. **Ciphertext relay** — the server stores slots of encrypted blobs; it never
-   receives note plaintext, labels, or attachment bytes.
+2. **Ciphertext sync relay** — ordinary device sync stores slots of encrypted blobs and never
+   sends note plaintext, labels, or attachment bytes to the server. Optional hosted MCP is a
+   separate trust path that decrypts requested data in ephemeral server memory.
 3. **Native deployment** — self-hosting uses two local sqld stores; Cloudflare
    uses D1 metadata, R2 ciphertext objects, and a per-account Durable Object.
 4. **Client-side crypto** — sync keys, backup passphrases, and encryption live
@@ -87,26 +88,26 @@ authentication. The account ID and encrypted relay data do not move.
 
 ## Server
 
-| Area            | Location                                                 | Responsibility                                  |
-| --------------- | -------------------------------------------------------- | ----------------------------------------------- |
-| DB layer        | `src/lib/server/db.ts`                                   | sqld/libSQL clients, withTxn, DDL, meta helpers |
-| Sync store      | `src/lib/server/syncStore.ts`                            | Relay DB: accounts, envelopes, quotas           |
-| Workers store   | `src/lib/server/cloudflare/`, `cf/accountCoordinator.ts` | D1/R2 storage + serialized account sync         |
-| Sync auth       | `src/lib/server/syncAuth.ts`                             | Ops DB: challenges, sessions, public key auth   |
-| Pairing         | `src/lib/server/pairingSessions.ts`                      | Ops DB: rendezvous for PAKE shares              |
-| Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes |
-| Register        | `src/routes/api/sync/register/`                          | Create account credentials                      |
-| Reminder wakes  | `src/routes/api/sync/push/*`                             | Device subscriptions + opaque wake ticks        |
-| Account delete  | `src/routes/api/sync/account/`                           | Wipe cloud ciphertext for an account            |
-| Rate limits     | `src/lib/server/rateLimit.ts`                            | Atomic SQL token bucket on ops DB               |
-| Metrics         | `src/lib/server/metrics.ts`, `/metrics`                  | Operator metrics (admin token)                  |
-| Operator status | `src/lib/server/operatorMonitor.ts`, `/api/admin/status` | Anonymous JSON usage + activity                 |
-| Wake dispatch   | `src/lib/server/wakeDispatch.ts`                         | Pull-based wake claiming and push delivery      |
-| Retention sweep | `src/lib/server/retentionSweep.ts`                       | Optional inactive-account sweep (daily gate)    |
-| Cron tick       | `src/lib/server/cronTick.ts`                             | Orchestrator for wake + retention + prune       |
-| Cron endpoint   | `src/routes/api/cron/tick/`                              | Scheduler entry point for cron triggers         |
-| Health          | `/health/live`, `/health/ready`                          | Liveness and readiness probes                   |
-| Hooks           | `src/hooks.server.ts`                                    | Security headers, request IDs                   |
+| Area            | Location                                                 | Responsibility                                     |
+| --------------- | -------------------------------------------------------- | -------------------------------------------------- |
+| DB layer        | `src/lib/server/db.ts`                                   | sqld/libSQL clients, withTxn, DDL, meta helpers    |
+| Sync store      | `src/lib/server/syncStore.ts`                            | Relay DB: accounts, envelopes, quotas              |
+| Workers store   | `src/lib/server/cloudflare/`, `cf/accountCoordinator.ts` | D1/R2 storage + serialized account sync            |
+| Sync auth       | `src/lib/server/syncAuth.ts`                             | Ops DB: challenges, sessions, public key auth      |
+| Pairing         | `src/lib/server/pairingSessions.ts`                      | Ops DB: rendezvous for PAKE shares                 |
+| Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes    |
+| Register        | `src/routes/api/sync/register/`                          | Create account credentials                         |
+| Reminder wakes  | `src/routes/api/sync/push/*`                             | Device subscriptions + opaque wake ticks           |
+| Account delete  | `src/routes/api/sync/account/`                           | Wipe cloud ciphertext for an account               |
+| Rate limits     | `src/lib/server/rateLimit.ts`                            | Atomic SQL token bucket on ops DB                  |
+| Metrics         | `src/lib/server/metrics.ts`, `/admin/api/metrics`        | Operator Prometheus scrape (Access or admin token) |
+| Operator status | `src/lib/server/operatorMonitor.ts`, `/admin/api/status` | Anonymous JSON usage + activity                    |
+| Wake dispatch   | `src/lib/server/wakeDispatch.ts`                         | Pull-based wake claiming and push delivery         |
+| Retention sweep | `src/lib/server/retentionSweep.ts`                       | Optional inactive-account sweep (daily gate)       |
+| Cron tick       | `src/lib/server/cronTick.ts`                             | Orchestrator for wake + retention + prune          |
+| Cron endpoint   | `src/routes/api/cron/tick/`                              | Scheduler entry point for cron triggers            |
+| Health          | `/health/live`, `/health/ready`                          | Liveness and readiness probes                      |
+| Hooks           | `src/hooks.server.ts`                                    | CSRF, security headers, request IDs                |
 
 ### Opaque envelopes
 

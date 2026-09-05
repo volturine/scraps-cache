@@ -11,7 +11,7 @@ describe('admin auth', () => {
 	});
 
 	it('accepts only the exact bearer token', () => {
-		const request = new Request('https://example.test/api/admin/status', {
+		const request = new Request('https://example.test/admin/api/status', {
 			headers: { authorization: 'Bearer secret-token' }
 		});
 		expect(isAdminAuthorized(request, 'secret-token')).toBe(true);
@@ -43,7 +43,7 @@ describe('admin auth', () => {
 	});
 
 	it('fails closed when no admin token is configured', () => {
-		const request = new Request('https://example.test/api/admin/status', {
+		const request = new Request('https://example.test/admin/api/status', {
 			headers: { authorization: 'Bearer secret-token' }
 		});
 		expect(isAdminAuthorized(request)).toBe(false);

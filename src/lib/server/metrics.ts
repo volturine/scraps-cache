@@ -15,9 +15,8 @@ function routeLabel(pathname: string): string {
 	if (pathname.startsWith('/api/sync/push/')) return '/api/sync/push/*';
 	if (pathname.startsWith('/api/sync/pair/')) return '/api/sync/pair/*';
 	if (pathname.startsWith('/api/sync/')) return '/api/sync/*';
-	if (pathname.startsWith('/api/admin/')) return '/api/admin/*';
+	if (pathname.startsWith('/admin/api/')) return '/admin/api/*';
 	if (pathname.startsWith('/health/')) return '/health/*';
-	if (pathname === '/metrics') return '/metrics';
 	return 'app';
 }
 
